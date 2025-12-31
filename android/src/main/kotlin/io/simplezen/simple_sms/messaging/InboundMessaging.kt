@@ -14,7 +14,6 @@ import io.simplezen.simple_sms.SimpleSmsPlugin
 enum class MessageType {
     SMS,
     MMS,
-    CALL,
 }
 
 class InboundMessaging(val context : Context) {
@@ -25,15 +24,12 @@ class InboundMessaging(val context : Context) {
             method = when (messageType) {
                 MessageType.SMS -> "receiveInboundSmsMessage"
                 MessageType.MMS -> "receiveInboundMmsMessage"
-                MessageType.CALL -> "receiveCallEvent"
             },
             payload = message.apply { this["messageType"] = messageType.name.lowercase() },
         )
     }
 
-    fun transferCallEvent(event: MutableMap<String, Any?>) {
-        sendToFlutter(method = "receiveCallEvent", payload = event)
-    }
+    // Note: Call events should be sent via simple-telephony's InboundTelecom, not here
 
     private fun sendToFlutter(method: String, payload: MutableMap<String, Any?>) {
         // Perform the send operation
