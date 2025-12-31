@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/layout-v26/abc_screen_toolbar.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-appcompat-1.7.0-38:/layout-v26/abc_screen_toolbar.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/layout-v26/mtrl_calendar_month.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-material-1.12.0-39:/layout-v26/mtrl_calendar_month.xml"
+    }
+]

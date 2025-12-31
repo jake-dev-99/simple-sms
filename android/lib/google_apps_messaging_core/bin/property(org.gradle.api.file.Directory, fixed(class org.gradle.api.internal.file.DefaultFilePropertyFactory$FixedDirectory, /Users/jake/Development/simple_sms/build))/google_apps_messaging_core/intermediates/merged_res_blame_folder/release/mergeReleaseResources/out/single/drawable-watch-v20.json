@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/drawable-watch-v20/abc_dialog_material_background.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-appcompat-1.7.0-38:/drawable-watch-v20/abc_dialog_material_background.xml"
+    }
+]

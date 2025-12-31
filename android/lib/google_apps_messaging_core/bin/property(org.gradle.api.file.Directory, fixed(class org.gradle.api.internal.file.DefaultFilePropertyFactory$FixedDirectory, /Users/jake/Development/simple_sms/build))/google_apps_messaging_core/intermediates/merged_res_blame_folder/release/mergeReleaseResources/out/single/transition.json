@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/transition/fade.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/transition/fade.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/transition/explode.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/transition/explode.xml"
+    }
+]

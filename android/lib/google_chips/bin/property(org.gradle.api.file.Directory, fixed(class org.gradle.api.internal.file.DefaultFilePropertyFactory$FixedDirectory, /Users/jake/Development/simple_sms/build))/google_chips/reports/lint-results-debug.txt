@@ -1,0 +1,222 @@
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/ChipsUtil.java:44: Warning: This method should be annotated with @ChecksSdkIntAtLeast(api=Build.VERSION_CODES.ICE_CREAM_SANDWICH) [AnnotateVersionCheck]
+    public static boolean supportsChipsUi() {
+                          ~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/ChipsUtil.java:54: Warning: This method should be annotated with @ChecksSdkIntAtLeast(api=Build.VERSION_CODES.M) [AnnotateVersionCheck]
+    public static boolean isRunningMOrLater() {
+                          ~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "AnnotateVersionCheck":
+   Methods which perform SDK_INT version checks (or field constants which
+   reflect the result of a version check) in libraries should be annotated
+   with @ChecksSdkIntAtLeast. This makes it possible for lint to correctly
+   check calls into the library later to correctly understand that problematic
+   code which is wrapped within a call into this library is safe after all.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/DropdownChipLayouter.java:348: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+            entry.getDestinationLabel()).toString().toUpperCase();
+                                                    ~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/DropdownChipLayouter.java:499: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                int index = result.toLowerCase().indexOf(constraint.toLowerCase());
+                                   ~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/DropdownChipLayouter.java:499: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                int index = result.toLowerCase().indexOf(constraint.toLowerCase());
+                                                                    ~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientAlternatesAdapter.java:109: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+            Rfc822Token[] tokens = Rfc822Tokenizer.tokenize(inAddresses.get(i).toLowerCase());
+                                                                               ~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:3250: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                                                    .toLowerCase()));
+                                                     ~~~~~~~~~~~
+
+   Explanation for issues of type "DefaultLocale":
+   Calling String#toLowerCase() or #toUpperCase() without specifying an
+   explicit locale is a common source of bugs. The reason for that is that
+   those methods will use the current locale on the user's device, and even
+   though the code appears to work correctly when you are developing the app,
+   it will fail in some locales. For example, in the Turkish locale, the
+   uppercase replacement for i is not I.
+
+   If you want the methods to just perform ASCII replacement, for example to
+   convert an enum name, call String#toUpperCase(Locale.ROOT) instead. If you
+   really want to use the current locale, call
+   String#toUpperCase(Locale.getDefault()) instead.
+
+   https://developer.android.com/reference/java/util/Locale.html#default_locale
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:1237: Warning: Avoid passing null as the view root (needed to resolve layout parameters on the inflated layout's root element) [InflateParams]
+        mMoreItem = (TextView) LayoutInflater.from(getContext()).inflate(R.layout.more_item, null);
+                                                                                             ~~~~
+
+   Explanation for issues of type "InflateParams":
+   When inflating a layout, avoid passing in null as the parent view, since
+   otherwise any layout parameters on the root of the inflated layout will be
+   ignored.
+
+   https://www.bignerdranch.com/blog/understanding-androids-layoutinflater-inflate/
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/DropdownChipLayouter.java:313: Warning: Use AppCompatResources.getDrawable() [UseCompatLoadingForDrawables from androidx.appcompat]
+                    indicatorIcon = mContext.getDrawable(indicatorIconId).mutate();
+                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:835: Warning: Use AppCompatResources.getDrawable() [UseCompatLoadingForDrawables from androidx.appcompat]
+            indicatorIcon = getContext().getDrawable(contact.getIndicatorIconId());
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:1216: Warning: Use ResourcesCompat.getDrawable() [UseCompatLoadingForDrawables from androidx.appcompat]
+            mChipDelete = r.getDrawable(R.drawable.ic_cancel_wht_24dp);
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "UseCompatLoadingForDrawables":
+   Use Compat loading of drawables
+
+   Vendor: Android Open Source Project
+   Identifier: androidx.appcompat
+   Feedback: https://issuetracker.google.com/issues/new?component=460343
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/ChipsUtil.java:45: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/ChipsUtil.java:55: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:490: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        outAttrs.actionLabel = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP ? null :
+                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:684: Warning: Unnecessary; SDK_INT is always >= 16 [ObsoleteSdkInt]
+    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:690: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        if (isAccessibilityOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:992: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        final boolean isRtl = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 &&
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:2100: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:2591: Warning: Unnecessary; SDK_INT is never < 30 [ObsoleteSdkInt]
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/values-v17: Warning: This folder configuration (v17) is unnecessary; minSdkVersion is 30. Merge all the resources in this folder into values. [ObsoleteSdkInt]
+
+   Explanation for issues of type "ObsoleteSdkInt":
+   This check flags version checks that are not necessary, because the
+   minSdkVersion (or surrounding known API level) is already at least as high
+   as the version checked for.
+
+   Similarly, it also looks for resources in -vNN folders, such as values-v14
+   where the version qualifier is less than or equal to the minSdkVersion,
+   where the contents should be merged into the best folder.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/DefaultPhotoManager.java:87: Warning: This AsyncTask class should be static or leaks might occur (anonymous android.os.AsyncTask) [StaticFieldLeak]
+        final AsyncTask<Void, Void, byte[]> photoLoadTask = new AsyncTask<Void, Void, byte[]>() {
+                                                            ^
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:2028: Warning: This AsyncTask class should be static or leaks might occur (anonymous android.os.AsyncTask) [StaticFieldLeak]
+        new AsyncTask<Void, Void, ListAdapter>() {
+        ^
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:3052: Warning: This AsyncTask class should be static or leaks might occur (com.android.ex.chips.RecipientEditTextView.RecipientReplacementTask) [StaticFieldLeak]
+    private class RecipientReplacementTask extends AsyncTask<Void, Void, Void> {
+                  ~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:3224: Warning: This AsyncTask class should be static or leaks might occur (com.android.ex.chips.RecipientEditTextView.IndividualReplacementTask) [StaticFieldLeak]
+    private class IndividualReplacementTask
+                  ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "StaticFieldLeak":
+   A static field will leak contexts.
+
+   Non-static inner classes have an implicit reference to their outer class.
+   If that outer class is for example a Fragment or Activity, then this
+   reference means that the long-running handler/loader/task will hold a
+   reference to the activity which prevents it from getting garbage
+   collected.
+
+   Similarly, direct field references to activities and fragments from these
+   longer running instances can cause leaks.
+
+   ViewModel classes should never point to Views or non-application Contexts.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/layout/chips_autocomplete_recipient_dropdown_item.xml:46: Warning: This tag and its children can be replaced by one <TextView/> and a compound drawable [UseCompoundDrawables]
+    <LinearLayout
+     ~~~~~~~~~~~~
+
+   Explanation for issues of type "UseCompoundDrawables":
+   A LinearLayout which contains an ImageView and a TextView can be more
+   efficiently handled as a compound drawable (a single TextView, using the
+   drawableTop, drawableLeft, drawableRight and/or drawableBottom attributes
+   to draw one or more images adjacent to the text).
+
+   If the two widgets are offset from each other with margins, this can be
+   replaced with a drawablePadding attribute.
+
+   There's a lint quickfix to perform this conversion in the Eclipse plugin.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/BaseRecipientAdapter.java:554: Warning: This Handler class should be static or leaks might occur (com.android.ex.chips.BaseRecipientAdapter.DelayedMessageHandler) [HandlerLeak]
+    private final class DelayedMessageHandler extends Handler {
+                        ~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:365: Warning: This Handler class should be static or leaks might occur (anonymous android.os.Handler) [HandlerLeak]
+        mHandler = new Handler() {
+                   ^
+
+   Explanation for issues of type "HandlerLeak":
+   Since this Handler is declared as an inner class, it may prevent the outer
+   class from being garbage collected. If the Handler is using a Looper or
+   MessageQueue for a thread other than the main thread, then there is no
+   issue. If the Handler is using the Looper or MessageQueue of the main
+   thread, you need to fix your Handler declaration, as follows: Declare the
+   Handler as a static class; In the outer class, instantiate a WeakReference
+   to the outer class and pass this object to your Handler when you
+   instantiate the Handler; Make all references to members of the outer class
+   using the WeakReference object.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/drawable-xxhdpi/ic_contact_picture.png: Warning: The image ic_contact_picture.png varies significantly in its density-independent (dip) size across the various density versions: drawable-hdpi/ic_contact_picture.png: 64x64 dp (96x96 px), drawable-mdpi/ic_contact_picture.png: 64x64 dp (64x64 px), drawable-xhdpi/ic_contact_picture.png: 64x64 dp (128x128 px), drawable-xxhdpi/ic_contact_picture.png: 43x43 dp (128x128 px) [IconDipSize]
+
+   Explanation for issues of type "IconDipSize":
+   Checks the all icons which are provided in multiple densities, all compute
+   to roughly the same density-independent pixel (dip) size. This catches
+   errors where images are either placed in the wrong folder, or icons are
+   changed to new sizes but some folders are forgotten.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/drawable-xxhdpi/ic_contact_picture.png: Warning: The ic_contact_picture.png icon has identical contents in the following configuration folders: drawable-xhdpi, drawable-xxhdpi [IconDuplicatesConfig]
+
+   Explanation for issues of type "IconDuplicatesConfig":
+   If an icon is provided under different configuration parameters such as
+   drawable-hdpi or -v11, they should typically be different. This detector
+   catches cases where the same icon is provided in different configuration
+   folder which is usually not intentional.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/src/com/android/ex/chips/RecipientEditTextView.java:1933: Warning: Custom view RecipientEditTextView overrides onTouchEvent but not performClick [ClickableViewAccessibility]
+    public boolean onTouchEvent(@NonNull MotionEvent event) {
+                   ~~~~~~~~~~~~
+
+   Explanation for issues of type "ClickableViewAccessibility":
+   If a View that overrides onTouchEvent or uses an OnTouchListener does not
+   also implement performClick and call it when clicks are detected, the View
+   may not handle accessibility actions properly. Logic handling the click
+   actions should ideally be placed in View#performClick as some accessibility
+   services invoke performClick when a click action should occur.
+
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/layout/chips_autocomplete_recipient_dropdown_item.xml:54: Warning: Missing contentDescription attribute on image [ContentDescription]
+        <ImageView style="@style/ChipPermissionDismissIconStyle"/>
+         ~~~~~~~~~
+/Users/jake/Development/simple_sms/android/lib/google_chips/res/layout/chips_recipient_dropdown_item.xml:38: Warning: Missing contentDescription attribute on image [ContentDescription]
+    <ImageView style="@style/ChipDeleteIconStyle" />
+     ~~~~~~~~~
+
+   Explanation for issues of type "ContentDescription":
+   Non-textual widgets like ImageViews and ImageButtons should use the
+   contentDescription attribute to specify a textual description of the widget
+   such that screen readers and other accessibility tools can adequately
+   describe the user interface.
+
+   Note that elements in application screens that are purely decorative and do
+   not provide any content or enable a user action should not have
+   accessibility content descriptions. In this case, set their descriptions to
+   @null. If your app's minSdkVersion is 16 or higher, you can instead set
+   these graphical elements' android:importantForAccessibility attributes to
+   no.
+
+   Note that for text fields, you should not set both the hint and the
+   contentDescription attributes since the hint will never be shown. Just set
+   the hint.
+
+   https://developer.android.com/guide/topics/ui/accessibility/apps#special-cases
+
+0 errors, 32 warnings

@@ -1,0 +1,32 @@
+apply plugin: 'java'
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/main/java"]
+            include "com/android/providers/telephony/HbpcdLookupProvider.java",
+                    "com/android/providers/telephony/CarrierIdProvider.java",
+                    "com/android/providers/telephony/SatelliteDatabaseHelper.java",
+                    "com/android/providers/telephony/MmsSmsDatabaseHelper.java",
+                    "com/android/providers/telephony/SQLiteTokenizer.java",
+                    "com/android/providers/telephony/HbpcdLookupDatabaseHelper.java",
+                    "com/android/providers/telephony/MmsProvider.java",
+                    "com/android/providers/telephony/SqlQueryChecker.java",
+                    "com/android/providers/telephony/TelephonyBackupAgent.java",
+                    "com/android/providers/telephony/ProviderUtil.java",
+                    "com/android/providers/telephony/CarrierDatabaseHelper.java",
+                    "com/android/providers/telephony/SatelliteProvider.java",
+                    "com/android/providers/telephony/MmsSmsProvider.java",
+                    "com/android/providers/telephony/CarrierProvider.java",
+                    "com/android/providers/telephony/TelephonyProvider.java",
+                    "com/android/providers/telephony/SmsChangesProvider.java",
+                    "com/android/providers/telephony/SmsProvider.java",
+                    "com/android/providers/telephony/MmsPartsCleanup.java"
+        }
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}

@@ -1,0 +1,31 @@
+<variant
+    name="release"
+    package="com.android.ex"
+    minSdkVersion="30"
+    targetSdkVersion="30"
+    mergedManifest="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/intermediates/merged_manifest/release/processReleaseManifest/AndroidManifest.xml"
+    proguardFiles="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/intermediates/default_proguard_files/global/proguard-android.txt-8.7.0:proguard-rules.pro"
+    partialResultsDir="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/intermediates/lint_vital_partial_results/release/lintVitalAnalyzeRelease/out"
+    desugaredMethodsFiles="/Users/jake/.gradle/caches/8.11.1/transforms/614d3f4d68cb7d1ac35acaefadb5800b/transformed/D8BackportedDesugaredMethods.txt">
+  <buildFeatures
+      namespacing="REQUIRED"/>
+  <sourceProviders>
+    <sourceProvider
+        manifests="src/main/AndroidManifest.xml"
+        javaDirectories="src/main/java:camera2/extensions/advancedSample/src/java:common/java:framesequence/src:src/release/java:src/main/kotlin:src/release/kotlin"
+        resDirectories="src/main/res:res:src/release/res"
+        assetsDirectories="src/main/assets:src/release/assets"/>
+  </sourceProviders>
+  <testSourceProviders>
+  </testSourceProviders>
+  <testFixturesSourceProviders>
+  </testFixturesSourceProviders>
+  <artifact
+      classOutputs="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/intermediates/javac/release/compileReleaseJavaWithJavac/classes:property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/intermediates/compile_r_class_jar/release/generateReleaseRFile/R.jar"
+      type="MAIN"
+      applicationId="com.android.ex"
+      generatedSourceFolders="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/generated/ap_generated_sources/release/out"
+      generatedResourceFolders="property(org.gradle.api.file.Directory, fixed(class org.gradle.api.internal.file.DefaultFilePropertyFactory$FixedDirectory, /Users/jake/Development/simple_sms/build))/google_ex/generated/res/resValues/release"
+      desugaredMethodsFiles="/Users/jake/.gradle/caches/8.11.1/transforms/614d3f4d68cb7d1ac35acaefadb5800b/transformed/D8BackportedDesugaredMethods.txt">
+  </artifact>
+</variant>

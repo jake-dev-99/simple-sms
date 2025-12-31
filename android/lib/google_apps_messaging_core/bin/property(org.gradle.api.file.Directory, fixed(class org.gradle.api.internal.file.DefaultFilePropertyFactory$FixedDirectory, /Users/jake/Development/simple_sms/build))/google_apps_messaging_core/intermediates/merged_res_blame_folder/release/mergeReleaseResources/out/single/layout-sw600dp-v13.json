@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/layout-sw600dp-v13/mtrl_layout_snackbar.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-material-1.12.0-39:/layout-sw600dp-v13/mtrl_layout_snackbar.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/layout-sw600dp-v13/design_layout_snackbar.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-material-1.12.0-39:/layout-sw600dp-v13/design_layout_snackbar.xml"
+    }
+]

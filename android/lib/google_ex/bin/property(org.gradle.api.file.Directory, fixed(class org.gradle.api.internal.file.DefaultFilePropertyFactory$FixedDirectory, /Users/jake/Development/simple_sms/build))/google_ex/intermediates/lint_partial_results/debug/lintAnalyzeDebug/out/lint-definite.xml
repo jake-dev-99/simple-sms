@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.7.0" type="incidents">
+
+    <incident
+        id="WrongCommentType"
+        severity="warning"
+        message="This block comment looks like it was intended to be a javadoc comment">
+        <fix-replace
+            description="Replace with /**"
+            robot="true"
+            independent="true"
+            oldString="/*"
+            replacement="/**"
+            priority="0">
+            <range
+                file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/OutputSurfaceConfigurationImpl.java"
+                startOffset="1190"
+                endOffset="1254"/>
+        </fix-replace>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/OutputSurfaceConfigurationImpl.java"
+            line="40"
+            column="8"
+            startOffset="1236"
+            endLine="40"
+            endColumn="18"
+            endOffset="1246"/>
+    </incident>
+
+    <incident
+        id="DefaultLocale"
+        severity="warning"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead">
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*2}/com/android/common/OperationScheduler.java"
+            line="59"
+            column="24"
+            startOffset="2358"
+            endLine="64"
+            endColumn="53"
+            endOffset="2745"/>
+    </incident>
+
+    <incident
+        id="DefaultLocale"
+        severity="warning"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead">
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*2}/com/android/common/OperationScheduler.java"
+            line="66"
+            column="24"
+            startOffset="2791"
+            endLine="70"
+            endColumn="53"
+            endOffset="3118"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is never &lt; 30">
+        <fix-data conditional="false"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/AutoAdvancedExtenderImpl.java"
+            line="53"
+            column="13"
+            startOffset="1754"
+            endLine="53"
+            endColumn="58"
+            endOffset="1799"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is never &lt; 30">
+        <fix-data conditional="false"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BeautyAdvancedExtenderImpl.java"
+            line="51"
+            column="13"
+            startOffset="1704"
+            endLine="51"
+            endColumn="58"
+            endOffset="1749"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is never &lt; 30">
+        <fix-data conditional="false"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BokehAdvancedExtenderImpl.java"
+            line="56"
+            column="13"
+            startOffset="1874"
+            endLine="56"
+            endColumn="80"
+            endOffset="1941"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is always >= 30">
+        <fix-data conditional="true"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/HdrAdvancedExtenderImpl.java"
+            line="82"
+            column="17"
+            startOffset="2975"
+            endLine="82"
+            endColumn="85"
+            endOffset="3043"/>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is never &lt; 30">
+        <fix-data conditional="false"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/NightAdvancedExtenderImpl.java"
+            line="60"
+            column="13"
+            startOffset="2116"
+            endLine="60"
+            endColumn="58"
+            endOffset="2161"/>
+    </incident>
+
+    <incident
+        id="HandlerLeak"
+        severity="warning"
+        message="This `Handler` class should be static or leaks might occur (anonymous android.os.Handler)">
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*2}/com/android/common/contacts/BaseEmailAddressAdapter.java"
+            line="268"
+            column="20"
+            startOffset="10329"
+            endLine="274"
+            endColumn="10"
+            endOffset="10502"/>
+    </incident>
+
+</incidents>

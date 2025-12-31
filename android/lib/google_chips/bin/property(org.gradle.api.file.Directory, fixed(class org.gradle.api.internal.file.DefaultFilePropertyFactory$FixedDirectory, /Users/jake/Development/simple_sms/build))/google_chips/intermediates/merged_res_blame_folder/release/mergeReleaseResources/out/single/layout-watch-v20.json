@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/layout-watch-v20/abc_alert_dialog_title_material.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/layout-watch-v20/abc_alert_dialog_title_material.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml"
+    }
+]

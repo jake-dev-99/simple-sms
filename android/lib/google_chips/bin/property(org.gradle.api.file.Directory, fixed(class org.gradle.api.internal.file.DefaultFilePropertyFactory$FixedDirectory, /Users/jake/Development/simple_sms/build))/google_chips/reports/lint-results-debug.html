@@ -1,0 +1,2033 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Lint Report</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+ <link rel="stylesheet" href="https://code.getmdl.io/1.2.1/material.blue-indigo.min.css" />
+<link rel="stylesheet" href="http://fonts.googleapis.com/css?family=Roboto:300,400,500,700" type="text/css">
+<script defer src="https://code.getmdl.io/1.2.0/material.min.js"></script>
+<style>
+section.section--center {
+    max-width: 860px;
+}
+.mdl-card__supporting-text + .mdl-card__actions {
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+main > .mdl-layout__tab-panel {
+  padding: 8px;
+  padding-top: 48px;
+}
+
+.mdl-card__actions {
+    margin: 0;
+    padding: 4px 40px;
+    color: inherit;
+}
+.mdl-card > * {
+    height: auto;
+}
+.mdl-card__actions a {
+    color: #00BCD4;
+    margin: 0;
+}
+.error-icon {
+    color: #bb7777;
+    vertical-align: bottom;
+}
+.warning-icon {
+    vertical-align: bottom;
+}
+.mdl-layout__content section:not(:last-of-type) {
+  position: relative;
+  margin-bottom: 48px;
+}
+
+.mdl-card .mdl-card__supporting-text {
+  margin: 40px;
+  -webkit-flex-grow: 1;
+      -ms-flex-positive: 1;
+          flex-grow: 1;
+  padding: 0;
+  color: inherit;
+  width: calc(100% - 80px);
+}
+div.mdl-layout__drawer-button .material-icons {
+    line-height: 48px;
+}
+.mdl-card .mdl-card__supporting-text {
+    margin-top: 0px;
+}
+.chips {
+    float: right;
+    vertical-align: middle;
+}
+
+pre.errorlines {
+    background-color: white;
+    font-family: monospace;
+    border: 1px solid #e0e0e0;
+    line-height: 0.9rem;
+    font-size: 0.9rem;    padding: 1px 0px 1px; 1px;
+    overflow: scroll;
+}
+.prefix {
+    color: #660e7a;
+    font-weight: bold;
+}
+.attribute {
+    color: #0000ff;
+    font-weight: bold;
+}
+.value {
+    color: #008000;
+    font-weight: bold;
+}
+.tag {
+    color: #000080;
+    font-weight: bold;
+}
+.comment {
+    color: #808080;
+    font-style: italic;
+}
+.javadoc {
+    color: #808080;
+    font-style: italic;
+}
+.annotation {
+    color: #808000;
+}
+.string {
+    color: #008000;
+    font-weight: bold;
+}
+.number {
+    color: #0000ff;
+}
+.keyword {
+    color: #000080;
+    font-weight: bold;
+}
+.caretline {
+    background-color: #fffae3;
+}
+.lineno {
+    color: #999999;
+    background-color: #f0f0f0;
+}
+.error {
+    display: inline-block;
+    position:relative;
+    background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH4AwCFR4T/3uLMgAAADxJREFUCNdNyLERQEAABMCjL4lQwIzcjErpguAL+C9AvgKJDbeD/PRpLdm35Hm+MU+cB+tCKaJW4L4YBy+CAiLJrFs9mgAAAABJRU5ErkJggg==) bottom repeat-x;
+}
+.warning {
+    text-decoration: none;
+    background-color: #f6ebbc;
+}
+.overview {
+    padding: 10pt;
+    width: 100%;
+    overflow: auto;
+    border-collapse:collapse;
+}
+.overview tr {
+    border-bottom: solid 1px #eeeeee;
+}
+.categoryColumn a {
+     text-decoration: none;
+     color: inherit;
+}
+.countColumn {
+    text-align: right;
+    padding-right: 20px;
+    width: 50px;
+}
+.issueColumn {
+   padding-left: 16px;
+}
+.categoryColumn {
+   position: relative;
+   left: -50px;
+   padding-top: 20px;
+   padding-bottom: 5px;
+}
+.options {
+   padding-left: 16px;
+}
+</style>
+<script language="javascript" type="text/javascript">
+<!--
+function reveal(id) {
+if (document.getElementById) {
+document.getElementById(id).style.display = 'block';
+document.getElementById(id+'Link').style.display = 'none';
+}
+}
+function hideid(id) {
+if (document.getElementById) {
+document.getElementById(id).style.display = 'none';
+}
+}
+//-->
+</script>
+</head>
+<body class="mdl-color--grey-100 mdl-color-text--grey-700 mdl-base">
+<div class="mdl-layout mdl-js-layout mdl-layout--fixed-header">
+  <header class="mdl-layout__header">
+    <div class="mdl-layout__header-row">
+      <span class="mdl-layout-title">Lint Report: 32 warnings</span>
+      <div class="mdl-layout-spacer"></div>
+      <nav class="mdl-navigation mdl-layout--large-screen-only">Check performed at Fri Apr 18 19:47:13 EDT 2025 by AGP (8.7.0)</nav>
+    </div>
+  </header>
+  <div class="mdl-layout__drawer">
+    <span class="mdl-layout-title">Issue Types</span>
+    <nav class="mdl-navigation">
+      <a class="mdl-navigation__link" href="#overview"><i class="material-icons">dashboard</i>Overview</a>
+      <a class="mdl-navigation__link" href="#AnnotateVersionCheck"><i class="material-icons warning-icon">warning</i>Annotate SDK_INT checks (2)</a>
+      <a class="mdl-navigation__link" href="#DefaultLocale"><i class="material-icons warning-icon">warning</i>Implied default locale in case conversion (5)</a>
+      <a class="mdl-navigation__link" href="#InflateParams"><i class="material-icons warning-icon">warning</i>Layout Inflation without a Parent (1)</a>
+      <a class="mdl-navigation__link" href="#UseCompatLoadingForDrawables"><i class="material-icons warning-icon">warning</i>Should not call <code>Context.getDrawable</code> or <code>Resources.getDrawable</code> directly (3)</a>
+      <a class="mdl-navigation__link" href="#ObsoleteSdkInt"><i class="material-icons warning-icon">warning</i>Obsolete SDK_INT Version Check (9)</a>
+      <a class="mdl-navigation__link" href="#StaticFieldLeak"><i class="material-icons warning-icon">warning</i>Static Field Leaks (4)</a>
+      <a class="mdl-navigation__link" href="#UseCompoundDrawables"><i class="material-icons warning-icon">warning</i>Node can be replaced by a <code>TextView</code> with compound drawables (1)</a>
+      <a class="mdl-navigation__link" href="#HandlerLeak"><i class="material-icons warning-icon">warning</i>Handler reference leaks (2)</a>
+      <a class="mdl-navigation__link" href="#IconDipSize"><i class="material-icons warning-icon">warning</i>Icon density-independent size validation (1)</a>
+      <a class="mdl-navigation__link" href="#IconDuplicatesConfig"><i class="material-icons warning-icon">warning</i>Identical bitmaps across various configurations (1)</a>
+      <a class="mdl-navigation__link" href="#ClickableViewAccessibility"><i class="material-icons warning-icon">warning</i>Accessibility in Custom Views (1)</a>
+      <a class="mdl-navigation__link" href="#ContentDescription"><i class="material-icons warning-icon">warning</i>Image without <code>contentDescription</code> (2)</a>
+    </nav>
+  </div>
+  <main class="mdl-layout__content">
+    <div class="mdl-layout__tab-panel is-active">
+<a name="overview"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="OverviewCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Overview</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<table class="overview">
+<tr><td class="countColumn"></td><td class="categoryColumn"><a href="#Correctness">Correctness</a>
+</td></tr>
+<tr>
+<td class="countColumn">2</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#AnnotateVersionCheck">AnnotateVersionCheck</a>: Annotate SDK_INT checks</td></tr>
+<tr>
+<td class="countColumn">5</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#DefaultLocale">DefaultLocale</a>: Implied default locale in case conversion</td></tr>
+<tr>
+<td class="countColumn">1</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#InflateParams">InflateParams</a>: Layout Inflation without a Parent</td></tr>
+<tr>
+<td class="countColumn">3</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#UseCompatLoadingForDrawables">UseCompatLoadingForDrawables</a>: Should not call <code>Context.getDrawable</code> or <code>Resources.getDrawable</code> directly</td></tr>
+<tr><td class="countColumn"></td><td class="categoryColumn"><a href="#Performance">Performance</a>
+</td></tr>
+<tr>
+<td class="countColumn">9</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#ObsoleteSdkInt">ObsoleteSdkInt</a>: Obsolete SDK_INT Version Check</td></tr>
+<tr>
+<td class="countColumn">4</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#StaticFieldLeak">StaticFieldLeak</a>: Static Field Leaks</td></tr>
+<tr>
+<td class="countColumn">1</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#UseCompoundDrawables">UseCompoundDrawables</a>: Node can be replaced by a <code>TextView</code> with compound drawables</td></tr>
+<tr>
+<td class="countColumn">2</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#HandlerLeak">HandlerLeak</a>: Handler reference leaks</td></tr>
+<tr><td class="countColumn"></td><td class="categoryColumn"><a href="#Usability:Icons">Usability:Icons</a>
+</td></tr>
+<tr>
+<td class="countColumn">1</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#IconDipSize">IconDipSize</a>: Icon density-independent size validation</td></tr>
+<tr>
+<td class="countColumn">1</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#IconDuplicatesConfig">IconDuplicatesConfig</a>: Identical bitmaps across various configurations</td></tr>
+<tr><td class="countColumn"></td><td class="categoryColumn"><a href="#Accessibility">Accessibility</a>
+</td></tr>
+<tr>
+<td class="countColumn">1</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#ClickableViewAccessibility">ClickableViewAccessibility</a>: Accessibility in Custom Views</td></tr>
+<tr>
+<td class="countColumn">2</td><td class="issueColumn"><i class="material-icons warning-icon">warning</i>
+<a href="#ContentDescription">ContentDescription</a>: Image without <code>contentDescription</code></td></tr>
+<tr><td></td><td class="categoryColumn"><a href="#ExtraIssues">Included Additional Checks (26)</a>
+</td></tr>
+<tr><td></td><td class="categoryColumn"><a href="#MissingIssues">Disabled Checks (39)</a>
+</td></tr>
+</table>
+<br/>              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="OverviewCardLink" onclick="hideid('OverviewCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="Correctness"></a>
+<a name="AnnotateVersionCheck"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="AnnotateVersionCheckCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Annotate SDK_INT checks</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/ChipsUtil.java">../../../../../../../../src/com/android/ex/chips/ChipsUtil.java</a>:44</span>: <span class="message">This method should be annotated with <code>@ChecksSdkIntAtLeast(api=Build.VERSION_CODES.ICE_CREAM_SANDWICH)</code></span><br /><pre class="errorlines">
+<span class="lineno"> 41 </span>    <span class="javadoc">/**
+</span><span class="lineno"> 42 </span><span class="javadoc">     * Returns true when the caller can use Chips UI in its environment.
+</span><span class="lineno"> 43 </span><span class="javadoc">     */</span>
+<span class="caretline"><span class="lineno"> 44 </span>    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">boolean</span> <span class="warning">supportsChipsUi</span>() {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 45 </span>        <span class="keyword">return</span> Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH;
+<span class="lineno"> 46 </span>    }
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/ChipsUtil.java">../../../../../../../../src/com/android/ex/chips/ChipsUtil.java</a>:54</span>: <span class="message">This method should be annotated with <code>@ChecksSdkIntAtLeast(api=Build.VERSION_CODES.M)</code></span><br /><pre class="errorlines">
+<span class="lineno"> 51 </span><span class="javadoc">   * &lt;p>This is interesting for us because new permission model is introduced in M and we need to
+</span><span class="lineno"> 52 </span><span class="javadoc">   * check if we have {@link #REQUIRED_PERMISSIONS}.
+</span><span class="lineno"> 53 </span><span class="javadoc">   */</span>
+<span class="caretline"><span class="lineno"> 54 </span>  <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">boolean</span> <span class="warning">isRunningMOrLater</span>() {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 55 </span>      <span class="keyword">return</span> Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
+<span class="lineno"> 56 </span>  }
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationAnnotateVersionCheck" style="display: none;">
+Methods which perform <code>SDK_INT</code> version checks (or field constants which reflect the result of a version check) in libraries should be annotated with <code>@ChecksSdkIntAtLeast</code>. This makes it possible for lint to correctly check calls into the library later to correctly understand that problematic code which is wrapped within a call into this library is safe after all.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+To suppress this error, use the issue id "AnnotateVersionCheck" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">AnnotateVersionCheck</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Correctness</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationAnnotateVersionCheckLink" onclick="reveal('explanationAnnotateVersionCheck');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="AnnotateVersionCheckCardLink" onclick="hideid('AnnotateVersionCheckCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="DefaultLocale"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="DefaultLocaleCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Implied default locale in case conversion</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java">../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java</a>:348</span>: <span class="message">Implicitly using the default locale is a common source of bugs: Use <code>toUpperCase(Locale)</code> instead. For strings meant to be internal use <code>Locale.ROOT</code>, otherwise <code>Locale.getDefault()</code>.</span><br /><pre class="errorlines">
+<span class="lineno"> 345 </span>
+<span class="lineno"> 346 </span>    <span class="keyword">protected</span> CharSequence getDestinationType(RecipientEntry entry) {
+<span class="lineno"> 347 </span>        <span class="keyword">return</span> mQuery.getTypeLabel(mContext.getResources(), entry.getDestinationType(),
+<span class="caretline"><span class="lineno"> 348 </span>            entry.getDestinationLabel()).toString().<span class="warning">toUpperCase</span>();&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 349 </span>    }
+<span class="lineno"> 350 </span>
+<span class="lineno"> 351 </span>    <span class="javadoc">/**
+</span></pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java">../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java</a>:499</span>: <span class="message">Implicitly using the default locale is a common source of bugs: Use <code>toLowerCase(Locale)</code> instead. For strings meant to be internal use <code>Locale.ROOT</code>, otherwise <code>Locale.getDefault()</code>.</span><br /><pre class="errorlines">
+<span class="lineno"> 496 </span>       }
+<span class="lineno"> 497 </span>
+<span class="lineno"> 498 </span>       <span class="keyword">if</span> (!foundMatch) {
+<span class="caretline"><span class="lineno"> 499 </span>           <span class="keyword">int</span> index = result.<span class="warning">toLowerCase</span>().indexOf(constraint.toLowerCase());&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 500 </span>           <span class="keyword">if</span> (index != -<span class="number">1</span>) {
+<span class="lineno"> 501 </span>               SpannableStringBuilder styled = SpannableStringBuilder.valueOf(result);
+<span class="lineno"> 502 </span>               ForegroundColorSpan highlightSpan =
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java">../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java</a>:499</span>: <span class="message">Implicitly using the default locale is a common source of bugs: Use <code>toLowerCase(Locale)</code> instead. For strings meant to be internal use <code>Locale.ROOT</code>, otherwise <code>Locale.getDefault()</code>.</span><br /><pre class="errorlines">
+<span class="lineno"> 496 </span>       }
+<span class="lineno"> 497 </span>
+<span class="lineno"> 498 </span>       <span class="keyword">if</span> (!foundMatch) {
+<span class="caretline"><span class="lineno"> 499 </span>           <span class="keyword">int</span> index = result.toLowerCase().indexOf(constraint.<span class="warning">toLowerCase</span>());&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 500 </span>           <span class="keyword">if</span> (index != -<span class="number">1</span>) {
+<span class="lineno"> 501 </span>               SpannableStringBuilder styled = SpannableStringBuilder.valueOf(result);
+<span class="lineno"> 502 </span>               ForegroundColorSpan highlightSpan =
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientAlternatesAdapter.java">../../../../../../../../src/com/android/ex/chips/RecipientAlternatesAdapter.java</a>:109</span>: <span class="message">Implicitly using the default locale is a common source of bugs: Use <code>toLowerCase(Locale)</code> instead. For strings meant to be internal use <code>Locale.ROOT</code>, otherwise <code>Locale.getDefault()</code>.</span><br /><pre class="errorlines">
+<span class="lineno"> 106 </span>    StringBuilder bindString = <span class="keyword">new</span> StringBuilder();
+<span class="lineno"> 107 </span>    <span class="comment">// Create the "?" string and set up arguments.</span>
+<span class="lineno"> 108 </span>    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; addressesSize; i++) {
+<span class="caretline"><span class="lineno"> 109 </span>        Rfc822Token[] tokens = Rfc822Tokenizer.tokenize(inAddresses.get(i).<span class="warning">toLowerCase</span>());&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 110 </span>        addresses.add(tokens.length > <span class="number">0</span> ? tokens[<span class="number">0</span>].getAddress() : inAddresses.get(i));
+<span class="lineno"> 111 </span>        bindString.append(<span class="string">"?"</span>);
+<span class="lineno"> 112 </span>        <span class="keyword">if</span> (i &lt; addressesSize - <span class="number">1</span>) {
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:3250</span>: <span class="message">Implicitly using the default locale is a common source of bugs: Use <code>toLowerCase(Locale)</code> instead. For strings meant to be internal use <code>Locale.ROOT</code>, otherwise <code>Locale.getDefault()</code>.</span><br /><pre class="errorlines">
+<span class="lineno"> 3247 </span>  <span class="comment">// Replace this.</span>
+<span class="lineno"> 3248 </span>  <span class="keyword">final</span> RecipientEntry entry = createValidatedEntry(entries
+<span class="lineno"> 3249 </span>          .get(tokenizeAddress(temp.getEntry().getDestination())
+<span class="caretline"><span class="lineno"> 3250 </span>                  .<span class="warning">toLowerCase</span>()));&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 3251 </span>  <span class="keyword">if</span> (entry != <span class="keyword">null</span>) {
+<span class="lineno"> 3252 </span>      mHandler.post(<span class="keyword">new</span> Runnable() {
+<span class="lineno"> 3253 </span>          <span class="annotation">@Override</span></pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationDefaultLocale" style="display: none;">
+Calling <code>String#toLowerCase()</code> or <code>#toUpperCase()</code> <b>without specifying an explicit locale</b> is a common source of bugs. The reason for that is that those methods will use the current locale on the user's device, and even though the code appears to work correctly when you are developing the app, it will fail in some locales. For example, in the Turkish locale, the uppercase replacement for <code>i</code> is <b>not</b> <code>I</code>.<br/>
+<br/>
+If you want the methods to just perform ASCII replacement, for example to convert an enum name, call <code>String#toUpperCase(Locale.ROOT)</code> instead. If you really want to use the current locale, call <code>String#toUpperCase(Locale.getDefault())</code> instead.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/reference/java/util/Locale.html#default_locale">https://developer.android.com/reference/java/util/Locale.html#default_locale</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+To suppress this error, use the issue id "DefaultLocale" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">DefaultLocale</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Correctness</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationDefaultLocaleLink" onclick="reveal('explanationDefaultLocale');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="DefaultLocaleCardLink" onclick="hideid('DefaultLocaleCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="InflateParams"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="InflateParamsCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Layout Inflation without a Parent</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:1237</span>: <span class="message">Avoid passing <code>null</code> as the view root (needed to resolve layout parameters on the inflated layout's root element)</span><br /><pre class="errorlines">
+<span class="lineno"> 1234 </span>
+<span class="lineno"> 1235 </span>  mDefaultContactPhoto = BitmapFactory.decodeResource(r, R.drawable.ic_contact_picture);
+<span class="lineno"> 1236 </span>
+<span class="caretline"><span class="lineno"> 1237 </span>  mMoreItem = (TextView) LayoutInflater.from(getContext()).inflate(R.layout.more_item, <span class="warning"><span class="keyword">null</span></span>);&nbsp;</span>
+<span class="lineno"> 1238 </span>
+<span class="lineno"> 1239 </span>  mChipHeight = a.getDimensionPixelSize(R.styleable.RecipientEditTextView_chipHeight, -<span class="number">1</span>);
+<span class="lineno"> 1240 </span>  <span class="keyword">if</span> (mChipHeight == -<span class="number">1</span>) {
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationInflateParams" style="display: none;">
+When inflating a layout, avoid passing in null as the parent view, since otherwise any layout parameters on the root of the inflated layout will be ignored.<br/><div class="moreinfo">More info: <a href="https://www.bignerdranch.com/blog/understanding-androids-layoutinflater-inflate/">https://www.bignerdranch.com/blog/understanding-androids-layoutinflater-inflate/</a>
+</div>To suppress this error, use the issue id "InflateParams" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">InflateParams</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Correctness</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 5/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationInflateParamsLink" onclick="reveal('explanationInflateParams');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="InflateParamsCardLink" onclick="hideid('InflateParamsCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="UseCompatLoadingForDrawables"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="UseCompatLoadingForDrawablesCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Should not call Context.getDrawable or Resources.getDrawable directly</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java">../../../../../../../../src/com/android/ex/chips/DropdownChipLayouter.java</a>:313</span>: <span class="message">Use <code>AppCompatResources.getDrawable()</code></span><br /><pre class="errorlines">
+<span class="lineno"> 310 </span>            view.setVisibility(View.VISIBLE);
+<span class="lineno"> 311 </span>            <span class="keyword">final</span> Drawable indicatorIcon;
+<span class="lineno"> 312 </span>            <span class="keyword">if</span> (indicatorIconId != <span class="number">0</span>) {
+<span class="caretline"><span class="lineno"> 313 </span>                indicatorIcon = <span class="warning">mContext.getDrawable(indicatorIconId)</span>.mutate();&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 314 </span>                indicatorIcon.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+<span class="lineno"> 315 </span>            } <span class="keyword">else</span> {
+<span class="lineno"> 316 </span>                indicatorIcon = <span class="keyword">null</span>;
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:835</span>: <span class="message">Use <code>AppCompatResources.getDrawable()</code></span><br /><pre class="errorlines">
+<span class="lineno">  832 </span>       Drawable indicatorIcon = <span class="keyword">null</span>;
+<span class="lineno">  833 </span>       <span class="keyword">int</span> indicatorPadding = <span class="number">0</span>;
+<span class="lineno">  834 </span>       <span class="keyword">if</span> (contact.getIndicatorIconId() != <span class="number">0</span>) {
+<span class="caretline"><span class="lineno">  835 </span>           indicatorIcon = <span class="warning">getContext().getDrawable(contact.getIndicatorIconId())</span>;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  836 </span>           indicatorIcon.setBounds(<span class="number">0</span>, <span class="number">0</span>,
+<span class="lineno">  837 </span>                   indicatorIcon.getIntrinsicWidth(), indicatorIcon.getIntrinsicHeight());
+<span class="lineno">  838 </span>           indicatorPadding = indicatorIcon.getBounds().width() + mChipTextEndPadding;
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:1216</span>: <span class="message">Use <code>ResourcesCompat.getDrawable()</code></span><br /><pre class="errorlines">
+<span class="lineno"> 1213 </span>             .getDrawable(R.styleable.RecipientEditTextView_invalidChipBackground);
+<span class="lineno"> 1214 </span>     mChipDelete = a.getDrawable(R.styleable.RecipientEditTextView_chipDelete);
+<span class="lineno"> 1215 </span>     <span class="keyword">if</span> (mChipDelete == <span class="keyword">null</span>) {
+<span class="caretline"><span class="lineno"> 1216 </span>         mChipDelete = <span class="warning">r.getDrawable(R.drawable.ic_cancel_wht_24dp)</span>;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 1217 </span>     }
+<span class="lineno"> 1218 </span>     mChipTextStartPadding = mChipTextEndPadding
+<span class="lineno"> 1219 </span>             = a.getDimensionPixelSize(R.styleable.RecipientEditTextView_chipPadding, -<span class="number">1</span>);
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationUseCompatLoadingForDrawables" style="display: none;">
+Use Compat loading of drawables<br/>To suppress this error, use the issue id "UseCompatLoadingForDrawables" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">UseCompatLoadingForDrawables</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Correctness</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 1/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationUseCompatLoadingForDrawablesLink" onclick="reveal('explanationUseCompatLoadingForDrawables');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="UseCompatLoadingForDrawablesCardLink" onclick="hideid('UseCompatLoadingForDrawablesCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="Performance"></a>
+<a name="ObsoleteSdkInt"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="ObsoleteSdkIntCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Obsolete SDK_INT Version Check</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/ChipsUtil.java">../../../../../../../../src/com/android/ex/chips/ChipsUtil.java</a>:45</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno"> 42 </span><span class="javadoc">     * Returns true when the caller can use Chips UI in its environment.
+</span><span class="lineno"> 43 </span><span class="javadoc">     */</span>
+<span class="lineno"> 44 </span>    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">boolean</span> supportsChipsUi() {
+<span class="caretline"><span class="lineno"> 45 </span>        <span class="keyword">return</span> <span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH</span>;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 46 </span>    }
+<span class="lineno"> 47 </span>
+<span class="lineno"> 48 </span>    <span class="javadoc">/**
+</span></pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/ChipsUtil.java">../../../../../../../../src/com/android/ex/chips/ChipsUtil.java</a>:55</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno"> 52 </span><span class="javadoc">     * check if we have {@link #REQUIRED_PERMISSIONS}.
+</span><span class="lineno"> 53 </span><span class="javadoc">     */</span>
+<span class="lineno"> 54 </span>    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">boolean</span> isRunningMOrLater() {
+<span class="caretline"><span class="lineno"> 55 </span>        <span class="keyword">return</span> <span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.M</span>;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 56 </span>    }
+<span class="lineno"> 57 </span>
+<span class="lineno"> 58 </span>    <span class="javadoc">/**
+</span></pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:490</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno">  487 </span>
+<span class="lineno">  488 </span>       <span class="comment">// Custom action labels are discouraged in L; a checkmark icon is shown in place of the</span>
+<span class="lineno">  489 </span>       <span class="comment">// custom text in this case.</span>
+<span class="caretline"><span class="lineno">  490 </span>       outAttrs.actionLabel = <span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP</span> ? <span class="keyword">null</span> :&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  491 </span>           getContext().getString(R.string.action_label);
+<span class="lineno">  492 </span>       <span class="keyword">return</span> connection;
+<span class="lineno">  493 </span>   }
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:684</span>: <span class="message">Unnecessary; SDK_INT is always >= 16</span><br /><pre class="errorlines">
+<span class="lineno">  681 </span>      <span class="keyword">return</span> getResources().getString(R.string.accessbility_suggestion_dropdown_opened);
+<span class="lineno">  682 </span>  }
+<span class="lineno">  683 </span>
+<span class="caretline"><span class="lineno">  684 </span>  <span class="warning"><span class="annotation">@TargetApi</span>(Build.VERSION_CODES.JELLY_BEAN)</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  685 </span>  <span class="keyword">private</span> <span class="keyword">void</span> announceForAccessibilityCompat(String text) {
+<span class="lineno">  686 </span>      <span class="keyword">final</span> AccessibilityManager accessibilityManager =
+<span class="lineno">  687 </span>              (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:690</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno">  687 </span>          (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+<span class="lineno">  688 </span>  <span class="keyword">final</span> <span class="keyword">boolean</span> isAccessibilityOn = accessibilityManager.isEnabled();
+<span class="lineno">  689 </span>
+<span class="caretline"><span class="lineno">  690 </span>  <span class="keyword">if</span> (isAccessibilityOn &amp;&amp; <span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN</span>) {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  691 </span>      <span class="keyword">final</span> ViewParent parent = getParent();
+<span class="lineno">  692 </span>      <span class="keyword">if</span> (parent != <span class="keyword">null</span>) {
+<span class="lineno">  693 </span>          AccessibilityEvent event = AccessibilityEvent.obtain(
+</pre>
+
+<button class="mdl-button mdl-js-button mdl-button--primary" id="ObsoleteSdkIntDivLink" onclick="reveal('ObsoleteSdkIntDiv');" />+ 4 More Occurrences...</button>
+<div id="ObsoleteSdkIntDiv" style="display: none">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:992</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno">  989 </span><span class="javadoc">     * the layout direction is LTR or RTL.
+</span><span class="lineno">  990 </span><span class="javadoc">     */</span>
+<span class="lineno">  991 </span>    <span class="keyword">private</span> <span class="keyword">boolean</span> shouldPositionAvatarOnRight() {
+<span class="caretline"><span class="lineno">  992 </span>        <span class="keyword">final</span> <span class="keyword">boolean</span> isRtl = <span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1</span> &amp;&amp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  993 </span>                getLayoutDirection() == LAYOUT_DIRECTION_RTL;
+<span class="lineno">  994 </span>        <span class="keyword">final</span> <span class="keyword">boolean</span> assignedPosition = mAvatarPosition == AVATAR_POSITION_END;
+<span class="lineno">  995 </span>        <span class="comment">// If in Rtl mode, the position should be flipped.</span></pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:2100</span>: <span class="message">Unnecessary; SDK_INT is always >= 30</span><br /><pre class="errorlines">
+<span class="lineno"> 2097 </span>    <span class="keyword">private</span> <span class="keyword">int</span> putOffsetInRange(<span class="keyword">final</span> <span class="keyword">float</span> x, <span class="keyword">final</span> <span class="keyword">float</span> y) {
+<span class="lineno"> 2098 </span>        <span class="keyword">final</span> <span class="keyword">int</span> offset;
+<span class="lineno"> 2099 </span>
+<span class="caretline"><span class="lineno"> 2100 </span>        <span class="keyword">if</span> (<span class="warning">Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH</span>) {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 2101 </span>            offset = getOffsetForPosition(x, y);
+<span class="lineno"> 2102 </span>        } <span class="keyword">else</span> {
+<span class="lineno"> 2103 </span>            offset = supportGetOffsetForPosition(x, y);
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:2591</span>: <span class="message">Unnecessary; SDK_INT is never &lt; 30</span><br /><pre class="errorlines">
+<span class="lineno"> 2588 </span>    }
+<span class="lineno"> 2589 </span>
+<span class="lineno"> 2590 </span>    <span class="keyword">private</span> <span class="keyword">boolean</span> isTouchExplorationEnabled() {
+<span class="caretline"><span class="lineno"> 2591 </span>        <span class="keyword">if</span> (<span class="warning">Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.ICE_CREAM_SANDWICH</span>) {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 2592 </span>            <span class="keyword">return</span> <span class="keyword">false</span>;
+<span class="lineno"> 2593 </span>        }
+</pre>
+
+<span class="location"><a href="../../../../../../../../res/values-v17">../../../../../../../../res/values-v17</a></span>: <span class="message">This folder configuration (<code>v17</code>) is unnecessary; <code>minSdkVersion</code> is 30. Merge all the resources in this folder into <code>values</code>.</span><br />
+</div>
+</div>
+<div class="metadata"><div class="explanation" id="explanationObsoleteSdkInt" style="display: none;">
+This check flags version checks that are not necessary, because the <code>minSdkVersion</code> (or surrounding known API level) is already at least as high as the version checked for.<br/>
+<br/>
+Similarly, it also looks for resources in <code>-vNN</code> folders, such as <code>values-v14</code> where the version qualifier is less than or equal to the <code>minSdkVersion</code>, where the contents should be merged into the best folder.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+To suppress this error, use the issue id "ObsoleteSdkInt" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">ObsoleteSdkInt</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Performance</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationObsoleteSdkIntLink" onclick="reveal('explanationObsoleteSdkInt');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="ObsoleteSdkIntCardLink" onclick="hideid('ObsoleteSdkIntCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="StaticFieldLeak"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="StaticFieldLeakCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Static Field Leaks</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/DefaultPhotoManager.java">../../../../../../../../src/com/android/ex/chips/DefaultPhotoManager.java</a>:87</span>: <span class="message">This <code>AsyncTask</code> class should be static or leaks might occur (anonymous android.os.AsyncTask)</span><br /><pre class="errorlines">
+<span class="lineno">  84 </span>
+<span class="lineno">  85 </span>  <span class="keyword">private</span> <span class="keyword">void</span> fetchPhotoAsync(<span class="keyword">final</span> RecipientEntry entry, <span class="keyword">final</span> Uri photoThumbnailUri,
+<span class="lineno">  86 </span>          <span class="keyword">final</span> PhotoManagerCallback callback) {
+<span class="caretline"><span class="lineno">  87 </span>      <span class="keyword">final</span> AsyncTask&lt;Void, Void, <span class="keyword">byte</span>[]> photoLoadTask = <span class="warning"><span class="keyword">new</span> AsyncTask&lt;Void, Void, <span class="keyword">byte</span>[]>() {</span>&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  88 </span>          <span class="annotation">@Override</span>
+<span class="lineno">  89 </span>          <span class="keyword">protected</span> <span class="keyword">byte</span>[] doInBackground(Void... params) {
+<span class="lineno">  90 </span>              <span class="comment">// First try running a query. Images for local contacts are</span></pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:2028</span>: <span class="message">This <code>AsyncTask</code> class should be static or leaks might occur (anonymous android.os.AsyncTask)</span><br /><pre class="errorlines">
+<span class="lineno"> 2025 </span>
+<span class="lineno"> 2026 </span>    <span class="keyword">private</span> <span class="keyword">void</span> showAlternates(<span class="keyword">final</span> DrawableRecipientChip currentChip,
+<span class="lineno"> 2027 </span>            <span class="keyword">final</span> ListPopupWindow alternatesPopup) {
+<span class="caretline"><span class="lineno"> 2028 </span>        <span class="warning"><span class="keyword">new</span> AsyncTask&lt;Void, Void, ListAdapter>() {</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 2029 </span>            <span class="annotation">@Override</span>
+<span class="lineno"> 2030 </span>            <span class="keyword">protected</span> ListAdapter doInBackground(<span class="keyword">final</span> Void... params) {
+<span class="lineno"> 2031 </span>                <span class="keyword">return</span> createAlternatesAdapter(currentChip);
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:3052</span>: <span class="message">This <code>AsyncTask</code> class should be static or leaks might occur (com.android.ex.chips.RecipientEditTextView.RecipientReplacementTask)</span><br /><pre class="errorlines">
+<span class="lineno"> 3049 </span>        <span class="keyword">return</span> tokenEnd;
+<span class="lineno"> 3050 </span>    }
+<span class="lineno"> 3051 </span>
+<span class="caretline"><span class="lineno"> 3052 </span>    <span class="keyword">private</span> <span class="keyword">class</span> <span class="warning">RecipientReplacementTask</span> <span class="keyword">extends</span> AsyncTask&lt;Void, Void, Void> {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 3053 </span>        <span class="keyword">private</span> DrawableRecipientChip createFreeChip(RecipientEntry entry) {
+<span class="lineno"> 3054 </span>            <span class="keyword">try</span> {
+<span class="lineno"> 3055 </span>                <span class="keyword">if</span> (mNoChipMode) {
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:3224</span>: <span class="message">This <code>AsyncTask</code> class should be static or leaks might occur (com.android.ex.chips.RecipientEditTextView.IndividualReplacementTask)</span><br /><pre class="errorlines">
+<span class="lineno"> 3221 </span>        }
+<span class="lineno"> 3222 </span>    }
+<span class="lineno"> 3223 </span>
+<span class="caretline"><span class="lineno"> 3224 </span>    <span class="keyword">private</span> <span class="keyword">class</span> <span class="warning">IndividualReplacementTask</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 3225 </span>            <span class="keyword">extends</span> AsyncTask&lt;ArrayList&lt;DrawableRecipientChip>, Void, Void> {
+<span class="lineno"> 3226 </span>        <span class="annotation">@Override</span>
+<span class="lineno"> 3227 </span>        <span class="keyword">protected</span> Void doInBackground(ArrayList&lt;DrawableRecipientChip>... params) {
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationStaticFieldLeak" style="display: none;">
+A static field will leak contexts.<br/>
+<br/>
+Non-static inner classes have an implicit reference to their outer class. If that outer class is for example a <code>Fragment</code> or <code>Activity</code>, then this reference means that the long-running handler/loader/task will hold a reference to the activity which prevents it from getting garbage collected.<br/>
+<br/>
+Similarly, direct field references to activities and fragments from these longer running instances can cause leaks.<br/>
+<br/>
+ViewModel classes should never point to Views or non-application Contexts.<br/>To suppress this error, use the issue id "StaticFieldLeak" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">StaticFieldLeak</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Performance</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationStaticFieldLeakLink" onclick="reveal('explanationStaticFieldLeak');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="StaticFieldLeakCardLink" onclick="hideid('StaticFieldLeakCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="UseCompoundDrawables"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="UseCompoundDrawablesCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Node can be replaced by a TextView with compound drawables</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../res/layout/chips_autocomplete_recipient_dropdown_item.xml">../../../../../../../../res/layout/chips_autocomplete_recipient_dropdown_item.xml</a>:46</span>: <span class="message">This tag and its children can be replaced by one <code>&lt;TextView/></code> and a compound drawable</span><br /><pre class="errorlines">
+<span class="lineno"> 43 </span>
+<span class="lineno"> 44 </span>    <span class="tag">&lt;/LinearLayout></span>
+<span class="lineno"> 45 </span>
+<span class="caretline"><span class="lineno"> 46 </span>    <span class="tag">&lt;</span><span class="warning"><span class="tag">LinearLayout</span></span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="attribute">
+</span><span class="lineno"> 47 </span><span class="attribute">        </span><span class="prefix">android:</span><span class="attribute">id</span>=<span class="value">"@+id/chip_permission_wrapper"</span>
+<span class="lineno"> 48 </span>        <span class="prefix">android:</span><span class="attribute">layout_width</span>=<span class="value">"match_parent"</span>
+<span class="lineno"> 49 </span>        <span class="prefix">android:</span><span class="attribute">layout_height</span>=<span class="value">"wrap_content"</span></pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationUseCompoundDrawables" style="display: none;">
+A <code>LinearLayout</code> which contains an <code>ImageView</code> and a <code>TextView</code> can be more efficiently handled as a compound drawable (a single TextView, using the <code>drawableTop</code>, <code>drawableLeft</code>, <code>drawableRight</code> and/or <code>drawableBottom</code> attributes to draw one or more images adjacent to the text).<br/>
+<br/>
+If the two widgets are offset from each other with margins, this can be replaced with a <code>drawablePadding</code> attribute.<br/>
+<br/>
+There's a lint quickfix to perform this conversion in the Eclipse plugin.<br/>To suppress this error, use the issue id "UseCompoundDrawables" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">UseCompoundDrawables</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Performance</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationUseCompoundDrawablesLink" onclick="reveal('explanationUseCompoundDrawables');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="UseCompoundDrawablesCardLink" onclick="hideid('UseCompoundDrawablesCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="HandlerLeak"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="HandlerLeakCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Handler reference leaks</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/BaseRecipientAdapter.java">../../../../../../../../src/com/android/ex/chips/BaseRecipientAdapter.java</a>:554</span>: <span class="message">This <code>Handler</code> class should be static or leaks might occur (com.android.ex.chips.BaseRecipientAdapter.DelayedMessageHandler)</span><br /><pre class="errorlines">
+<span class="lineno">  551 </span><span class="javadoc">     * - there are directories to be searched
+</span><span class="lineno">  552 </span><span class="javadoc">     * - results from directories are slow to come
+</span><span class="lineno">  553 </span><span class="javadoc">     */</span>
+<span class="caretline"><span class="lineno">  554 </span>    <span class="keyword">private</span> <span class="keyword">final</span> <span class="keyword">class</span> <span class="warning">DelayedMessageHandler</span> <span class="keyword">extends</span> Handler {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  555 </span>        <span class="annotation">@Override</span>
+<span class="lineno">  556 </span>        <span class="keyword">public</span> <span class="keyword">void</span> handleMessage(Message msg) {
+<span class="lineno">  557 </span>            <span class="keyword">if</span> (mRemainingDirectoryCount > <span class="number">0</span>) {
+</pre>
+
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:365</span>: <span class="message">This <code>Handler</code> class should be static or leaks might occur (anonymous android.os.Handler)</span><br /><pre class="errorlines">
+<span class="lineno">  362 </span>        setInputType(getInputType() | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+<span class="lineno">  363 </span>        setOnItemClickListener(<span class="keyword">this</span>);
+<span class="lineno">  364 </span>        setCustomSelectionActionModeCallback(<span class="keyword">this</span>);
+<span class="caretline"><span class="lineno">  365 </span>        mHandler = <span class="warning"><span class="keyword">new</span> Handler() {</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno">  366 </span>            <span class="annotation">@Override</span>
+<span class="lineno">  367 </span>            <span class="keyword">public</span> <span class="keyword">void</span> handleMessage(Message msg) {
+<span class="lineno">  368 </span>                <span class="keyword">if</span> (msg.what == DISMISS) {
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationHandlerLeak" style="display: none;">
+Since this Handler is declared as an inner class, it may prevent the outer class from being garbage collected. If the Handler is using a <code>Looper</code> or <code>MessageQueue</code> for a thread other than the main thread, then there is no issue. If the <code>Handler</code> is using the <code>Looper</code> or <code>MessageQueue</code> of the main thread, you need to fix your <code>Handler</code> declaration, as follows: Declare the <code>Handler</code> as a static class; In the outer class, instantiate a <code>WeakReference</code> to the outer class and pass this object to your <code>Handler</code> when you instantiate the <code>Handler</code>; Make all references to members of the outer class using the <code>WeakReference</code> object.<br/>To suppress this error, use the issue id "HandlerLeak" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">HandlerLeak</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Performance</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 4/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationHandlerLeakLink" onclick="reveal('explanationHandlerLeak');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="HandlerLeakCardLink" onclick="hideid('HandlerLeakCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="Usability:Icons"></a>
+<a name="IconDipSize"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="IconDipSizeCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Icon density-independent size validation</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png">../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png</a></span>: <span class="message">The image <code>ic_contact_picture.png</code> varies significantly in its density-independent (dip) size across the various density versions: drawable-hdpi/ic_contact_picture.png: 64x64 dp (96x96 px), drawable-mdpi/ic_contact_picture.png: 64x64 dp (64x64 px), drawable-xhdpi/ic_contact_picture.png: 64x64 dp (128x128 px), drawable-xxhdpi/ic_contact_picture.png: 43x43 dp (128x128 px)</span><br />
+<ul></ul><button id="Location1DivLink" onclick="reveal('Location1Div');" />+ 3 Additional Locations...</button>
+<div id="Location1Div" style="display: none">
+Additional locations: <ul>
+<li> <span class="location"><a href="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png">../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png</a></span>
+<li> <span class="location"><a href="../../../../../../../../res/drawable-mdpi/ic_contact_picture.png">../../../../../../../../res/drawable-mdpi/ic_contact_picture.png</a></span>
+<li> <span class="location"><a href="../../../../../../../../res/drawable-hdpi/ic_contact_picture.png">../../../../../../../../res/drawable-hdpi/ic_contact_picture.png</a></span>
+</ul>
+</div><br/><br/>
+<table>
+<tr><td><a href="../../../../../../../../res/drawable-mdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-mdpi/ic_contact_picture.png" /></a>
+</td><td><a href="../../../../../../../../res/drawable-hdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-hdpi/ic_contact_picture.png" /></a>
+</td><td><a href="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png" /></a>
+</td><td><a href="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png" /></a>
+</td></tr><tr><th>mdpi</th><th>hdpi</th><th>xhdpi</th><th>xxhdpi</th></tr>
+</table>
+</div>
+<div class="metadata"><div class="explanation" id="explanationIconDipSize" style="display: none;">
+Checks the all icons which are provided in multiple densities, all compute to roughly the same density-independent pixel (<code>dip</code>) size. This catches errors where images are either placed in the wrong folder, or icons are changed to new sizes but some folders are forgotten.<br/>To suppress this error, use the issue id "IconDipSize" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">IconDipSize</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Icons</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Usability</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 5/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationIconDipSizeLink" onclick="reveal('explanationIconDipSize');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="IconDipSizeCardLink" onclick="hideid('IconDipSizeCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="IconDuplicatesConfig"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="IconDuplicatesConfigCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Identical bitmaps across various configurations</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png">../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png</a></span>: <span class="message">The <code>ic_contact_picture.png</code> icon has identical contents in the following configuration folders: drawable-xhdpi, drawable-xxhdpi</span><br />
+<ul></ul><button id="Location1DivLink" onclick="reveal('Location1Div');" />+ 1 Additional Locations...</button>
+<div id="Location1Div" style="display: none">
+Additional locations: <ul>
+<li> <span class="location"><a href="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png">../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png</a></span>
+</ul>
+</div><br/><br/>
+<table>
+<tr><td><a href="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-xhdpi/ic_contact_picture.png" /></a>
+</td><td><a href="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png"><img border="0" align="top" src="../../../../../../../../res/drawable-xxhdpi/ic_contact_picture.png" /></a>
+</td></tr><tr><th>xhdpi</th><th>xxhdpi</th></tr>
+</table>
+</div>
+<div class="metadata"><div class="explanation" id="explanationIconDuplicatesConfig" style="display: none;">
+If an icon is provided under different configuration parameters such as <code>drawable-hdpi</code> or <code>-v11</code>, they should typically be different. This detector catches cases where the same icon is provided in different configuration folder which is usually not intentional.<br/>To suppress this error, use the issue id "IconDuplicatesConfig" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">IconDuplicatesConfig</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Icons</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Usability</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 5/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationIconDuplicatesConfigLink" onclick="reveal('explanationIconDuplicatesConfig');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="IconDuplicatesConfigCardLink" onclick="hideid('IconDuplicatesConfigCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="Accessibility"></a>
+<a name="ClickableViewAccessibility"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="ClickableViewAccessibilityCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Accessibility in Custom Views</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java">../../../../../../../../src/com/android/ex/chips/RecipientEditTextView.java</a>:1933</span>: <span class="message">Custom view <code>RecipientEditTextView</code> overrides <code>onTouchEvent</code> but not <code>performClick</code></span><br /><pre class="errorlines">
+<span class="lineno"> 1930 </span><span class="javadoc">     * If it isn't, then select that chip.
+</span><span class="lineno"> 1931 </span><span class="javadoc">     */</span>
+<span class="lineno"> 1932 </span>    <span class="annotation">@Override</span>
+<span class="caretline"><span class="lineno"> 1933 </span>    <span class="keyword">public</span> <span class="keyword">boolean</span> <span class="warning">onTouchEvent</span>(<span class="annotation">@NonNull</span> MotionEvent event) {&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 1934 </span>        <span class="keyword">boolean</span> handled;
+<span class="lineno"> 1935 </span>        <span class="keyword">int</span> action = event.getAction();
+<span class="lineno"> 1936 </span>        <span class="keyword">final</span> <span class="keyword">float</span> x = event.getX();
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationClickableViewAccessibility" style="display: none;">
+If a <code>View</code> that overrides <code>onTouchEvent</code> or uses an <code>OnTouchListener</code> does not also implement <code>performClick</code> and call it when clicks are detected, the <code>View</code> may not handle accessibility actions properly. Logic handling the click actions should ideally be placed in <code>View#performClick</code> as some accessibility services invoke <code>performClick</code> when a click action should occur.<br/>To suppress this error, use the issue id "ClickableViewAccessibility" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">ClickableViewAccessibility</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Accessibility</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 6/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationClickableViewAccessibilityLink" onclick="reveal('explanationClickableViewAccessibility');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="ClickableViewAccessibilityCardLink" onclick="hideid('ClickableViewAccessibilityCard');">
+Dismiss</button>            </div>
+            </div>
+          </section><a name="ContentDescription"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="ContentDescriptionCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Image without contentDescription</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+<div class="issue">
+<div class="warningslist">
+<span class="location"><a href="../../../../../../../../res/layout/chips_autocomplete_recipient_dropdown_item.xml">../../../../../../../../res/layout/chips_autocomplete_recipient_dropdown_item.xml</a>:54</span>: <span class="message">Missing <code>contentDescription</code> attribute on image</span><br /><pre class="errorlines">
+<span class="lineno"> 51 </span>
+<span class="lineno"> 52 </span>        <span class="tag">&lt;TextView</span><span class="attribute"> style</span>=<span class="value">"@style/ChipPermissionStyle"</span> />
+<span class="lineno"> 53 </span>
+<span class="caretline"><span class="lineno"> 54 </span>        <span class="tag">&lt;</span><span class="warning"><span class="tag">ImageView</span></span><span class="attribute"> style</span>=<span class="value">"@style/ChipPermissionDismissIconStyle"</span>/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 55 </span>
+<span class="lineno"> 56 </span>    <span class="tag">&lt;/LinearLayout></span>
+</pre>
+
+<span class="location"><a href="../../../../../../../../res/layout/chips_recipient_dropdown_item.xml">../../../../../../../../res/layout/chips_recipient_dropdown_item.xml</a>:38</span>: <span class="message">Missing <code>contentDescription</code> attribute on image</span><br /><pre class="errorlines">
+<span class="lineno"> 35 </span>
+<span class="lineno"> 36 </span>    <span class="tag">&lt;/LinearLayout></span>
+<span class="lineno"> 37 </span>
+<span class="caretline"><span class="lineno"> 38 </span>    <span class="tag">&lt;</span><span class="warning"><span class="tag">ImageView</span></span><span class="attribute"> style</span>=<span class="value">"@style/ChipDeleteIconStyle"</span> />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 39 </span>
+<span class="lineno"> 40 </span><span class="tag">&lt;/LinearLayout></span>
+</pre>
+
+</div>
+<div class="metadata"><div class="explanation" id="explanationContentDescription" style="display: none;">
+Non-textual widgets like ImageViews and ImageButtons should use the <code>contentDescription</code> attribute to specify a textual description of the widget such that screen readers and other accessibility tools can adequately describe the user interface.<br/>
+<br/>
+Note that elements in application screens that are purely decorative and do not provide any content or enable a user action should not have accessibility content descriptions. In this case, set their descriptions to <code>@null</code>. If your app's minSdkVersion is 16 or higher, you can instead set these graphical elements' <code>android:importantForAccessibility</code> attributes to <code>no</code>.<br/>
+<br/>
+Note that for text fields, you should not set both the <code>hint</code> and the <code>contentDescription</code> attributes since the hint will never be shown. Just set the <code>hint</code>.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/guide/topics/ui/accessibility/apps#special-cases">https://developer.android.com/guide/topics/ui/accessibility/apps#special-cases</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+To suppress this error, use the issue id "ContentDescription" as explained in the <a href="#SuppressInfo">Suppressing Warnings and Errors</a> section.<br/>
+<br/></div>
+</div>
+</div>
+<div class="chips">
+<span class="mdl-chip">
+    <span class="mdl-chip__text">ContentDescription</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Accessibility</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Warning</span>
+</span>
+<span class="mdl-chip">
+    <span class="mdl-chip__text">Priority 3/10</span>
+</span>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="explanationContentDescriptionLink" onclick="reveal('explanationContentDescription');">
+Explain</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="ContentDescriptionCardLink" onclick="hideid('ContentDescriptionCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="ExtraIssues"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="ExtraIssuesCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Included Additional Checks</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+This card lists all the extra checks run by lint, provided from libraries,
+build configuration and extra flags. This is included to help you verify
+whether a particular check is included in analysis when configuring builds.
+(Note that the list does not include the hundreds of built-in checks into lint,
+only additional ones.)
+<div id="IncludedIssues" style="display: none;"><br/><br/><div class="issue">
+<div class="id">DetachAndAttachSameFragment<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+When doing a FragmentTransaction that includes both attach()                 and detach() operations being committed on the same fragment instance, it is a                 no-op. The reason for this is that the FragmentManager optimizes all operations                 within a single transaction so the attach() and detach() cancel each other out                 and neither is actually executed. To get the desired behavior, you should separate                 the attach() and detach() calls into separate FragmentTransactions.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">DialogFragmentCallbacksDetector<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+When using a <code>DialogFragment</code>, the <code>setOnCancelListener</code> and                 <code>setOnDismissListener</code> callback functions within the <code>onCreateDialog</code> function                  __must not be used__ because the <code>DialogFragment</code> owns these callbacks.                  Instead the respective <code>onCancel</code> and <code>onDismiss</code> functions can be used to                  achieve the desired effect.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">EnsureInitializerMetadata<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+When a library defines a Initializer, it needs to be accompanied by a corresponding &lt;meta-data> entry in the AndroidManifest.xml file.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.startup<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=823348">https://issuetracker.google.com/issues/new?component=823348</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">EnsureInitializerNoArgConstr<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Every <code>Initializer</code> must have a no argument constructor.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.startup<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=823348">https://issuetracker.google.com/issues/new?component=823348</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">ExperimentalAnnotationRetention<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Experimental annotations defined in Java source should use default (<code>CLASS</code>) retention, while Kotlin-sourced annotations should use <code>BINARY</code> retention.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.annotation.experimental<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=459778">https://issuetracker.google.com/issues/new?component=459778</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">FragmentAddMenuProvider<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+The Fragment lifecycle can result in a Fragment being active                 longer than its view. This can lead to unexpected behavior from lifecycle aware                 objects remaining active longer than the Fragment's view. To solve this issue,                 getViewLifecycleOwner() should be used as a LifecycleOwner rather than the                 Fragment instance once it is safe to access the view lifecycle in a                 Fragment's onCreateView, onViewCreated, onActivityCreated, or                 onViewStateRestored methods.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">FragmentBackPressedCallback<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+The Fragment lifecycle can result in a Fragment being active                 longer than its view. This can lead to unexpected behavior from lifecycle aware                 objects remaining active longer than the Fragment's view. To solve this issue,                 getViewLifecycleOwner() should be used as a LifecycleOwner rather than the                 Fragment instance once it is safe to access the view lifecycle in a                 Fragment's onCreateView, onViewCreated, onActivityCreated, or                 onViewStateRestored methods.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">FragmentLiveDataObserve<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+When observing a LiveData object from a fragment's onCreateView,                 onViewCreated, onActivityCreated, or onViewStateRestored method                 getViewLifecycleOwner() should be used as the LifecycleOwner rather than the                 Fragment instance. The Fragment lifecycle can result in the Fragment being                 active longer than its view. This can lead to unexpected behavior from                 LiveData objects being observed longer than the Fragment's view is active.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">FragmentTagUsage<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+FragmentContainerView replaces the &lt;fragment> tag as the preferred                 way of adding fragments via XML. Unlike the &lt;fragment> tag, FragmentContainerView                 uses a normal <code>FragmentTransaction</code> under the hood to add the initial fragment,                 allowing further FragmentTransaction operations on the FragmentContainerView                 and providing a consistent timing for lifecycle events.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/reference/androidx/fragment/app/FragmentContainerView.html">https://developer.android.com/reference/androidx/fragment/app/FragmentContainerView.html</a>
+</div><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">InvalidFragmentVersionForActivityResult<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+In order to use the ActivityResult APIs you must upgrade your                 Fragment version to 1.3.0. Previous versions of FragmentActivity                 failed to call super.onRequestPermissionsResult() and used invalid request codes<br/><div class="moreinfo">More info: <a href="https://developer.android.com/training/permissions/requesting#make-the-request">https://developer.android.com/training/permissions/requesting#make-the-request</a>
+</div><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.activity<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=527362">https://issuetracker.google.com/issues/new?component=527362</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnsafeOptInUsageError<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+This API has been flagged as opt-in with error-level severity.<br/>
+<br/>
+Any declaration annotated with this marker is considered part of an unstable or<br/>
+otherwise non-standard API surface and its call sites should accept the opt-in<br/>
+aspect of it by using the <code>@OptIn</code> annotation, using the marker annotation --<br/>
+effectively causing further propagation of the opt-in aspect -- or configuring<br/>
+the <code>UnsafeOptInUsageError</code> check's options for project-wide opt-in.<br/>
+<br/>
+To configure project-wide opt-in, specify the <code>opt-in</code> option value in <code>lint.xml</code><br/>
+as a comma-delimited list of opted-in annotations:<br/>
+
+<pre>
+&lt;lint>
+    &lt;issue id="UnsafeOptInUsageError">
+        &lt;option name="opt-in" value="com.foo.ExperimentalBarAnnotation" />
+    &lt;/issue>
+&lt;/lint>
+</pre>
+<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.annotation.experimental<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=459778">https://issuetracker.google.com/issues/new?component=459778</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnsafeOptInUsageWarning<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+This API has been flagged as opt-in with warning-level severity.<br/>
+<br/>
+Any declaration annotated with this marker is considered part of an unstable or<br/>
+otherwise non-standard API surface and its call sites should accept the opt-in<br/>
+aspect of it by using the <code>@OptIn</code> annotation, using the marker annotation --<br/>
+effectively causing further propagation of the opt-in aspect -- or configuring<br/>
+the <code>UnsafeOptInUsageWarning</code> check's options for project-wide opt-in.<br/>
+<br/>
+To configure project-wide opt-in, specify the <code>opt-in</code> option value in <code>lint.xml</code><br/>
+as a comma-delimited list of opted-in annotations:<br/>
+
+<pre>
+&lt;lint>
+    &lt;issue id="UnsafeOptInUsageWarning">
+        &lt;option name="opt-in" value="com.foo.ExperimentalBarAnnotation" />
+    &lt;/issue>
+&lt;/lint>
+</pre>
+<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.annotation.experimental<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=459778">https://issuetracker.google.com/issues/new?component=459778</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnsafeRepeatOnLifecycleDetector<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+The repeatOnLifecycle APIs should be used with the viewLifecycleOwner                 in Fragments as opposed to lifecycleOwner.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseAndroidAlpha<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+<code>ColorStateList</code> uses app:alpha without <code>android:alpha</code><br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseAppTint<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+<code>ImageView</code> or <code>ImageButton</code> uses <code>android:tint</code> instead of <code>app:tint</code><br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseCompatLoadingForColorStateLists<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use Compat loading of color state lists<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseCompatLoadingForDrawables<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use Compat loading of drawables<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseCompatTextViewDrawableApis<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use Compat loading of compound text view drawables<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseCompatTextViewDrawableXml<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+<code>TextView</code> uses <code>android:</code> compound drawable attributes instead of <code>app:</code> ones<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseGetLayoutInflater<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Using LayoutInflater.from(Context) can return a LayoutInflater                  that does not have the correct theme.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseRequireInsteadOfGet<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+AndroidX added new "require____()" versions of common "get___()" APIs, such as getContext/getActivity/getArguments/etc. Rather than wrap these in something like requireNotNull(), using these APIs will allow the underlying component to try to tell you _why_ it was null, and thus yield a better error message.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.fragment<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460964">https://issuetracker.google.com/issues/new?component=460964</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseSupportActionBar<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use <code>AppCompatActivity.setSupportActionBar</code><br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseSwitchCompatOrMaterialCode<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use <code>SwitchCompat</code> from AppCompat or <code>MaterialSwitch</code> from Material library<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UseSwitchCompatOrMaterialXml<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Use <code>SwitchCompat</code> from AppCompat or <code>MaterialSwitch</code> from Material library<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UsingOnClickInXml<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Old versions of the platform do not properly support resolving <code>android:onClick</code><br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.appcompat<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=460343">https://issuetracker.google.com/issues/new?component=460343</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">WrongRequiresOptIn<div class="issueSeparator"></div>
+</div>
+<div class="metadata"><div class="explanation">
+Experimental features defined in Kotlin source code must be annotated with the Kotlin<br/>
+<code>@RequiresOptIn</code> annotation. Using <code>androidx.annotation.RequiresOptIn</code> will prevent the<br/>
+Kotlin compiler from enforcing its opt-in policies.<br/><div class="vendor">
+Vendor: Android Open Source Project<br/>
+Identifier: androidx.annotation.experimental<br/>
+Feedback: <a href="https://issuetracker.google.com/issues/new?component=459778">https://issuetracker.google.com/issues/new?component=459778</a><br/>
+</div>
+<br/>
+<br/></div>
+</div>
+</div>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="IncludedIssuesLink" onclick="reveal('IncludedIssues');">
+List Issues</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="ExtraIssuesCardLink" onclick="hideid('ExtraIssuesCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="MissingIssues"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="MissingIssuesCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Disabled Checks</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+One or more issues were not run by lint, either
+because the check is not enabled by default, or because
+it was disabled with a command line flag or via one or
+more <code>lint.xml</code> configuration files in the project directories.
+<div id="SuppressedIssues" style="display: none;"><br/><br/><div class="issue">
+<div class="id">AppCompatMethod<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+When using the appcompat library, there are some methods you should be calling instead of the normal ones; for example, <code>getSupportActionBar()</code> instead of <code>getActionBar()</code>. This lint check looks for calls to the wrong method.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/topic/libraries/support-library/">https://developer.android.com/topic/libraries/support-library/</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">AppLinksAutoVerify<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Ensures that app links are correctly set and associated with website.<br/><div class="moreinfo">More info: <a href="https://g.co/appindexing/applinks">https://g.co/appindexing/applinks</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">BackButton<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+According to the Android Design Guide,<br/>
+<br/>
+"Other platforms use an explicit back button with label to allow the user to navigate up the application's hierarchy. Instead, Android uses the main action bar's app icon for hierarchical navigation and the navigation bar's back button for temporal navigation."<br/>
+<br/>
+This check is not very sophisticated (it just looks for buttons with the label "Back"), so it is disabled by default to not trigger on common scenarios like pairs of Back/Next buttons to paginate through screens.<br/><div class="moreinfo">More info: <a href="https://d.android.com/r/studio-ui/designer/material/design">https://d.android.com/r/studio-ui/designer/material/design</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">ConvertToWebp<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The WebP format is typically more compact than PNG and JPEG. As of Android 4.2.1 it supports transparency and lossless conversion as well. Note that there is a quickfix in the IDE which lets you perform conversion.<br/>
+<br/>
+Previously, launcher icons were required to be in the PNG format but that restriction is no longer there, so lint now flags these.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">DalvikOverride<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The Dalvik virtual machine will treat a package private method in one class as overriding a package private method in its super class, even if they are in separate packages.<br/>
+<br/>
+If you really did intend for this method to override the other, make the method <code>protected</code> instead.<br/>
+<br/>
+If you did <b>not</b> intend the override, consider making the method private, or changing its name or signature.<br/>
+<br/>
+Note that this check is disabled be default, because ART (the successor to Dalvik) no longer has this behavior.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">DefaultEncoding<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Some APIs will implicitly use the default system character encoding instead of UTF-8 when converting to or from bytes, such as when creating a default <code>FileReader</code>.<br/>
+<br/>
+This is <i>usually</i> not correct; you only want to do this if you need to read files created by other programs where they have deliberately written in the same encoding. The default encoding varies from platform to platform and can vary from locale to locale, so this makes it difficult to interpret files containing non-ASCII characters.<br/>
+<br/>
+We recommend using UTF-8 everywhere.<br/>
+<br/>
+Note that on Android, the default file encoding is always UTF-8 (see <a href="https://developer.android.com/reference/java/nio/charset/Charset#defaultCharset(">https://developer.android.com/reference/java/nio/charset/Charset#defaultCharset(</a>) for more), so this lint check deliberately does not flag any problems in Android code, since it is always safe to rely on the default character encoding there.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">DuplicateStrings<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Duplicate strings can make applications larger unnecessarily.<br/>
+<br/>
+This lint check looks for duplicate strings, including differences for strings where the only difference is in capitalization. Title casing and all uppercase can all be adjusted in the layout or in code.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/reference/android/widget/TextView.html#attr_android:inputType">https://developer.android.com/reference/android/widget/TextView.html#attr_android:inputType</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">EasterEgg<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+An "easter egg" is code deliberately hidden in the code, both from potential users and even from other developers. This lint check looks for code which looks like it may be hidden from sight.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">ExpensiveAssertion<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+In Kotlin, assertions are not handled the same way as from the Java programming language. In particular, they're just implemented as a library call, and inside the library call the error is only thrown if assertions are enabled.<br/>
+<br/>
+This means that the arguments to the <code>assert</code> call will <b>always</b> be evaluated. If you're doing any computation in the expression being asserted, that computation will unconditionally be performed whether or not assertions are turned on. This typically turns into wasted work in release builds.<br/>
+<br/>
+This check looks for cases where the assertion condition is nontrivial, e.g. it is performing method calls or doing more work than simple comparisons on local variables or fields.<br/>
+<br/>
+You can work around this by writing your own inline assert method instead:<br/>
+
+<pre>
+@Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+inline fun assert(condition: () -> Boolean) {
+    if (_Assertions.ENABLED &amp;&amp; !condition()) {
+        throw AssertionError()
+    }
+}
+</pre>
+<br/>
+In Android, because assertions are not enforced at runtime, instead use this:<br/>
+
+<pre>
+inline fun assert(condition: () -> Boolean) {
+    if (BuildConfig.DEBUG &amp;&amp; !condition()) {
+        throw AssertionError()
+    }
+}
+</pre>
+<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">IconExpectedSize<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+There are predefined sizes (for each density) for launcher icons. You should follow these conventions to make sure your icons fit in with the overall look of the platform.<br/><div class="moreinfo">More info: <a href="https://d.android.com/r/studio-ui/designer/material/iconography">https://d.android.com/r/studio-ui/designer/material/iconography</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">ImplicitSamInstance<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Kotlin's support for SAM (single accessor method) interfaces lets you pass a lambda to the interface. This will create a new instance on the fly even though there is no explicit constructor call. If you pass one of these lambdas or method references into a method which (for example) stores or compares the object identity, unexpected results may happen.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">InvalidPackage<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+This check scans through libraries looking for calls to APIs that are not included in Android.<br/>
+<br/>
+When you create Android projects, the classpath is set up such that you can only access classes in the API packages that are included in Android. However, if you add other projects to your libs/ folder, there is no guarantee that those .jar files were built with an Android specific classpath, and in particular, they could be accessing unsupported APIs such as java.applet.<br/>
+<br/>
+This check scans through library jars and looks for references to API packages that are not included in Android and flags these. This is only an error if your code calls one of the library classes which wind up referencing the unsupported package.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">KotlinPropertyAccess<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+For a method to be represented as a property in Kotlin, strict &#8220;bean&#8221;-style prefixing must be used.<br/>
+<br/>
+Accessor methods require a <code>get</code> prefix or for boolean-returning methods an <code>is</code> prefix can be used.<br/><div class="moreinfo">More info: <a href="https://android.github.io/kotlin-guides/interop.html#property-prefixes">https://android.github.io/kotlin-guides/interop.html#property-prefixes</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">KotlincFE10<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+K2, the new version of Kotlin compiler, which encompasses the new frontend, is coming. Try to avoid using internal APIs from the old frontend if possible.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">LambdaLast<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+To improve calling this code from Kotlin, parameter types eligible for SAM conversion should be last.<br/><div class="moreinfo">More info: <a href="https://android.github.io/kotlin-guides/interop.html#lambda-parameters-last">https://android.github.io/kotlin-guides/interop.html#lambda-parameters-last</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">LintDocExample<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Lint's tool for generating documentation for each issue has special support for including a code example which shows how to trigger the report. It will pick the first unit test it can find and pick out the source file referenced from the error message, but you can instead designate a unit test to be the documentation example, and in that case, all the files are included.<br/>
+<br/>
+To designate a unit test as the documentation example for an issue, name the test <code>testDocumentationExample</code>, or if your detector reports multiple issues, <code>testDocumentationExample</code>&lt;Id>, such as <code>testDocumentationExampleMyId</code>.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">LintImplPsiEquals<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+You should never compare two PSI elements for equality with <code>equals</code>; use <code>isEquivalentTo(PsiElement)</code> instead.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">LintImplUnexpectedDomain<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+This checks flags URLs to domains that have not been explicitly allowed for use as a documentation source.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">LogConditional<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The <code>BuildConfig</code> class provides a constant, <code>DEBUG</code>, which indicates whether the code is being built in release mode or in debug mode. In release mode, you typically want to strip out all the logging calls. Since the compiler will automatically remove all code which is inside a <code>if (false)</code> check, surrounding your logging calls with a check for <code>BuildConfig.DEBUG</code> is a good idea.<br/>
+<br/>
+If you <b>really</b> intend for the logging to be present in release mode, you can suppress this warning with a <code>@SuppressLint</code> annotation for the intentional logging calls.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">MangledCRLF<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+On Windows, line endings are typically recorded as carriage return plus newline: \r\n.<br/>
+<br/>
+This detector looks for invalid line endings with repeated carriage return characters (without newlines). Previous versions of the ADT plugin could accidentally introduce these into the file, and when editing the file, the editor could produce confusing visual artifacts.<br/><div class="moreinfo">More info: <a href="https://bugs.eclipse.org/bugs/show_bug.cgi?id=375421">https://bugs.eclipse.org/bugs/show_bug.cgi?id=375421</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">MinSdkTooLow<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The value of the <code>minSdkVersion</code> property is too low and can be incremented without noticeably reducing the number of supported devices.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">NegativeMargin<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Margin values should be positive. Negative values are generally a sign that you are making assumptions about views surrounding the current one, or may be tempted to turn off child clipping to allow a view to escape its parent. Turning off child clipping to do this not only leads to poor graphical performance, it also results in wrong touch event handling since touch events are based strictly on a chain of parent-rect hit tests. Finally, making assumptions about the size of strings can lead to localization problems.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">NewerVersionAvailable<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+This detector checks with a central repository to see if there are newer versions available for the dependencies used by this project. This is similar to the <code>GradleDependency</code> check, which checks for newer versions available in the Android SDK tools and libraries, but this works with any MavenCentral dependency, and connects to the library every time, which makes it more flexible but also <b>much</b> slower.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">NoHardKeywords<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Do not use Kotlin&#8217;s hard keywords as the name of methods or fields. These require the use of backticks to escape when calling from Kotlin. Soft keywords, modifier keywords, and special identifiers are allowed.<br/>
+<br/>
+For example, ActionEvent's <code>getWhen()</code> method requires backticks when used from Kotlin:
+<pre>
+val timestamp = event.`when`
+</pre>
+<br/><div class="moreinfo">More info: <a href="https://android.github.io/kotlin-guides/interop.html#no-hard-keywords">https://android.github.io/kotlin-guides/interop.html#no-hard-keywords</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">NoOp<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+This check looks for code which looks like it's a no-op -- usually leftover expressions from interactive debugging, but in some cases bugs where you had intended to do something with the expression such as assign it to a field.<br/><br/>
+This check can be configured via the following options:<br/><br/>
+<div class="options">
+<b>pure-getters</b> (default is false):<br/>
+Whether to assume methods with getter-names have no side effects.<br/>
+<br/>
+Getter methods (where names start with <code>get</code> or <code>is</code>, and have non-void return types, and no arguments) should not have side effects. With this option turned on, lint will assume that is the case and will list any getter calls whose results are ignored as suspicious code.<br/>
+<br/>
+To configure this option, use a `lint.xml` file in the project or source folder using an <code>&lt;option&gt;</code> block like the following:
+<pre class="errorlines">
+<span class="lineno"> 1 </span><span class="tag">&lt;lint></span>
+<span class="lineno"> 2 </span>    <span class="tag">&lt;issue</span><span class="attribute"> id</span>=<span class="value">"NoOp"</span>>
+<span class="caretline"><span class="lineno"> 3 </span>        <span class="tag">&lt;option</span><span class="attribute"> name</span>=<span class="warning"><span class="value">"pure-getters"</span> <span class="attribute">value</span>=<span class="value">"false"</span></span> />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 4 </span>    <span class="tag">&lt;/issue></span>
+<span class="lineno"> 5 </span><span class="tag">&lt;/lint></span>
+</pre>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">PermissionNamingConvention<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Permissions should be prefixed with an app's package name, using reverse-domain-style naming. This prefix should be followed by <code>.permission.</code>, and then a description of the capability that the permission represents, in upper SNAKE_CASE. For example, <code>com.example.myapp.permission.ENGAGE_HYPERSPACE</code>.<br/>
+<br/>
+Following this recommendation avoids naming collisions, and helps clearly identify the owner and intention of a custom permission.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">Registered<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Activities, services and content providers should be registered in the <code>AndroidManifest.xml</code> file using <code>&lt;activity></code>, <code>&lt;service></code> and <code>&lt;provider></code> tags.<br/>
+<br/>
+If your activity is simply a parent class intended to be subclassed by other "real" activities, make it an abstract class.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/guide/topics/manifest/manifest-intro.html">https://developer.android.com/guide/topics/manifest/manifest-intro.html</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">RequiredSize<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+All views must specify an explicit <code>layout_width</code> and <code>layout_height</code> attribute. There is a runtime check for this, so if you fail to specify a size, an exception is thrown at runtime.<br/>
+<br/>
+It's possible to specify these widths via styles as well. GridLayout, as a special case, does not require you to specify a size.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">SelectableText<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+If a <code>&lt;TextView></code> is used to display data, the user might want to copy that data and paste it elsewhere. To allow this, the <code>&lt;TextView></code> should specify <code>android:textIsSelectable="true"</code>.<br/>
+<br/>
+This lint check looks for TextViews which are likely to be displaying data: views whose text is set dynamically.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">StopShip<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Using the comment <code>// STOPSHIP</code> can be used to flag code that is incomplete but checked in. This comment marker can be used to indicate that the code should not be shipped until the issue is addressed, and lint will look for these. In Gradle projects, this is only checked for non-debug (release) builds.<br/>
+<br/>
+In Kotlin, the <code>TODO()</code> method is also treated as a stop ship marker; you can use it to make incomplete code compile, but it will throw an exception at runtime and therefore should be fixed before shipping releases.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">StringFormatTrivial<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Every call to <code>String.format</code> creates a new <code>Formatter</code> instance, which will decrease the performance of your app. <code>String.format</code> should only be used when necessary--if the formatted string contains only trivial conversions (e.g. <code>b</code>, <code>s</code>, <code>c</code>) and there are no translation concerns, it will be more efficient to replace them and concatenate with <code>+</code>.<br/><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">SyntheticAccessor<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+A private inner class which is accessed from the outer class will force the compiler to insert a synthetic accessor; this means that you are causing extra overhead. This is not important in small projects, but is important for large apps running up against the 64K method handle limit, and especially for <b>libraries</b> where you want to make sure your library is as small as possible for the cases where your library is used in an app running up against the 64K limit.<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">TypographyQuotes<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Straight single quotes and double quotes, when used as a pair, can be replaced by "curvy quotes" (or directional quotes). Use the right single quotation mark for apostrophes. Never use generic quotes ", ' or free-standing accents `, ´ for quotation marks, apostrophes, or primes. This can make the text more readable.<br/><div class="moreinfo">More info: <a href="https://en.wikipedia.org/wiki/Quotation_mark">https://en.wikipedia.org/wiki/Quotation_mark</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnknownNullness<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+To improve referencing this code from Kotlin, consider adding explicit nullness information here with either <code>@NonNull</code> or <code>@Nullable</code>.<br/><br/>
+This check can be configured via the following options:<br/><br/>
+<div class="options">
+<b>ignore-deprecated</b> (default is false):<br/>
+Whether to ignore classes and members that have been annotated with <code>@Deprecated</code>.<br/>
+<br/>
+Normally this lint check will flag all unannotated elements, but by setting this option to <code>true</code> it will skip any deprecated elements.<br/>
+<br/>
+To configure this option, use a `lint.xml` file in the project or source folder using an <code>&lt;option&gt;</code> block like the following:
+<pre class="errorlines">
+<span class="lineno"> 1 </span><span class="tag">&lt;lint></span>
+<span class="lineno"> 2 </span>    <span class="tag">&lt;issue</span><span class="attribute"> id</span>=<span class="value">"UnknownNullness"</span>>
+<span class="caretline"><span class="lineno"> 3 </span>        <span class="tag">&lt;option</span><span class="attribute"> name</span>=<span class="warning"><span class="value">"ignore-deprecated"</span> <span class="attribute">value</span>=<span class="value">"false"</span></span> />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+<span class="lineno"> 4 </span>    <span class="tag">&lt;/issue></span>
+<span class="lineno"> 5 </span><span class="tag">&lt;/lint></span>
+</pre>
+</div><div class="moreinfo">More info: <a href="https://developer.android.com/kotlin/interop#nullability_annotations">https://developer.android.com/kotlin/interop#nullability_annotations</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnsupportedChromeOsHardware<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The <code>&lt;uses-feature></code> element should not require this unsupported large screen hardware feature. Any &lt;uses-feature> not explicitly marked with <code>required="false"</code> is necessary on the device to be installed on. Ensure that any features that might prevent it from being installed on a ChromeOS, large screen, or foldable device are reviewed and marked as not required in the manifest.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/topic/arc/manifest.html#incompat-entries">https://developer.android.com/topic/arc/manifest.html#incompat-entries</a>
+</div>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">UnusedIds<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+This resource id definition appears not to be needed since it is not referenced from anywhere. Having id definitions, even if unused, is not necessarily a bad idea since they make working on layouts and menus easier, so there is not a strong reason to delete these.<br/>
+<br/>
+<br/>
+The unused resource check can ignore tests. If you want to include resources that are only referenced from tests, consider packaging them in a test source set instead.<br/>
+<br/>
+You can include test sources in the unused resource check by setting the system property lint.unused-resources.include-tests =true, and to exclude them (usually for performance reasons), use lint.unused-resources.exclude-tests =true.<br/>
+<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">ValidActionsXml<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Ensures that an actions XML file is properly formed<br/>Note: This issue has an associated quickfix operation in Android Studio and IntelliJ IDEA.<br>
+<br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">VulnerableCordovaVersion<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+The version of Cordova used in the app is vulnerable to security issues. Please update to the latest Apache Cordova version.<br/><div class="moreinfo">More info: <a href="https://cordova.apache.org/announcements/2015/11/20/security.html">https://cordova.apache.org/announcements/2015/11/20/security.html</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+<div class="issue">
+<div class="id">WrongThreadInterprocedural<div class="issueSeparator"></div>
+</div>
+<div class="metadata">Disabled By: Default<br/>
+<div class="explanation">
+Searches for interprocedural call paths that violate thread annotations in the program. Tracks the flow of instantiated types and lambda expressions to increase accuracy across method boundaries.<br/><div class="moreinfo">More info: <a href="https://developer.android.com/guide/components/processes-and-threads.html#Threads">https://developer.android.com/guide/components/processes-and-threads.html#Threads</a>
+</div><br/>
+<br/></div>
+</div>
+</div>
+</div>
+              </div>
+              <div class="mdl-card__actions mdl-card--border">
+<button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="SuppressedIssuesLink" onclick="reveal('SuppressedIssues');">
+List Missing Issues</button><button class="mdl-button mdl-js-button mdl-js-ripple-effect" id="MissingIssuesCardLink" onclick="hideid('MissingIssuesCard');">
+Dismiss</button>            </div>
+            </div>
+          </section>
+<a name="SuppressInfo"></a>
+<section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp" id="SuppressCard" style="display: block;">
+            <div class="mdl-card mdl-cell mdl-cell--12-col">
+  <div class="mdl-card__title">
+    <h2 class="mdl-card__title-text">Suppressing Warnings and Errors</h2>
+  </div>
+              <div class="mdl-card__supporting-text">
+Lint errors can be suppressed in a variety of ways:<br/>
+<br/>
+1. With a <code>@SuppressLint</code> annotation in the Java code<br/>
+2. With a <code>tools:ignore</code> attribute in the XML file<br/>
+3. With a //noinspection comment in the source code<br/>
+4. With ignore flags specified in the <code>build.gradle</code> file, as explained below<br/>
+5. With a <code>lint.xml</code> configuration file in the project<br/>
+6. With a <code>lint.xml</code> configuration file passed to lint via the --config flag<br/>
+7. With the --ignore flag passed to lint.<br/>
+<br/>
+To suppress a lint warning with an annotation, add a <code>@SuppressLint("id")</code> annotation on the class, method or variable declaration closest to the warning instance you want to disable. The id can be one or more issue id's, such as <code>"UnusedResources"</code> or <code>{"UnusedResources","UnusedIds"}</code>, or it can be <code>"all"</code> to suppress all lint warnings in the given scope.<br/>
+<br/>
+To suppress a lint warning with a comment, add a <code>//noinspection id</code> comment on the line before the statement with the error.<br/>
+<br/>
+To suppress a lint warning in an XML file, add a <code>tools:ignore="id"</code> attribute on the element containing the error, or one of its surrounding elements. You also need to define the namespace for the tools prefix on the root element in your document, next to the <code>xmlns:android</code> declaration:<br/>
+<code>xmlns:tools="http://schemas.android.com/tools"</code><br/>
+<br/>
+To suppress a lint warning in a <code>build.gradle</code> file, add a section like this:<br/>
+
+<pre>
+android {
+    lintOptions {
+        disable 'TypographyFractions','TypographyQuotes'
+    }
+}
+</pre>
+<br/>
+Here we specify a comma separated list of issue id's after the disable command. You can also use <code>warning</code> or <code>error</code> instead of <code>disable</code> to change the severity of issues.<br/>
+<br/>
+To suppress lint warnings with a configuration XML file, create a file named <code>lint.xml</code> and place it at the root directory of the module in which it applies.<br/>
+<br/>
+The format of the <code>lint.xml</code> file is something like the following:<br/>
+
+<pre>
+&lt;?xml version="1.0" encoding="UTF-8"?>
+&lt;lint>
+    &lt;!-- Ignore everything in the test source set -->
+    &lt;issue id="all">
+        &lt;ignore path="\*/test/\*" />
+    &lt;/issue>
+
+    &lt;!-- Disable this given check in this project -->
+    &lt;issue id="IconMissingDensityFolder" severity="ignore" />
+
+    &lt;!-- Ignore the ObsoleteLayoutParam issue in the given files -->
+    &lt;issue id="ObsoleteLayoutParam">
+        &lt;ignore path="res/layout/activation.xml" />
+        &lt;ignore path="res/layout-xlarge/activation.xml" />
+        &lt;ignore regexp="(foo|bar)\.java" />
+    &lt;/issue>
+
+    &lt;!-- Ignore the UselessLeaf issue in the given file -->
+    &lt;issue id="UselessLeaf">
+        &lt;ignore path="res/layout/main.xml" />
+    &lt;/issue>
+
+    &lt;!-- Change the severity of hardcoded strings to "error" -->
+    &lt;issue id="HardcodedText" severity="error" />
+&lt;/lint>
+</pre>
+<br/>
+To suppress lint checks from the command line, pass the --ignore flag with a comma separated list of ids to be suppressed, such as:<br/>
+<code>$ lint --ignore UnusedResources,UselessLeaf /my/project/path</code><br/>
+<br/>
+For more information, see <a href="https://developer.android.com/studio/write/lint.html#config">https://developer.android.com/studio/write/lint.html#config</a><br/>
+
+            </div>
+            </div>
+          </section>    </div>
+  </main>
+</div>
+</body>
+</html>

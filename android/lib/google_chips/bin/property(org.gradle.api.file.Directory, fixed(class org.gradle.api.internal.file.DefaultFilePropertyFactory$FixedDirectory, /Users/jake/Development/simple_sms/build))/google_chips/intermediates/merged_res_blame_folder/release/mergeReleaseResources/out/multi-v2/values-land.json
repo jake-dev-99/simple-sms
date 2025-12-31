@@ -1,0 +1,68 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.android.ex.chips.google_chips-mergeReleaseResources-20:/values-land/values-land.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/.gradle/caches/8.11.1/transforms/ac427d34edbd180ed9b17f943149c7e8/transformed/appcompat-1.7.0/res/values-land/values-land.xml",
+                    "from": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,125,196",
+                        "endColumns": "69,70,67",
+                        "endOffsets": "120,191,259"
+                    }
+                },
+                {
+                    "source": "/Users/jake/Development/simple_sms/android/lib/google_chips/res/values-land/dimen.xml",
+                    "from": {
+                        "startLines": "17",
+                        "startColumns": "4",
+                        "startOffsets": "687",
+                        "endColumns": "43",
+                        "endOffsets": "726"
+                    },
+                    "to": {
+                        "startLines": "5",
+                        "startColumns": "4",
+                        "startOffsets": "264",
+                        "endColumns": "43",
+                        "endOffsets": "303"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.android.ex.chips.google_chips-release-22:/values-land/values-land.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/.gradle/caches/8.11.1/transforms/ac427d34edbd180ed9b17f943149c7e8/transformed/appcompat-1.7.0/res/values-land/values-land.xml",
+                    "from": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,125,196",
+                        "endColumns": "69,70,67",
+                        "endOffsets": "120,191,259"
+                    }
+                },
+                {
+                    "source": "/Users/jake/Development/simple_sms/android/lib/google_chips/res/values-land/dimen.xml",
+                    "from": {
+                        "startLines": "17",
+                        "startColumns": "4",
+                        "startOffsets": "687",
+                        "endColumns": "43",
+                        "endOffsets": "726"
+                    },
+                    "to": {
+                        "startLines": "5",
+                        "startColumns": "4",
+                        "startOffsets": "264",
+                        "endColumns": "43",
+                        "endOffsets": "303"
+                    }
+                }
+            ]
+        }
+    ]
+}

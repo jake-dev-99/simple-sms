@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.7.0" type="conditional_incidents">
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="131"
+            column="41"
+            startOffset="4812"
+            endLine="131"
+            endColumn="59"
+            endOffset="4830"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.graphics.ImageFormat#JPEG_R`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="JPEG_R"/>
+            <entry
+                name="owner"
+                string="android.graphics.ImageFormat"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="ffffffffc0000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="131"
+            column="61"
+            startOffset="4832"
+            endLine="131"
+            endColumn="83"
+            endOffset="4854"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 31 (current min is %1$s): `android.graphics.ImageFormat#YCBCR_P010`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="YCBCR_P010"/>
+            <entry
+                name="owner"
+                string="android.graphics.ImageFormat"/>
+            <api-levels id="requiresApi"
+                value="ffffffffc0000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="354"
+            column="54"
+            startOffset="14605"
+            endLine="354"
+            endColumn="80"
+            endOffset="14631"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.DataSpace#DATASPACE_JPEG_R`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="DATASPACE_JPEG_R"/>
+            <entry
+                name="owner"
+                string="android.hardware.DataSpace"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="355"
+            column="56"
+            startOffset="14692"
+            endLine="355"
+            endColumn="74"
+            endOffset="14710"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.graphics.ImageFormat#JPEG_R`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="JPEG_R"/>
+            <entry
+                name="owner"
+                string="android.graphics.ImageFormat"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="362"
+            column="54"
+            startOffset="15131"
+            endLine="362"
+            endColumn="87"
+            endOffset="15164"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.DataSpace#DATASPACE_DYNAMIC_DEPTH`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="DATASPACE_DYNAMIC_DEPTH"/>
+            <entry
+                name="owner"
+                string="android.hardware.DataSpace"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="ffffffff00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImpl.java"
+            line="53"
+            column="16"
+            startOffset="1599"
+            endLine="53"
+            endColumn="45"
+            endOffset="1628"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 33 (current min is %1$s): `android.hardware.camera2.params.DynamicRangeProfiles#STANDARD`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="STANDARD"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.DynamicRangeProfiles"/>
+            <api-levels id="requiresApi"
+                value="ffffffff00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="ffffffff00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImplBuilder.java"
+            line="39"
+            column="41"
+            startOffset="1492"
+            endLine="39"
+            endColumn="70"
+            endOffset="1521"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 33 (current min is %1$s): `android.hardware.camera2.params.DynamicRangeProfiles#STANDARD`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="STANDARD"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.DynamicRangeProfiles"/>
+            <api-levels id="requiresApi"
+                value="ffffffff00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="ffffffff00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImplBuilder.java"
+            line="137"
+            column="36"
+            startOffset="4898"
+            endLine="137"
+            endColumn="65"
+            endOffset="4927"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 33 (current min is %1$s): `android.hardware.camera2.params.DynamicRangeProfiles#STANDARD`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="STANDARD"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.DynamicRangeProfiles"/>
+            <api-levels id="requiresApi"
+                value="ffffffff00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImpl.java"
+            line="66"
+            column="16"
+            startOffset="2290"
+            endLine="66"
+            endColumn="46"
+            endOffset="2320"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="UNSPECIFIED"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.ColorSpaceProfiles"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImplBuilder.java"
+            line="37"
+            column="31"
+            startOffset="1303"
+            endLine="37"
+            endColumn="61"
+            endOffset="1333"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="UNSPECIFIED"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.ColorSpaceProfiles"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImplBuilder.java"
+            line="125"
+            column="27"
+            startOffset="3575"
+            endLine="125"
+            endColumn="57"
+            endOffset="3605"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="UNSPECIFIED"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.ColorSpaceProfiles"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="fffffffe00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/OutputSurfaceConfigurationImpl.java"
+            line="43"
+            column="16"
+            startOffset="1304"
+            endLine="43"
+            endColumn="46"
+            endOffset="1334"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 34 (current min is %1$s): `android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="UNSPECIFIED"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.ColorSpaceProfiles"/>
+            <api-levels id="requiresApi"
+                value="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="InlinedApi"
+        severity="warning"
+        message="">
+        <fix-data minSdk="ffffffffe0000000" requiresApi="ffffffff00000000"/>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/OutputSurfaceImpl.java"
+            line="60"
+            column="16"
+            startOffset="1434"
+            endLine="60"
+            endColumn="45"
+            endOffset="1463"/>
+        <map>
+            <entry
+                name="message"
+                string="Field requires API level 33 (current min is %1$s): `android.hardware.camera2.params.DynamicRangeProfiles#STANDARD`"/>
+            <api-levels id="minSdk"
+                value="ffffffffe0000000"/>
+            <entry
+                name="name"
+                string="STANDARD"/>
+            <entry
+                name="owner"
+                string="android.hardware.camera2.params.DynamicRangeProfiles"/>
+            <api-levels id="requiresApi"
+                value="ffffffff00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is always >= 33">
+        <fix-replace
+            description="Delete @RequiresApi"
+            replacement=""
+            priority="0">
+            <range
+                file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+                startOffset="18454"
+                endOffset="18502"/>
+        </fix-replace>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="442"
+            column="9"
+            startOffset="18454"
+            endLine="442"
+            endColumn="57"
+            endOffset="18502"/>
+        <map>
+            <condition minGE="ffffffff00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is always >= 34">
+        <fix-replace
+            description="Delete @RequiresApi"
+            replacement=""
+            priority="0">
+            <range
+                file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+                startOffset="37199"
+                endOffset="37255"/>
+        </fix-replace>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java"
+            line="864"
+            column="5"
+            startOffset="37199"
+            endLine="864"
+            endColumn="61"
+            endOffset="37255"/>
+        <map>
+            <condition minGE="fffffffe00000000"/>
+        </map>
+    </incident>
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is always >= 33">
+        <fix-replace
+            description="Delete @RequiresApi"
+            replacement=""
+            priority="0">
+            <range
+                file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/NightAdvancedExtenderImpl.java"
+                startOffset="8013"
+                endOffset="8061"/>
+        </fix-replace>
+        <location
+            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*1}/androidx/camera/extensions/impl/advanced/NightAdvancedExtenderImpl.java"
+            line="201"
+            column="9"
+            startOffset="8013"
+            endLine="201"
+            endColumn="57"
+            endOffset="8061"/>
+        <map>
+            <condition minGE="ffffffff00000000"/>
+        </map>
+    </incident>
+
+</incidents>

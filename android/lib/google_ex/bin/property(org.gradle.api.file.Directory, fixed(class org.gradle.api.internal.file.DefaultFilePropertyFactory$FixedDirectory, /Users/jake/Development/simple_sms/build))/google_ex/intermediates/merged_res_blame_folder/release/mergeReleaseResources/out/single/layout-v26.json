@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.android.ex.google_ex-release-24:/layout-v26/abc_screen_toolbar.xml",
+        "source": "com.android.ex.google_ex-appcompat-1.7.0-15:/layout-v26/abc_screen_toolbar.xml"
+    }
+]

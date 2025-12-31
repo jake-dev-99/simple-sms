@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.7.0" type="conditional_incidents">
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; SDK_INT is always >= 16">
+        <fix-replace
+            description="Delete @TargetApi"
+            replacement=""
+            priority="0">
+            <range
+                file="${:google_chips*debug*MAIN*sourceProvider*0*javaDir*1}/com/android/ex/chips/RecipientEditTextView.java"
+                startOffset="25693"
+                endOffset="25735"/>
+        </fix-replace>
+        <location
+            file="${:google_chips*debug*MAIN*sourceProvider*0*javaDir*1}/com/android/ex/chips/RecipientEditTextView.java"
+            line="684"
+            column="5"
+            startOffset="25693"
+            endLine="684"
+            endColumn="47"
+            endOffset="25735"/>
+        <map>
+            <condition minGE="ffffffffffff8000"/>
+        </map>
+    </incident>
+
+</incidents>

@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/mms_config.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/mms_config.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/apns.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/apns.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/widget_conversation_list.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/widget_conversation_list.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/apn_editor.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/apn_editor.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/widget_conversation.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/widget_conversation.xml"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml/apn_settings.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml/apn_settings.xml"
+    }
+]

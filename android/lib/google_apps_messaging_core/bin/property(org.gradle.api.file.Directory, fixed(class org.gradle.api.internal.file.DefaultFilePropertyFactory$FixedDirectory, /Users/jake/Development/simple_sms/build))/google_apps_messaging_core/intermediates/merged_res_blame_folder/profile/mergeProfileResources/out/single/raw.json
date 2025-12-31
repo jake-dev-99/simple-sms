@@ -1,0 +1,30 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/server_request_debug.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/server_request_debug.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/message_failure.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/message_failure.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/audio_initiate.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/audio_initiate.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/message_inc_thread.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/message_inc_thread.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/db_op_debug.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/db_op_debug.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/audio_end.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/audio_end.wav"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/raw/message_sent.wav",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/raw/message_sent.wav"
+    }
+]

@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/drawable-nodpi-v4/messenger_widget_preview.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-nodpi/messenger_widget_preview.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/drawable-nodpi-v4/bg_sms.jpg",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-nodpi/bg_sms.jpg"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/drawable-nodpi-v4/ic_person_wear.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-nodpi/ic_person_wear.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/drawable-nodpi-v4/messenger_widget_conversation_preview.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-nodpi/messenger_widget_conversation_preview.png"
+    }
+]

@@ -1,0 +1,144 @@
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/OutputSurfaceConfigurationImpl.java:40: Warning: This block comment looks like it was intended to be a javadoc comment [WrongCommentType]
+     * @since 1.5
+       ~~~~~~~~~~
+
+   Explanation for issues of type "WrongCommentType":
+   This check flags any block comments which look like they had been intended
+   to be KDoc or javadoc comments instead.
+
+   If you really want to use Javadoc-like constructs in a block comment,
+   there's a convention you can use: include (non-Javadoc) somewhere in the
+   comment, e.g.
+     /* (non-Javadoc)
+      * @see
+   org.xml.sax.helpers.DefaultHandler#setDocumentLocator(org.xml.sax.Locator)
+      */
+     @Override
+     public void setDocumentLocator(Locator locator) {
+   (see https://stackoverflow.com/questions/5172841/non-javadoc-meaning)
+
+/Users/jake/Development/simple-sms/android/lib/google_ex/common/java/com/android/common/OperationScheduler.java:59: Warning: Implicitly using the default locale is a common source of bugs: Use String.format(Locale, ...) instead [DefaultLocale]
+                return String.format(
+                       ^
+/Users/jake/Development/simple-sms/android/lib/google_ex/common/java/com/android/common/OperationScheduler.java:66: Warning: Implicitly using the default locale is a common source of bugs: Use String.format(Locale, ...) instead [DefaultLocale]
+                return String.format(
+                       ^
+
+   Explanation for issues of type "DefaultLocale":
+   Calling String#toLowerCase() or #toUpperCase() without specifying an
+   explicit locale is a common source of bugs. The reason for that is that
+   those methods will use the current locale on the user's device, and even
+   though the code appears to work correctly when you are developing the app,
+   it will fail in some locales. For example, in the Turkish locale, the
+   uppercase replacement for i is not I.
+
+   If you want the methods to just perform ASCII replacement, for example to
+   convert an enum name, call String#toUpperCase(Locale.ROOT) instead. If you
+   really want to use the current locale, call
+   String#toUpperCase(Locale.getDefault()) instead.
+
+   https://developer.android.com/reference/java/util/Locale.html#default_locale
+
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java:131: Warning: Field requires API level 31 (current min is 30): android.graphics.ImageFormat#YCBCR_P010 [InlinedApi]
+                ImageFormat.DEPTH_JPEG, ImageFormat.JPEG_R, ImageFormat.YCBCR_P010));
+                                                            ~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java:131: Warning: Field requires API level 34 (current min is 30): android.graphics.ImageFormat#JPEG_R [InlinedApi]
+                ImageFormat.DEPTH_JPEG, ImageFormat.JPEG_R, ImageFormat.YCBCR_P010));
+                                        ~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java:354: Warning: Field requires API level 34 (current min is 30): android.hardware.DataSpace#DATASPACE_JPEG_R [InlinedApi]
+                    (surfaceConfig.getDataspace() == DataSpace.DATASPACE_JPEG_R)) ||
+                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java:355: Warning: Field requires API level 34 (current min is 30): android.graphics.ImageFormat#JPEG_R [InlinedApi]
+                    (surfaceConfig.getImageFormat() == ImageFormat.JPEG_R);
+                                                       ~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BaseAdvancedExtenderImpl.java:362: Warning: Field requires API level 34 (current min is 30): android.hardware.DataSpace#DATASPACE_DYNAMIC_DEPTH [InlinedApi]
+                    (surfaceConfig.getDataspace() == DataSpace.DATASPACE_DYNAMIC_DEPTH)) ||
+                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImpl.java:53: Warning: Field requires API level 33 (current min is 30): android.hardware.camera2.params.DynamicRangeProfiles#STANDARD [InlinedApi]
+        return DynamicRangeProfiles.STANDARD;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImplBuilder.java:39: Warning: Field requires API level 33 (current min is 30): android.hardware.camera2.params.DynamicRangeProfiles#STANDARD [InlinedApi]
+    private long mDynamicRangeProfile = DynamicRangeProfiles.STANDARD;
+                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2OutputConfigImplBuilder.java:137: Warning: Field requires API level 33 (current min is 30): android.hardware.camera2.params.DynamicRangeProfiles#STANDARD [InlinedApi]
+            mDynamicRangeProfile = DynamicRangeProfiles.STANDARD;
+                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImpl.java:66: Warning: Field requires API level 34 (current min is 30): android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED [InlinedApi]
+        return ColorSpaceProfiles.UNSPECIFIED;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImplBuilder.java:37: Warning: Field requires API level 34 (current min is 30): android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED [InlinedApi]
+    private int mColorSpace = ColorSpaceProfiles.UNSPECIFIED;
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/Camera2SessionConfigImplBuilder.java:125: Warning: Field requires API level 34 (current min is 30): android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED [InlinedApi]
+        int mColorSpace = ColorSpaceProfiles.UNSPECIFIED;
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/OutputSurfaceConfigurationImpl.java:43: Warning: Field requires API level 34 (current min is 30): android.hardware.camera2.params.ColorSpaceProfiles#UNSPECIFIED [InlinedApi]
+        return ColorSpaceProfiles.UNSPECIFIED;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/OutputSurfaceImpl.java:60: Warning: Field requires API level 33 (current min is 30): android.hardware.camera2.params.DynamicRangeProfiles#STANDARD [InlinedApi]
+        return DynamicRangeProfiles.STANDARD;
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "InlinedApi":
+   This check scans through all the Android API field references in the
+   application and flags certain constants, such as static final integers and
+   Strings, which were introduced in later versions. These will actually be
+   copied into the class files rather than being referenced, which means that
+   the value is available even when running on older devices. In some cases
+   that's fine, and in other cases it can result in a runtime crash or
+   incorrect behavior. It depends on the context, so consider the code
+   carefully and decide whether it's safe and can be suppressed or whether the
+   code needs to be guarded.
+
+   If you really want to use this API and don't need to support older devices
+   just set the minSdkVersion in your build.gradle or AndroidManifest.xml
+   files.
+
+   If your code is deliberately accessing newer APIs, and you have ensured
+   (e.g. with conditional execution) that this code will only ever be called
+   on a supported platform, then you can annotate your class or method with
+   the @TargetApi annotation specifying the local minimum SDK to apply, such
+   as @TargetApi(11), such that this check considers 11 rather than your
+   manifest file's minimum SDK as the required API level.
+
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/AutoAdvancedExtenderImpl.java:53: Warning: Unnecessary; SDK_INT is never < 30 [ObsoleteSdkInt]
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BeautyAdvancedExtenderImpl.java:51: Warning: Unnecessary; SDK_INT is never < 30 [ObsoleteSdkInt]
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/BokehAdvancedExtenderImpl.java:56: Warning: Unnecessary; SDK_INT is never < 30 [ObsoleteSdkInt]
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/HdrAdvancedExtenderImpl.java:82: Warning: Unnecessary; SDK_INT is always >= 30 [ObsoleteSdkInt]
+        return (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) &&
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/jake/Development/simple-sms/android/lib/google_ex/camera2/extensions/advancedSample/src/java/androidx/camera/extensions/impl/advanced/NightAdvancedExtenderImpl.java:60: Warning: Unnecessary; SDK_INT is never < 30 [ObsoleteSdkInt]
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "ObsoleteSdkInt":
+   This check flags version checks that are not necessary, because the
+   minSdkVersion (or surrounding known API level) is already at least as high
+   as the version checked for.
+
+   Similarly, it also looks for resources in -vNN folders, such as values-v14
+   where the version qualifier is less than or equal to the minSdkVersion,
+   where the contents should be merged into the best folder.
+
+/Users/jake/Development/simple-sms/android/lib/google_ex/common/java/com/android/common/contacts/BaseEmailAddressAdapter.java:268: Warning: This Handler class should be static or leaks might occur (anonymous android.os.Handler) [HandlerLeak]
+        mHandler = new Handler() {
+                   ^
+
+   Explanation for issues of type "HandlerLeak":
+   Since this Handler is declared as an inner class, it may prevent the outer
+   class from being garbage collected. If the Handler is using a Looper or
+   MessageQueue for a thread other than the main thread, then there is no
+   issue. If the Handler is using the Looper or MessageQueue of the main
+   thread, you need to fix your Handler declaration, as follows: Declare the
+   Handler as a static class; In the outer class, instantiate a WeakReference
+   to the outer class and pass this object to your Handler when you
+   instantiate the Handler; Make all references to members of the outer class
+   using the WeakReference object.
+
+0 errors, 22 warnings

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.7.0" type="partial_results">
+    <map id="UnusedResources">
+        <location id="R.drawable.list_item_font_primary"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/drawable/list_item_font_primary.xml"
+            line="17"
+            column="2"
+            startOffset="672"
+            endLine="22"
+            endColumn="13"
+            endOffset="1026"/>
+        <location id="R.drawable.list_item_font_secondary"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/drawable/list_item_font_secondary.xml"
+            line="17"
+            column="2"
+            startOffset="672"
+            endLine="22"
+            endColumn="13"
+            endOffset="1026"/>
+        <location id="R.string.copy_email"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/values/strings.xml"
+            line="20"
+            column="13"
+            startOffset="1113"
+            endLine="20"
+            endColumn="30"
+            endOffset="1130"/>
+        <location id="R.string.copy_number"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/values/strings.xml"
+            line="22"
+            column="13"
+            startOffset="1290"
+            endLine="22"
+            endColumn="31"
+            endOffset="1308"/>
+        <location id="R.style.RecipientEditTextView"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/values/styles.xml"
+            line="29"
+            column="12"
+            startOffset="1439"
+            endLine="29"
+            endColumn="40"
+            endOffset="1467"/>
+        <location id="R.style.RecipientEditTextViewBase"
+            file="${:google_chips*debug*MAIN*sourceProvider*0*resDir*1}/values/styles.xml"
+            line="17"
+            column="12"
+            startOffset="740"
+            endLine="17"
+            endColumn="44"
+            endOffset="772"/>
+        <entry
+            name="model"
+            string="attr[avatarPosition(D),chipBackground(D),chipDelete(D),chipFontSize(D),chipHeight(D),chipPadding(D),disableDelete(D),invalidChipBackground(D),imageSpanAlignment(D),unselectedChipBackgroundColor(D),unselectedChipTextColor(D)],color[chips_dropdown_text(U),chips_dropdown_text_activated(U),chips_dropdown_text_default(U),autocomplete_bottom_shadow_start(U),chips_dropdown_background_activated(U),chips_dropdown_background_pressed(U),autocomplete_divider_color(U),chip_background(U),chip_background_invalid(U),chips_dropdown_text_highlighted(U),chips_dropdown_permission_text(U)],dimen[chip_dropdown_height(U),chip_padding_start(U),chip_padding_end(U),chip_padding(U),chip_height(U),chip_text_size(U),line_spacing_extra(U),chip_icon_margin_end(U),chip_custom_divider_height(U),chip_icon_padding(U),chip_wrapper_start_padding(U),chip_wrapper_top_padding(U),chip_wrapper_end_padding(U),chip_wrapper_bottom_padding(U)],drawable[chip_autocomplete_divider_background(U),chips_dropdown_background(U),list_item_font_primary(D),list_item_font_secondary(D),chips_ic_close_24dp(U),ic_cancel_wht_24dp(U),ic_contact_picture(U)],id[chip_autocomplete_top_divider(U),chip_person_wrapper(U),chip_permission_wrapper(U),chip_autocomplete_bottom_divider(U),chip_permission_bottom_divider(U),chip_indicator_text(U),text1(D)],integer[chips_max_lines(U)],layout[chips_autocomplete_recipient_dropdown_item(U),chips_recipient_dropdown_item(U),more_item(U)],string[more_string(U),copy_email(D),copy_number(D),action_label(U),accessbility_suggestion_dropdown_opened(U),accessbility_suggestion_dropdown_closed(U),dropdown_delete_button_desc(U),chips_action_copy(U),chips_action_cancel(U),chips_permission_text(U)],style[ChipAutocompleteDividerStyle(U),ChipAutocompleteWrapperStyle(U),ChipTextViewLayoutStyle(U),ChipTitleStyle(U),ChipSubtitleStyle(U),ChipEndIconStyle(U),ChipPermissionStyle(U),ChipPermissionDismissIconStyle(U),ChipAutocompleteDividerStyle_PermissionItem(U),ChipStartIconStyle(U),ChipIndicatorTextStyle(U),ChipDeleteIconStyle(U),RecipientEditTextViewBase(D),RecipientEditTextView(D),ChipIconBaseStyle(U),ChipDeleteIconBaseStyle(U)],styleable[RecipientEditTextView(U),RecipientEditTextView_chipBackground(R),RecipientEditTextView_invalidChipBackground(R),RecipientEditTextView_chipDelete(R),RecipientEditTextView_chipPadding(R),RecipientEditTextView_chipHeight(R),RecipientEditTextView_chipFontSize(R),RecipientEditTextView_avatarPosition(R),RecipientEditTextView_disableDelete(R),RecipientEditTextView_unselectedChipTextColor(R),RecipientEditTextView_unselectedChipBackgroundColor(R)];b^c^d,24^e,25^f^10,33^40^41^42^43^44^45^46^47^48,34^25^16^49^42^43^44^4a^4b,35^36,40^1e^11^20,41^20^21^22^23,43^b,44^b,45^4e^1d,46^15^3f,47^1f^28,48^40^24,49^4e^1d,4a^44,4b^4f^1f,4c^1a,4d^4c;;;"/>
+    </map>
+    <map id="_ChecksSdkIntAtLeast">
+        <entry
+            name="com.android.ex.chips.ChipsUtil#isRunningMOrLater()"
+            string="api=23"/>
+        <entry
+            name="com.android.ex.chips.ChipsUtil#supportsChipsUi()"
+            string="api=14"/>
+    </map>
+
+</incidents>

@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/layout-v21/notification_action_tombstone.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/layout-v21/notification_action_tombstone.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/layout-v21/notification_template_custom_big.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/layout-v21/notification_template_custom_big.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/layout-v21/notification_action.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/layout-v21/notification_action.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/layout-v21/notification_template_icon_group.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/layout-v21/notification_template_icon_group.xml"
+    }
+]

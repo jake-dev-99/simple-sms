@@ -1,0 +1,52 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.android.messaging.google_apps_messaging_core-mergeReleaseResources-52:/values-ldrtl-v21/values-ldrtl-v21.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/Development/simple_sms/android/lib/google_apps_messaging_core/src/main/res/values-ldrtl-v21/styles.xml",
+                    "from": {
+                        "startLines": "17",
+                        "startColumns": "4",
+                        "startOffsets": "681",
+                        "endLines": "21",
+                        "endColumns": "12",
+                        "endOffsets": "1037"
+                    },
+                    "to": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "411"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.android.messaging.google_apps_messaging_core-release-54:/values-ldrtl-v21/values-ldrtl-v21.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/Development/simple_sms/android/lib/google_apps_messaging_core/src/main/res/values-ldrtl-v21/styles.xml",
+                    "from": {
+                        "startLines": "17",
+                        "startColumns": "4",
+                        "startOffsets": "681",
+                        "endLines": "21",
+                        "endColumns": "12",
+                        "endOffsets": "1037"
+                    },
+                    "to": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "411"
+                    }
+                }
+            ]
+        }
+    ]
+}

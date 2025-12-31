@@ -1,0 +1,1408 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string-array name="empty_subject_strings">
+        <item>no subject</item>
+        <item>nosubject</item>
+    </string-array>
+    <string-array name="notification_reply_choices">
+        <item>Yes</item>
+        <item>No</item>
+        <item>OK</item>
+        <item>Hehe</item>
+        <item>Thanks</item>
+        <item>I agree</item>
+        <item>Nice</item>
+        <item>On my way</item>
+        <item>OK, let me get back to you later</item>
+        <item>:)</item>
+        <item>:(</item>
+    </string-array>
+    <attr format="reference" name="apnPreferenceStyle"/>
+    <bool name="auto_retrieve_mms_pref_default" translatable="false">true</bool>
+    <bool name="auto_retrieve_mms_when_roaming_pref_default" translatable="false">false</bool>
+    <bool name="delivery_reports_pref_default" translatable="false">false</bool>
+    <bool name="dump_mms_pref_default" translatable="false">false</bool>
+    <bool name="dump_sms_pref_default" translatable="false">false</bool>
+    <bool name="group_mms_pref_default" translatable="false">true</bool>
+    <bool name="notification_vibration_pref_default" translatable="false">true</bool>
+    <bool name="notifications_enabled_pref_default" translatable="false">true</bool>
+    <bool name="send_sound_pref_default" translatable="false">true</bool>
+    <bool name="use_local_apn_pref_default" translatable="false">false</bool>
+    <color name="action_bar_background_color">@color/primary_color</color>
+    <color name="action_bar_background_color_dark">#537F2D</color>
+    <color name="action_bar_title_text_color">#ffffff</color>
+    <color name="archived_conversation_action_bar_background_color">#9D9D9D</color>
+    <color name="archived_conversation_action_bar_background_color_dark">#838383</color>
+    <color name="attachment_chooser_audio_background">#eeeeee</color>
+    <color name="attachment_chooser_vcard_background">#eeeeee</color>
+    <color name="attachment_preview_more_items_text_background">#44000000</color>
+    <color name="audio_attachment_timer_text_color">#323232</color>
+    <color name="audio_picker_hint_text_color">#40000000</color>
+    <color name="audio_picker_level_primary_color">#29000000</color>
+    <color name="audio_picker_timer_text_color">#323232</color>
+    <color name="audio_progress_bar_color">@color/primary_color</color>
+    <color name="audio_record_control_button_stroke">#30000000</color>
+    <color name="background_item_activated">#670099cc</color>
+    <color name="background_item_pressed">#6733b5e5</color>
+    <color name="background_item_selected">#cc0099cc</color>
+    <color name="background_item_transparent">@android:color/transparent</color>
+    <color name="button_bar_action_button_text_color">#03a9f4</color>
+    <color name="button_bar_cancel_button_text_color">#4d4d4d</color>
+    <color name="camera_button_container_background">#80000000</color>
+    <color name="chips_background_color">#33000000</color>
+    <color name="chips_dropdown_background_activated">#4285f4</color>
+    <color name="chips_dropdown_background_pressed">#ededed</color>
+    <color name="chips_text_color">@android:color/white</color>
+    <color name="color_filter_base_color">#ff0000</color>
+    <color name="compose_contact_divider">#44000000</color>
+    <color name="compose_contact_faint_text">#a0ffffff</color>
+    <color name="compose_contact_text">@android:color/white</color>
+    <color name="compose_message_send_color">@color/primary_color</color>
+    <color name="compose_message_send_color_pressed">#999999</color>
+    <color name="compose_notification_bar_background">@color/primary_color</color>
+    <color name="compose_send_text_color">#000000</color>
+    <color name="contact_avatar_default_background">#d2d2d2</color>
+    <color name="contact_avatar_pressed_color">#40000000</color>
+    <color name="contact_list_alphabet_header">@color/primary_color</color>
+    <color name="contact_list_text_primary">#4d4d4d</color>
+    <color name="contact_list_text_secondary">#999999</color>
+    <color name="contact_picker_background">#ffffff</color>
+    <color name="contact_picker_button_text_color">@color/primary_color</color>
+    <color name="contact_picker_hint_text_color">#40000000</color>
+    <color name="contact_picker_tab_pressed">#ddffffff</color>
+    <color name="contact_picker_tab_underline">@android:color/white</color>
+    <color name="contextual_action_bar_background_color">#ffffff</color>
+    <color name="conversation_background">#eeeeee</color>
+    <color name="conversation_compose_divider_start">#44000000</color>
+    <color name="conversation_edge_effect">#9d9d9d</color>
+    <color name="conversation_list_details">#8A000000</color>
+    <color name="conversation_list_error">#F05A24</color>
+    <color name="conversation_list_item_read">#636363</color>
+    <color name="conversation_list_item_unread">#323232</color>
+    <color name="conversation_list_name">#DE000000</color>
+    <color name="fab_color">@color/primary_color</color>
+    <color name="fab_pressed_color">#3ea4dc</color>
+    <color name="fab_ripple">#40ffffff</color>
+    <color name="fastscroll_preview_text_color">#ffffff</color>
+    <color name="fastscroll_thumb_color">#42000000</color>
+    <color name="fastscroll_track_color">#1e000000</color>
+    <color name="gallery_image_default_background">#eeeeee</color>
+    <color name="gallery_image_pressed">#6733b5e5</color>
+    <color name="generic_video_icon">#ff808080</color>
+    <color name="google_gray">#F1F1F1</color>
+    <color name="group_mms_setting_text_color">#333333</color>
+    <color name="letter_tile_font_color">#ffffff</color>
+    <color name="list_empty_text">#6d6d6d</color>
+    <color name="low_storage_action_item_color">#ff000000</color>
+    <color name="message_action_info_text">#99ffffff</color>
+    <color name="message_action_status_text">#ffffffff</color>
+    <color name="message_action_timestamp_text">#ffffffff</color>
+    <color name="message_audio_button_color_incoming">#ffffffff</color>
+    <color name="message_body_size_text_color">#555555</color>
+    <color name="message_bubble_color_outgoing">#ffffffff</color>
+    <color name="message_bubble_color_selected">#8BC34A</color>
+    <color name="message_download_failed_status_text">#000000</color>
+    <color name="message_download_failed_timestamp_text">#007fce</color>
+    <color name="message_error_bubble_color_incoming">#e2e2e2</color>
+    <color name="message_failed_timestamp_text">#99ff0000</color>
+    <color name="message_image_selected_tint">#80689F38</color>
+    <color name="message_info_text">#99ffffff</color>
+    <color name="message_info_text_incoming_download_failed">#6a6a6a</color>
+    <color name="message_text">#000000</color>
+    <color name="message_text_color_incoming">#ffffffff</color>
+    <color name="message_text_color_incoming_download_failed">#6a6a6a</color>
+    <color name="message_text_color_outgoing">#ff323232</color>
+    <color name="message_title_text">#ff323232</color>
+    <color name="mms_indicator_color">#8BC34A</color>
+    <color name="notification_accent_color">@color/primary_color</color>
+    <color name="notification_secondary_text">#FFFFFF</color>
+    <color name="notification_sender_text">#9A9A9A</color>
+    <color name="notification_subject_color">#99aaaaaa</color>
+    <color name="notification_tertiary_text">#FFFFFF</color>
+    <color name="notification_warning_color">#ff0000</color>
+    <color name="open_conversation_animation_background_shadow">#40000000</color>
+    <color name="participant_list_text_primary">#4d4d4d</color>
+    <color name="participant_list_text_secondary">#6d6d6d</color>
+    <color name="people_and_options_header_text">#6d6d6d</color>
+    <color name="people_and_options_list_divider">#cccccc</color>
+    <color name="permission_check_activity_background">@color/primary_color</color>
+    <color name="primary_color">#689F38</color>
+    <color name="ripple_material_light">#40000000</color>
+    <color name="search_view_text_cursor">#b0dddddd</color>
+    <color name="settings_item_title_text_primary">#000000</color>
+    <color name="settings_list_text_primary">#4d4d4d</color>
+    <color name="settings_list_text_secondary">#6d6d6d</color>
+    <color name="sim_indicator_color_dark">#323232</color>
+    <color name="sim_indicator_color_light">#ffffff</color>
+    <color name="sim_selector_background_end">#cceeeeee</color>
+    <color name="sim_selector_background_start">#ffeeeeee</color>
+    <color name="sim_selector_text_primary">#4d4d4d</color>
+    <color name="sim_selector_text_secondary">#999999</color>
+    <color name="subject_editor_bubble">#ffffffff</color>
+    <color name="text_highlight_color">#80689F38</color>
+    <color name="timestamp_text_failed">#99ff0000</color>
+    <color name="timestamp_text_incoming">#99ffffff</color>
+    <color name="timestamp_text_outgoing">#99323232</color>
+    <color name="translucent_white">#80ffffff</color>
+    <color name="unblock_item_text_color">@color/primary_color</color>
+    <color name="wearable_notification_participants_count">#a2a2a2</color>
+    <color name="widget_background_color">#ffffff</color>
+    <color name="widget_conversation_title_color">#FFFFFF</color>
+    <color name="widget_incoming_text_color">@android:color/white</color>
+    <color name="widget_outgoing_text_color">#424242</color>
+    <color name="widget_text_color">#424242</color>
+    <dimen name="action_bar_elevation">8dp</dimen>
+    <dimen name="action_bar_height">56dp</dimen>
+    <dimen name="action_bar_text_size">20sp</dimen>
+    <dimen name="attachment_grid_checkbox_area_increase">15dp</dimen>
+    <dimen name="attachment_grid_image_cell_size">110dp</dimen>
+    <dimen name="attachment_preview_more_items_text_size">22sp</dimen>
+    <dimen name="attachment_rounded_corner_radius">3dp</dimen>
+    <dimen name="audio_attachment_text_size">14sp</dimen>
+    <dimen name="audio_picker_text_size">16sp</dimen>
+    <dimen name="audio_progress_bar_height">6dp</dimen>
+    <dimen name="blocked_participant_list_item_view_padding">16dp</dimen>
+    <dimen name="compose_message_attachment_padding_sides">20dp</dimen>
+    <dimen name="compose_message_attachment_padding_topBottom">10dp</dimen>
+    <dimen name="compose_message_chip_height">36dp</dimen>
+    <dimen name="compose_message_chip_padding">3dp</dimen>
+    <dimen name="compose_message_chips_view_max_height">133dp</dimen>
+    <dimen name="compose_message_contacts_container_margin">4dp</dimen>
+    <dimen name="compose_message_contacts_height">42dp</dimen>
+    <dimen name="compose_message_fields_horizontal_margin">16dp</dimen>
+    <dimen name="compose_message_font_size">16sp</dimen>
+    <dimen name="compose_message_mms_indicator_padding_top">2dp</dimen>
+    <dimen name="compose_message_send_button_padding_right">12dp</dimen>
+    <dimen name="compose_message_subject_bottom_padding">6dp</dimen>
+    <dimen name="compose_message_subject_cancel_left_margin">12dp</dimen>
+    <dimen name="compose_message_subject_cancel_top_offset">-12dp</dimen>
+    <dimen name="compose_message_subject_left_padding">52dp</dimen>
+    <dimen name="compose_message_subject_right_padding">64dp</dimen>
+    <dimen name="compose_message_subject_top_padding">4dp</dimen>
+    <dimen name="compose_message_text_box_padding_side">8dp</dimen>
+    <dimen name="contact_icon_view_large_size">56dp</dimen>
+    <dimen name="contact_icon_view_normal_size">42dp</dimen>
+    <dimen name="contact_icon_view_small_size">12dp</dimen>
+    <dimen name="contact_list_alphabet_header_text_size">26dp</dimen>
+    <dimen name="contact_list_detail_text_size">14sp</dimen>
+    <dimen name="contact_list_icon_size">42dp</dimen>
+    <dimen name="contact_list_text_size">16sp</dimen>
+    <dimen name="contact_picker_text_size">16sp</dimen>
+    <dimen name="conversation_bubble_width_snap">20dp</dimen>
+    <dimen name="conversation_compose_send_text_size">16sp</dimen>
+    <dimen name="conversation_fast_fling_threshold">10dp</dimen>
+    <dimen name="conversation_info_text_size">12sp</dimen>
+    <dimen name="conversation_list_contact_icon_size">56dp</dimen>
+    <dimen name="conversation_list_empty_text_bottom_margin">30dp</dimen>
+    <dimen name="conversation_list_first_item_extra_padding">8dp</dimen>
+    <dimen name="conversation_list_image_preview_corner_radius">3dp</dimen>
+    <dimen name="conversation_list_image_preview_size">56dp</dimen>
+    <dimen name="conversation_list_item_view_padding">16dp</dimen>
+    <dimen name="conversation_list_notification_bell_padding">4dp</dimen>
+    <dimen name="conversation_message_contact_icon_size">42dp</dimen>
+    <dimen name="conversation_message_photo_min_size">96dp</dimen>
+    <dimen name="conversation_message_text_size">16sp</dimen>
+    <dimen name="conversation_status_text_size">12sp</dimen>
+    <dimen name="conversation_title_text_size">12sp</dimen>
+    <dimen name="copy_contact_dialog_left_padding">25dp</dimen>
+    <dimen name="copy_contact_dialog_right_padding">10dp</dimen>
+    <dimen name="copy_contact_dialog_top_padding">5dp</dimen>
+    <dimen name="directory_header_padding_bottom">8dp</dimen>
+    <dimen name="directory_header_padding_end">32dp</dimen>
+    <dimen name="directory_header_padding_start">16dp</dimen>
+    <dimen name="directory_header_padding_top">18dp</dimen>
+    <dimen name="directory_header_text_size">14sp</dimen>
+    <dimen name="explode_animation_highlight_elevation">6dp</dimen>
+    <dimen name="fab_bottom_margin">12dp</dimen>
+    <dimen name="fab_elevation">2dp</dimen>
+    <dimen name="fab_elevation_pressed">6dp</dimen>
+    <dimen name="fab_left_right_margin">14dp</dimen>
+    <dimen name="fab_padding_bottom">4dp</dimen>
+    <dimen name="fab_size">60dp</dimen>
+    <dimen name="fastscroll_preview_corner_radius">44dp</dimen>
+    <dimen name="fastscroll_preview_height">88dp</dimen>
+    <dimen name="fastscroll_preview_margin_left_right">8dp</dimen>
+    <dimen name="fastscroll_preview_margin_top">8dp</dimen>
+    <dimen name="fastscroll_preview_min_width">88dp</dimen>
+    <dimen name="fastscroll_preview_padding">24dp</dimen>
+    <dimen name="fastscroll_preview_text_size">24sp</dimen>
+    <dimen name="fastscroll_thumb_height">48dp</dimen>
+    <dimen name="fastscroll_touch_slop">8dp</dimen>
+    <dimen name="fastscroll_track_width">8dp</dimen>
+    <dimen name="focus_inner_offset">12dp</dimen>
+    <dimen name="focus_inner_stroke">2dp</dimen>
+    <dimen name="focus_outer_stroke">3dp</dimen>
+    <dimen name="focus_radius_offset">8dp</dimen>
+    <dimen name="gallery_icon_size">40dp</dimen>
+    <dimen name="gallery_image_cell_size">110dp</dimen>
+    <dimen name="group_mms_setting_text_size">14sp</dimen>
+    <dimen name="image_attachment_fallback_height">240dp</dimen>
+    <dimen name="image_attachment_fallback_width">240dp</dimen>
+    <item name="letter_to_tile_ratio" type="dimen">67%</item>
+    <dimen name="list_empty_text_left_right_margin">60dp</dimen>
+    <dimen name="list_empty_text_size">14sp</dimen>
+    <dimen name="list_empty_text_top_margin">20dp</dimen>
+    <dimen name="low_storage_action_item_text_size">16sp</dimen>
+    <dimen name="mediapicker_big_fling_threshold">1000dp</dimen>
+    <dimen name="mediapicker_default_chooser_height">215dp</dimen>
+    <dimen name="mediapicker_fling_threshold">150dp</dimen>
+    <dimen name="message_audio_attachment_padding">12dp</dimen>
+    <dimen name="message_body_size_text_size">12sp</dimen>
+    <dimen name="message_bubble_arrow_width">9dp</dimen>
+    <dimen name="message_metadata_top_padding">4dp</dimen>
+    <dimen name="message_padding_default">18dp</dimen>
+    <dimen name="message_padding_same_author">2dp</dimen>
+    <dimen name="message_text_bottom_padding">12dp</dimen>
+    <dimen name="message_text_left_right_padding">14dp</dimen>
+    <dimen name="message_text_top_padding">10dp</dimen>
+    <dimen name="mms_indicator_size">12sp</dimen>
+    <dimen name="multiple_attachment_preview_height">130dp</dimen>
+    <dimen name="multiple_attachment_preview_padding">1dp</dimen>
+    <dimen name="multiple_attachment_preview_width">260dp</dimen>
+    <dimen name="notification_wearable_image_height">240dp</dimen>
+    <dimen name="notification_wearable_image_width">240dp</dimen>
+    <dimen name="pager_tab_header_text_size">14sp</dimen>
+    <dimen name="pager_tab_underline_selected">2dp</dimen>
+    <dimen name="participant_list_detail_text_size">14sp</dimen>
+    <dimen name="participant_list_text_size">18sp</dimen>
+    <dimen name="pending_attachment_size">120dp</dimen>
+    <dimen name="people_and_options_header_text_size">16sp</dimen>
+    <dimen name="pie_radius_increment">30dp</dimen>
+    <dimen name="pie_radius_start">40dp</dimen>
+    <dimen name="pie_touch_offset">20dp</dimen>
+    <dimen name="progress_indicator_default_radius">12dp</dimen>
+    <dimen name="progress_indicator_default_stroke_width">2dp</dimen>
+    <dimen name="recipient_edit_text_size">20sp</dimen>
+    <dimen name="settings_list_detail_text_size">14sp</dimen>
+    <dimen name="settings_list_item_height">60dp</dimen>
+    <dimen name="settings_list_text_size">16sp</dimen>
+    <item name="sim_identifier_to_tile_ratio" type="dimen">28%</item>
+    <dimen name="sim_selector_detail_text_size">14sp</dimen>
+    <dimen name="sim_selector_icon_size">42dp</dimen>
+    <dimen name="sim_selector_text_size">14sp</dimen>
+    <dimen name="single_attachment_max_height">150dp</dimen>
+    <dimen name="single_attachment_min_dimen">50dp</dimen>
+    <item name="small_sim_identifier_to_tile_ratio" type="dimen">75%</item>
+    <dimen name="snack_bar_left_right_margin">24dp</dimen>
+    <dimen name="snack_bar_top_bottom_margin">18dp</dimen>
+    <dimen name="vcard_detail_group_indicator_width">40dp</dimen>
+    <dimen name="version_dialog_bottom_padding">20dp</dimen>
+    <dimen name="version_dialog_copyright_top_margin">20dp</dimen>
+    <dimen name="version_dialog_info_left_padding">14dp</dimen>
+    <dimen name="version_dialog_large_padding">24dp</dimen>
+    <dimen name="video_message_min_size">320dp</dimen>
+    <dimen name="widget_avatar_padding">2dp</dimen>
+    <dimen name="widget_compose_top_padding">12dp</dimen>
+    <dimen name="widget_compose_top_padding_compressed">16dp</dimen>
+    <dimen name="widget_conversation_title_size">18sp</dimen>
+    <dimen name="widget_header_height">48dp</dimen>
+    <dimen name="widget_header_new_conv_button_width">48dp</dimen>
+    <dimen name="widget_margin">8dp</dimen>
+    <dimen name="widget_subtitle_margin">0dp</dimen>
+    <drawable name="class_zero_background">#7f040000</drawable>
+    <fraction name="camera_shutter_max_alpha">70%</fraction>
+    <integer name="apnsAndMmsConfigsVersion">0</integer>
+    <integer name="asyncimage_transition_duration">300</integer>
+    <integer name="camera_shutter_duration">200</integer>
+    <integer name="compose_transition_duration">300</integer>
+    <integer name="fab_animation_duration_ms">300</integer>
+    <integer name="list_to_conversation_animation_duration_ms">300</integer>
+    <integer name="mediapicker_transition_duration">600</integer>
+    <integer name="reveal_view_animation_duration">300</integer>
+    <integer name="snackbar_translation_duration_ms">300</integer>
+    <integer name="swipe_duration_ms">300</integer>
+    <integer name="swipe_max_fling_velocity_px_per_s">4000</integer>
+    <plurals name="add_invalid_contact_error" translatable="false">
+        <item quantity="one">Invalid contact</item>
+        <item quantity="other">Invalid contacts</item>
+    </plurals>
+    <plurals name="attachment_changed_accessibility_announcement" translatable="false">
+        <item quantity="zero">No attachments selected</item>
+        <item quantity="one">One attachment ready to send</item>
+        <item quantity="other"><ns1:g id="attachment_count">%d</ns1:g> attachments ready to send</item>
+    </plurals>
+    <plurals name="attachment_preview_close_content_description" translatable="false">
+        <item quantity="one">Discard attachment</item>
+        <item quantity="other">Discard attachments</item>
+    </plurals>
+    <plurals name="attachment_save_error" translatable="false">
+        <item quantity="one">Couldn\'t save <ns1:g id="quantity">%d</ns1:g> attachment</item>
+        <item quantity="other">Couldn\'t save <ns1:g id="quantity">%d</ns1:g> attachments</item>
+    </plurals>
+    <plurals name="attachments_saved" translatable="false">
+        <item quantity="one"><ns1:g id="quantity">%d</ns1:g> attachment saved</item>
+        <item quantity="other"><ns1:g id="quantity">%d</ns1:g> attachments saved</item>
+    </plurals>
+    <plurals name="attachments_saved_to_album" translatable="false">
+        <item quantity="one"><ns1:g id="quantity">%d</ns1:g> attachment saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+        <item quantity="other"><ns1:g id="quantity">%d</ns1:g> attachments saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+    </plurals>
+    <plurals name="attachments_saved_to_downloads" translatable="false">
+        <item quantity="one"><ns1:g id="quantity">%d</ns1:g> attachment saved to \"Downloads\"</item>
+        <item quantity="other"><ns1:g id="quantity">%d</ns1:g> attachments saved to \"Downloads\"</item>
+    </plurals>
+    <plurals name="compose_message_view_hint_text_attachments" translatable="false">
+        <item quantity="one">Send attachment</item>
+        <item quantity="other">Send attachments</item>
+    </plurals>
+    <plurals name="compose_message_view_hint_text_audio" translatable="false">
+        <item quantity="one">Send audio</item>
+        <item quantity="other">Send audios</item>
+    </plurals>
+    <plurals name="compose_message_view_hint_text_photo" translatable="false">
+        <item quantity="one">Send photo</item>
+        <item quantity="other">Send photos</item>
+    </plurals>
+    <plurals name="compose_message_view_hint_text_vcard" translatable="false">
+        <item quantity="one">Send contact card</item>
+        <item quantity="other">Send contact cards</item>
+    </plurals>
+    <plurals name="compose_message_view_hint_text_video" translatable="false">
+        <item quantity="one">Send video</item>
+        <item quantity="other">Send videos</item>
+    </plurals>
+    <plurals name="delete_conversations_confirmation_dialog_title" translatable="false">
+        <item quantity="one">Delete this conversation?</item>
+        <item quantity="other">Delete these conversations?</item>
+    </plurals>
+    <plurals name="month_count" translatable="false">
+        
+        <item quantity="one">a month</item>
+        
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> months</item>
+    </plurals>
+    <plurals name="notification_download_failures" translatable="false">
+        <item quantity="one"><ns1:g id="messages">%d</ns1:g> messages in one conversation</item>
+        <item quantity="other"><ns1:g id="messages">%d</ns1:g> messages in <ns1:g id="conversations">%d</ns1:g> conversations</item>
+    </plurals>
+    <plurals name="notification_new_messages" translatable="false">
+        <item quantity="one">New message</item>
+        <item quantity="other"><ns1:g id="messages">%d</ns1:g> new messages</item>
+    </plurals>
+    <plurals name="notification_send_failures" translatable="false">
+        <item quantity="one"><ns1:g id="messages">%d</ns1:g> messages in one conversation</item>
+        <item quantity="other"><ns1:g id="messages">%d</ns1:g> messages in <ns1:g id="conversations">%d</ns1:g> conversations</item>
+    </plurals>
+    <plurals name="num_days_ago" translatable="false">
+        <item quantity="one"><ns1:g id="count">%d</ns1:g> day</item>
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> days</item>
+    </plurals>
+    <plurals name="num_hours_ago" translatable="false">
+        <item quantity="one"><ns1:g id="count">%d</ns1:g> hour</item>
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> hours</item>
+    </plurals>
+    <plurals name="num_minutes_ago" translatable="false">
+        <item quantity="one"><ns1:g id="count">%d</ns1:g> min</item>
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> mins</item>
+    </plurals>
+    <plurals name="photos_saved_to_album" translatable="false">
+        <item quantity="one"><ns1:g id="quantity">%d</ns1:g> photo saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+        <item quantity="other"><ns1:g id="quantity">%d</ns1:g> photos saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+    </plurals>
+    <plurals name="vcard_multiple_display_name" translatable="false">
+        
+        <item quantity="one"><ns1:g id="count">%d</ns1:g> contact</item>
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> contacts</item>
+    </plurals>
+    <plurals name="videos_saved_to_album" translatable="false">
+        <item quantity="one"><ns1:g id="quantity">%d</ns1:g> video saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+        <item quantity="other"><ns1:g id="quantity">%d</ns1:g> videos saved to \"<ns1:g id="albumName">%s</ns1:g>\" album</item>
+    </plurals>
+    <plurals name="wearable_participant_count" translatable="false">
+        <item quantity="one"><ns1:g id="count">%d</ns1:g> participant</item>
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> participants</item>
+    </plurals>
+    <plurals name="week_count" translatable="false">
+        
+        <item quantity="one">a week</item>
+        
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> weeks</item>
+    </plurals>
+    <plurals name="year_count" translatable="false">
+        
+        <item quantity="one">a year</item>
+        
+        <item quantity="other"><ns1:g id="count">%d</ns1:g> years</item>
+    </plurals>
+    <string name="action_add_contact" translatable="false">Add contact</string>
+    <string name="action_archive" translatable="false">Archive</string>
+    <string name="action_block" translatable="false">Block</string>
+    <string name="action_call" translatable="false">Make a call</string>
+    <string name="action_close" translatable="false">Close</string>
+    <string name="action_confirm_multiselect" translatable="false">Confirm selection</string>
+    <string name="action_confirm_selection" translatable="false">Confirm selection</string>
+    <string name="action_debug_options" translatable="false">Debug</string>
+    <string name="action_delete" translatable="false">Delete</string>
+    <string name="action_delete_message" translatable="false">Delete</string>
+    <string name="action_download" translatable="false">Download</string>
+    <string name="action_menu_show_archived" translatable="false">Archived</string>
+    <string name="action_multiselect" translatable="false">Select multiple images</string>
+    <string name="action_notification_off" translatable="false">Turn off notifications</string>
+    <string name="action_notification_on" translatable="false">Turn on notifications</string>
+    <string name="action_people_and_options" translatable="false">People &amp; options</string>
+    <string name="action_send" translatable="false">Send</string>
+    <string name="action_settings" translatable="false">Settings</string>
+    <string name="action_share" translatable="false">Share</string>
+    <string name="action_unarchive" translatable="false">Unarchive</string>
+    <string name="activity_not_found_message" translatable="false">Could not find an appropriate application</string>
+    <string name="add_contact_confirmation" translatable="false">Add Contact</string>
+    <string name="add_contact_confirmation_dialog_title" translatable="false">Add to Contacts?</string>
+    <string name="add_more_participants_button_content_description" translatable="false">Add more participants</string>
+    <string name="advanced_category_pref_key" translatable="false">advanced_category</string>
+    <string name="advanced_category_pref_title" translatable="false">Advanced</string>
+    <string name="advanced_pref_key" translatable="false">advanced_prefs</string>
+    <string name="advanced_settings" translatable="false">Advanced</string>
+    <string name="advanced_settings_activity_title" translatable="false">Advanced settings</string>
+    <string name="apn_apn" translatable="false">APN</string>
+    <string name="apn_edit" translatable="false">Edit access point</string>
+    <string name="apn_list_pref_key" translatable="false">buglesub_apn_list</string>
+    <string name="apn_mcc" translatable="false">MCC</string>
+    <string name="apn_mms_port" translatable="false">MMS port</string>
+    <string name="apn_mms_proxy" translatable="false">MMS proxy</string>
+    <string name="apn_mmsc" translatable="false">MMSC</string>
+    <string name="apn_mnc" translatable="false">MNC</string>
+    <string name="apn_name" translatable="false">Name</string>
+    <string name="apn_not_set" translatable="false">Not set</string>
+    <string name="apn_settings" translatable="false">APNs</string>
+    <string name="apn_settings_not_available" translatable="false">Access Point Name settings are not available for this user</string>
+    <string name="apn_type" translatable="false">APN type</string>
+    <string name="app_name" translatable="false">Messaging</string>
+    <string name="archived_activity_title" translatable="false">Archived</string>
+    <string name="archived_conversation_list_empty_text" translatable="false">Archived conversations appear here</string>
+    <string name="archived_toast_message" translatable="false"><ns1:g id="count">%d</ns1:g> archived</string>
+    <string name="attachMediaButtonContentDescription" translatable="false">Add an attachment</string>
+    <string name="attachment_chooser_activity_title" translatable="false">Select attachments</string>
+    <string name="attachment_chooser_selection" translatable="false"><ns1:g id="count">%d</ns1:g> selected</string>
+    <string name="attachment_file_description" translatable="false">Saved MMS attachment</string>
+    <string name="attachment_limit_reached_dialog_message_when_composing" translatable="false">Please remove one or more attachments and try again.</string>
+    <string name="attachment_limit_reached_dialog_message_when_sending" translatable="false">You can try sending your message, but it might not be delivered unless you remove one or more attachments.</string>
+    <string name="attachment_limit_reached_send_anyway" translatable="false">Send anyway</string>
+    <string name="attachment_load_failed_dialog_message" translatable="false">Messaging failed to load attachment.</string>
+    <string name="attachment_more_items" translatable="false">+<ns1:g id="count">%d</ns1:g></string>
+    <string name="audio_attachment_content_description" translatable="false">Audio attachment</string>
+    <string name="audio_pause_content_description" translatable="false">Pause</string>
+    <string name="audio_picker_hint_text" translatable="false">Tap &amp; hold</string>
+    <string name="audio_play_content_description" translatable="false">Play audio attachment</string>
+    <string name="audio_record_view_content_description" translatable="false">Tap &amp; hold to record audio</string>
+    <string name="audio_recording_error" translatable="false"> Couldn\'t save audio. Try again.</string>
+    <string name="audio_recording_replay_failed" translatable="false">Can\'t play audio. Try again.</string>
+    <string name="audio_recording_start_failed" translatable="false">Can\'t record audio. Try again.</string>
+    <string name="auto_delete_oldest_messages" translatable="false">Auto-delete messages older than <ns1:g id="duration">%s</ns1:g></string>
+    <string name="auto_delete_oldest_messages_confirmation" translatable="false">Delete messages older than <ns1:g id="duration">%s</ns1:g> and turn on auto-delete?</string>
+    <string name="auto_retrieve_mms_pref_key" translatable="false">buglesub_auto_retrieve_mms</string>
+    <string name="auto_retrieve_mms_pref_summary" translatable="false">Automatically retrieve MMS messages</string>
+    <string name="auto_retrieve_mms_pref_title" translatable="false">Auto-retrieve</string>
+    <string name="auto_retrieve_mms_when_roaming_pref_key" translatable="false">buglesub_auto_retrieve_mms_when_roaming</string>
+    <string name="auto_retrieve_mms_when_roaming_pref_summary" translatable="false">Automatically retrieve MMS when roaming</string>
+    <string name="auto_retrieve_mms_when_roaming_pref_title" translatable="false">Roaming auto-retrieve</string>
+    <string name="back" translatable="false">Back</string>
+    <string name="block_confirmation_message" translatable="false">You\'ll continue to receive messages from this number but won\'t be notified anymore. This conversation will be archived.</string>
+    <string name="block_confirmation_title" translatable="false">Block <ns1:g id="destination">%s</ns1:g>?</string>
+    <string name="block_contact_title" translatable="false">Block <ns1:g id="destination">%s</ns1:g></string>
+    <string name="blocked_contacts_title" translatable="false">Blocked contacts</string>
+    <string name="blocked_pref_title" translatable="false">Blocked</string>
+    <string name="blocked_toast_message" translatable="false">Contact blocked &amp; archived</string>
+    <string name="camera_cancel_recording" translatable="false">Stop recording video</string>
+    <string name="camera_error_failure_taking_picture" translatable="false">Can\'t take picture</string>
+    <string name="camera_error_opening" translatable="false">Camera not available</string>
+    <string name="camera_error_storage_fail" translatable="false">Can\'t save media</string>
+    <string name="camera_error_unknown" translatable="false">Camera not available</string>
+    <string name="camera_error_video_init_fail" translatable="false">Video capture not available</string>
+    <string name="camera_media_failure" translatable="false">Couldn\'t load camera image</string>
+    <string name="camera_start_recording" translatable="false">Start recording video</string>
+    <string name="camera_stop_recording" translatable="false">Stop recording and attach video</string>
+    <string name="camera_switch_camera_facing" translatable="false">Switch between front and back camera</string>
+    <string name="camera_switch_full_screen" translatable="false">Switch to full screen camera</string>
+    <string name="camera_switch_to_still_mode" translatable="false">Capture a still image</string>
+    <string name="camera_switch_to_video_mode" translatable="false">Capture video</string>
+    <string name="camera_take_picture" translatable="false">Take picture</string>
+    <string name="cant_send_message_while_loading_attachments" translatable="false">Can\'t send message while loading attachments.</string>
+    <string name="cant_send_message_without_active_subscription" translatable="false">Network is not ready. Try again.</string>
+    <string name="carrier_send_error" translatable="false">Can\'t send message with <ns1:g id="carrierName">%1$s</ns1:g>, error <ns1:g id="errorCode">%2$d</ns1:g></string>
+    <string name="carrier_send_error_unknown_carrier" translatable="false">Can\'t send message with unknown carrier, error <ns1:g id="errorCode">%1$d</ns1:g></string>
+    <string name="chips_delete_content_description" translatable="false">Remove recipient</string>
+    <string name="chips_text_delete_button_content_description" translatable="false">Delete text</string>
+    <string name="class_0_message_activity" translatable="false">Class 0 message</string>
+    <string name="compose_message_view_hint_text" translatable="false">Send message</string>
+    <string name="compose_message_view_hint_text_multi_sim" translatable="false">Send message&lt;br/>&lt;small>from <ns1:g id="sim_name">%s</ns1:g>&lt;/small></string>
+    <string name="compose_message_view_subject_hint_text" translatable="false">Subject</string>
+    <string name="confrim_participants_button_content_description" translatable="false">Confirm participants</string>
+    <string name="contact_list_empty_text" translatable="false">Enter a contact name or phone number to start a new message</string>
+    <string name="contact_list_send_to_text" translatable="false">Send to <ns1:g id="destination">%s</ns1:g></string>
+    <string name="contact_picker_all_contacts_tab_title" translatable="false">All contacts</string>
+    <string name="contact_picker_frequents_tab_title" translatable="false">Frequents</string>
+    <string name="contact_picker_hint_text" translatable="false">Click to open contacts list on this device</string>
+    <string name="content_description_for_number_eight" translatable="false">Eight</string>
+    <string name="content_description_for_number_five" translatable="false">Five</string>
+    <string name="content_description_for_number_four" translatable="false">Four</string>
+    <string name="content_description_for_number_nine" translatable="false">Nine</string>
+    <string name="content_description_for_number_one" translatable="false">One</string>
+    <string name="content_description_for_number_seven" translatable="false">Seven</string>
+    <string name="content_description_for_number_six" translatable="false">Six</string>
+    <string name="content_description_for_number_three" translatable="false">Three</string>
+    <string name="content_description_for_number_two" translatable="false">Two</string>
+    <string name="content_description_for_number_zero" translatable="false">Zero</string>
+    <string name="conversation_creation_failure" translatable="false">Could not start conversation</string>
+    <string name="conversation_deleted" translatable="false">Conversation deleted</string>
+    <string name="conversation_list_empty_text" translatable="false">Once you start a new conversation, you’ll see it listed here</string>
+    <string name="conversation_list_first_sync_text" translatable="false">Loading conversations…</string>
+    <string name="conversation_list_item_view_draft_message" translatable="false">Draft</string>
+    <string name="conversation_list_item_view_sent_from_other_prefix" translatable="false"><ns1:g id="firstNameOfSender">%s</ns1:g>:\u0020</string>
+    <string name="conversation_list_item_view_sent_from_you_prefix" translatable="false">You:\u0020</string>
+    <string name="conversation_list_snippet_audio_clip" translatable="false">Audio clip</string>
+    <string name="conversation_list_snippet_picture" translatable="false">Picture</string>
+    <string name="conversation_list_snippet_vcard" translatable="false">Contact card</string>
+    <string name="conversation_list_snippet_video" translatable="false">Video</string>
+    <string name="conversation_message_view_subject_text" translatable="false">Subject:\u0020</string>
+    <string name="copy_to_clipboard" translatable="false">Copy</string>
+    <string name="copy_to_clipboard_dialog_title" translatable="false">Copy to clipboard?</string>
+    <string name="database_version" translatable="false">2</string>
+    <string name="db_full" translatable="false">Storage space is low. Some data may be lost.</string>
+    <string name="debug_category_pref_title" translatable="false">Debug</string>
+    <string name="debug_pref_key" translatable="false">debug_category</string>
+    <string name="debug_sub_id_spinner_text" translatable="false">SUB Id</string>
+    <string name="default_sms_app" translatable="false"><ns1:g id="app_name">%s</ns1:g></string>
+    <string name="delete_all_media" translatable="false">Delete all messages with media</string>
+    <string name="delete_all_media_confirmation" translatable="false">Delete all messages with media?</string>
+    <string name="delete_conversation_confirmation_button" translatable="false">Delete</string>
+    <string name="delete_conversation_decline_button" translatable="false">Cancel</string>
+    <string name="delete_message_confirmation_button" translatable="false">Delete</string>
+    <string name="delete_message_confirmation_dialog_text" translatable="false">This action cannot be undone.</string>
+    <string name="delete_message_confirmation_dialog_title" translatable="false">Delete this message?</string>
+    <string name="delete_oldest_messages" translatable="false">Delete messages older than <ns1:g id="duration">%s</ns1:g></string>
+    <string name="delete_oldest_messages_confirmation" translatable="false">Delete messages older than <ns1:g id="duration">%s</ns1:g>?</string>
+    <string name="delete_subject_content_description" translatable="false">Delete subject</string>
+    <string name="delivered_status_content_description" translatable="false">Delivered</string>
+    <string name="delivery_reports_pref_key" translatable="false">buglesub_delivery_reports</string>
+    <string name="delivery_reports_pref_summary" translatable="false">Request a delivery report for each SMS you send</string>
+    <string name="delivery_reports_pref_title" translatable="false">SMS delivery reports</string>
+    <string name="disable_group_mms" translatable="false">Send individual SMS messages to all recipients. Only you will get any replies</string>
+    <string name="disallow_emergency_call" translatable="false">Can\'t make a voice call to emergency services here.</string>
+    <string name="dl_failure_notification" translatable="false">Couldn\'t download message <ns1:g id="subject">%1$s</ns1:g> from <ns1:g id="from">%2$s</ns1:g>.</string>
+    <string name="download_message_failure" translatable="false">Message could not be downloaded</string>
+    <string name="download_message_failure_airplane_mode" translatable="false">Can\'t download messages in Airplane mode</string>
+    <string name="download_message_failure_no_data" translatable="false">Cellular data is turned off. Check your settings.</string>
+    <string name="download_message_success" translatable="false">Message downloaded</string>
+    <string name="dump_mms_pref_key" translatable="false">dump_mms</string>
+    <string name="dump_mms_pref_summary" translatable="false">Dump received MMS raw data into external storage file</string>
+    <string name="dump_mms_pref_title" translatable="false">Dump MMS</string>
+    <string name="dump_sms_pref_key" translatable="false">dump_sms</string>
+    <string name="dump_sms_pref_summary" translatable="false">Dump received SMS raw data into external storage file</string>
+    <string name="dump_sms_pref_title" translatable="false">Dump SMS</string>
+    <string name="ellipsis" translatable="false">...</string>
+    <string name="email_sms_mms_dump_file_chooser_title" translatable="false">Email SMS dump</string>
+    <string name="email_sms_mms_dump_file_subject" translatable="false">SMS dump file</string>
+    <string name="email_sms_mms_from_dump_file_dialog_title" translatable="false">Email dump file</string>
+    <string name="enable_group_mms" translatable="false">Send a single MMS to all recipients</string>
+    <string name="enable_permission_procedure" translatable="false">You can change permissions in Settings > Apps > Messaging > Permissions.</string>
+    <string name="enable_permission_procedure_description" translatable="false">You can change permissions in Settings, Apps, Messaging, Permissions.</string>
+    <string name="enter_phone_number_hint" translatable="false">Phone number</string>
+    <string name="enter_phone_number_text" translatable="false">This one-time step will ensure Messaging will deliver your group messages properly.</string>
+    <string name="enter_phone_number_title" translatable="false">Confirm your phone number</string>
+    <string name="enumeration_comma" translatable="false">,\u0020</string>
+    <string name="error_apn_empty" translatable="false">The APN can\'t be empty.</string>
+    <string name="error_apn_name_empty" translatable="false">The Name field can\'t be empty.</string>
+    <string name="error_mcc_not3" translatable="false">MCC field must be 3 digits.</string>
+    <string name="error_mnc_not23" translatable="false">MNC field must be 2 or 3 digits.</string>
+    <string name="exit" translatable="false">Exit</string>
+    <string name="fail_to_load_attachment" translatable="false">Can\'t load attachment. Try again.</string>
+    <string name="failed_loading_vcard" translatable="false">Couldn\'t load contact card</string>
+    <string name="failed_message_content_description" translatable="false">Failed message. Tap to retry.</string>
+    <string name="forward_message_activity_title" translatable="false">Forward message</string>
+    <string name="from_label" translatable="false">From:\u0020</string>
+    <string name="gallery_checkbox_content_description" translatable="false">Select this item</string>
+    <string name="general_settings" translatable="false">General</string>
+    <string name="general_settings_activity_title" translatable="false">General settings</string>
+    <string name="general_settings_title" translatable="false">General</string>
+    <string name="group_conversation_description" translatable="false">Conversation with <ns1:g id="participants">%s</ns1:g></string>
+    <string name="group_incoming_failed_message_prefix" translatable="false">Failed message from <ns1:g id="sender">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>. <ns1:g id="groupInfo">%4$s</ns1:g>.</string>
+    <string name="group_incoming_successful_message_prefix" translatable="false">Message from <ns1:g id="sender">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>. <ns1:g id="groupInfo">%4$s</ns1:g>.</string>
+    <string name="group_mms_pref_key" translatable="false">buglesub_group_messaging</string>
+    <string name="group_mms_pref_summary" translatable="false">Use MMS to send a single message when there are multiple recipients</string>
+    <string name="group_mms_pref_title" translatable="false">Group messaging</string>
+    <string name="group_outgoing_draft_message_prefix" translatable="false">Unsent message to <ns1:g id="group">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="group_outgoing_failed_message_prefix" translatable="false">Failed message to <ns1:g id="group">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="group_outgoing_sending_message_prefix" translatable="false">Sending message to <ns1:g id="group">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="group_outgoing_successful_message_prefix" translatable="false">Message to <ns1:g id="group">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="help_and_feedback_activity_label" translatable="false">Help</string>
+    <string name="hidden_sender_address" translatable="false">Hidden sender address</string>
+    <string name="ignore" translatable="false">Ignore</string>
+    <string name="in_conversation_notify_new_message_action" translatable="false">View</string>
+    <string name="in_conversation_notify_new_message_text" translatable="false">New message</string>
+    <string name="incoming_message_announcement" translatable="false">Message from <ns1:g id="sender">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>.</string>
+    <string name="incoming_sender_content_description" translatable="false">Message from <ns1:g id="sender">%s</ns1:g></string>
+    <string name="incoming_sim_name_text" translatable="false">to <ns1:g id="sim_name">%s</ns1:g></string>
+    <string name="incoming_text_sender_content_description" translatable="false"><ns1:g id="sender">%s</ns1:g> said</string>
+    <string name="invalid_destination" translatable="false">Can\'t send. Recipient not valid.</string>
+    <string name="link_display_format" translatable="false"><ns1:g id="text">%1$s</ns1:g> (<ns1:g id="url">%2$s</ns1:g>)</string>
+    <string name="load_sms_mms_from_dump_file_dialog_title" translatable="false">Load dump file</string>
+    <string name="loading_conversations" translatable="false">Loading conversations</string>
+    <string name="loading_messages" translatable="false">Loading messages</string>
+    <string name="loading_vcard" translatable="false">Loading contact card</string>
+    <string name="low_memory" translatable="false">Couldn\'t complete database operation due to low memory</string>
+    <string name="mediapicker_audioChooserDescription" translatable="false">Record audio</string>
+    <string name="mediapicker_audio_title" translatable="false">Record audio</string>
+    <string name="mediapicker_cameraChooserDescription" translatable="false">Capture pictures or video</string>
+    <string name="mediapicker_contactChooserDescription" translatable="false">Choose a contact from this device</string>
+    <string name="mediapicker_contact_title" translatable="false">Choose a contact</string>
+    <string name="mediapicker_galleryChooserDescription" translatable="false">Choose images from this device</string>
+    <string name="mediapicker_gallery_image_item_description" translatable="false">image <ns1:g id="date">%1$tB %1$te %1$tY %1$tl %1$tM %1$tp</ns1:g></string>
+    <string name="mediapicker_gallery_image_item_description_no_date" translatable="false">image</string>
+    <string name="mediapicker_gallery_item_selected_content_description" translatable="false">The media is selected.</string>
+    <string name="mediapicker_gallery_item_unselected_content_description" translatable="false">The media is unselected.</string>
+    <string name="mediapicker_gallery_title" translatable="false">Choose media</string>
+    <string name="mediapicker_gallery_title_selection" translatable="false"><ns1:g id="count">%d</ns1:g> selected</string>
+    <string name="menu_delete_apn" translatable="false">Delete APN</string>
+    <string name="menu_discard_apn_change" translatable="false">Discard</string>
+    <string name="menu_license" translatable="false">Open source licenses</string>
+    <string name="menu_new" translatable="false">New APN</string>
+    <string name="menu_new_apn" translatable="false">New APN</string>
+    <string name="menu_restore_default_apn" translatable="false">Reset to default</string>
+    <string name="menu_save_apn" translatable="false">Save</string>
+    <string name="menu_send_feedback" translatable="false">Send feedback</string>
+    <string name="menu_version_info" translatable="false">Version info</string>
+    <string name="menu_view_in_store" translatable="false">View in Google Play Store</string>
+    <string name="message_context_menu_copy_text" translatable="false">Copy text</string>
+    <string name="message_context_menu_delete_message" translatable="false">Delete</string>
+    <string name="message_context_menu_forward_message" translatable="false">Forward</string>
+    <string name="message_context_menu_title" translatable="false">Message options</string>
+    <string name="message_context_menu_view_details" translatable="false">View details</string>
+    <string name="message_details_title" translatable="false">Message details</string>
+    <string name="message_fwd" translatable="false">Fwd: <ns1:g id="subject">%s</ns1:g></string>
+    <string name="message_image_content_description" translatable="false">Image</string>
+    <string name="message_size_label" translatable="false">Size:\u0020</string>
+    <string name="message_status_download" translatable="false">Tap to download</string>
+    <string name="message_status_download_action" translatable="false">Download or delete</string>
+    <string name="message_status_download_error" translatable="false">Message expired or not available</string>
+    <string name="message_status_download_failed" translatable="false">Tap to try again</string>
+    <string name="message_status_downloading" translatable="false">Downloading…</string>
+    <string name="message_status_failed" translatable="false">Failed</string>
+    <string name="message_status_resend" translatable="false">Resend or delete</string>
+    <string name="message_status_send_failed" translatable="false">Not sent. Tap to try again.</string>
+    <string name="message_status_send_failed_emergency_number" translatable="false">Please make a voice call to emergency services. Your text message could not be delivered at this time.</string>
+    <string name="message_status_send_retrying" translatable="false">Not sent. Trying again…</string>
+    <string name="message_status_sending" translatable="false">Sending…</string>
+    <string name="message_title_download_failed" translatable="false">Couldn\'t download</string>
+    <string name="message_title_downloading" translatable="false">New MMS message</string>
+    <string name="message_title_manual_download" translatable="false">New MMS message to download</string>
+    <string name="message_type_label" translatable="false">Type:\u0020</string>
+    <string name="mms_attachment_limit_reached" translatable="false">Attachment limit reached</string>
+    <string name="mms_attachment_load_failed" translatable="false">Failed to load attachment.</string>
+    <string name="mms_failure_outgoing_address" translatable="false">Message not sent: invalid destination address</string>
+    <string name="mms_failure_outgoing_content" translatable="false">Message not sent: unsupported content</string>
+    <string name="mms_failure_outgoing_corrupt" translatable="false">Message not sent: invalid message</string>
+    <string name="mms_failure_outgoing_service" translatable="false">Message not sent: service not activated on network</string>
+    <string name="mms_failure_outgoing_too_large" translatable="false">Message not sent: too large</string>
+    <string name="mms_failure_outgoing_unsupported" translatable="false">Message not sent: unsupported message</string>
+    <string name="mms_info" translatable="false">size: <ns1:g id="messageSize">%1$s</ns1:g>, expiration: <ns1:g id="messageExpire">%2$s</ns1:g></string>
+    <string name="mms_messaging_category_pref_key" translatable="false">mms_messaging_category</string>
+    <string name="mms_messaging_category_pref_title" translatable="false">MMS</string>
+    <string name="mms_phone_number_pref_key" translatable="false">buglesub_mms_phone_number</string>
+    <string name="mms_phone_number_pref_title" translatable="false">Your phone number</string>
+    <string name="mms_text" translatable="false">MMS</string>
+    <string name="multimedia_message" translatable="false">Multimedia message</string>
+    <string name="new_file_name_format" translatable="false">"yyyyMMdd_HHmmss"</string>
+    <string name="new_image_file_name_format" translatable="false">"'IMG'_yyyyMMdd_HHmmss"</string>
+    <string name="next" translatable="false">Next</string>
+    <string name="next_with_arrow" translatable="false">Next ></string>
+    <string name="no_preferred_sim_selected" translatable="false">No preferred SIM selected for sending SMS messages</string>
+    <string name="no_subject" translatable="false">(No subject)</string>
+    <string name="notification_audio" translatable="false">Audio clip</string>
+    <string name="notification_download_failures_line1_plural" translatable="false">Some messages not downloaded in Messaging</string>
+    <string name="notification_download_failures_line1_singular" translatable="false">Message not downloaded</string>
+    <string name="notification_download_mms" translatable="false">Download</string>
+    <string name="notification_emergency_send_failure_line1" translatable="false">Message to <ns1:g id="number">%1$s</ns1:g> not sent</string>
+    <string name="notification_emergency_send_failure_line2" translatable="false">
+        Please make a voice call to emergency services. Your text message to
+        <ns1:g id="number">%1$s</ns1:g> could not be delivered at this time.
+    </string>
+    <string name="notification_off_toast_message" translatable="false">Notifications turned off</string>
+    <string name="notification_on_toast_message" translatable="false">Notifications turned on</string>
+    <string name="notification_picture" translatable="false">Picture</string>
+    <string name="notification_reply_prompt" translatable="false">Reply</string>
+    <string name="notification_reply_via_mms" translatable="false">Reply via MMS</string>
+    <string name="notification_reply_via_sms" translatable="false">Reply via SMS</string>
+    <string name="notification_send_failures_line1_plural" translatable="false">Some messages not sent in Messaging</string>
+    <string name="notification_send_failures_line1_singular" translatable="false">Message not sent</string>
+    <string name="notification_separator" translatable="false">\u0020\u0020</string>
+    <string name="notification_sound_pref_key" translatable="false">notification_sound</string>
+    <string name="notification_sound_pref_title" translatable="false">Sound</string>
+    <string name="notification_space_separator" translatable="false">\u0020\u0020</string>
+    <string name="notification_subject" translatable="false"><ns1:g id="subject_label">%1$s</ns1:g><ns1:g id="messageText">%2$s</ns1:g></string>
+    <string name="notification_ticker_separator" translatable="false">:\u0020</string>
+    <string name="notification_vcard" translatable="false">Contact card</string>
+    <string name="notification_vibrate_pref_title" translatable="false">Vibrate</string>
+    <string name="notification_vibration_pref_key" translatable="false">notification_vibration</string>
+    <string name="notification_video" translatable="false">Video</string>
+    <string name="notifications_category_pref_key" translatable="false">notifications_category</string>
+    <string name="notifications_enabled_conversation_pref_title" translatable="false">Notifications</string>
+    <string name="notifications_enabled_pref_key" translatable="false">notifications_enabled</string>
+    <string name="notifications_enabled_pref_title" translatable="false">Notifications</string>
+    <string name="notifications_group_children_key" translatable="false">notifications_group_children</string>
+    <string name="numeric_text_keyboard_toggle_button_content_description" translatable="false">Switch between entering text and numbers</string>
+    <string name="one_on_one_incoming_failed_message_prefix" translatable="false">Failed message from <ns1:g id="sender">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="one_on_one_incoming_successful_message_prefix" translatable="false">Message from <ns1:g id="sender">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="one_on_one_outgoing_draft_message_prefix" translatable="false">Unsent message to <ns1:g id="contact">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="one_on_one_outgoing_failed_message_prefix" translatable="false">Failed message to <ns1:g id="contact">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="one_on_one_outgoing_sending_message_prefix" translatable="false">Sending message to <ns1:g id="contact">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="one_on_one_outgoing_successful_message_prefix" translatable="false">Message to <ns1:g id="contact">%1$s</ns1:g>: <ns1:g id="message">%2$s</ns1:g>. Time: <ns1:g id="time">%3$s</ns1:g>.</string>
+    <string name="outgoing_sender_content_description" translatable="false">You sent a message</string>
+    <string name="outgoing_text_sender_content_description" translatable="false">You said</string>
+    <string name="participant_list_title" translatable="false">People in this conversation</string>
+    <string name="people_and_options_activity_title" translatable="false">People &amp; options</string>
+    <string name="photo_view_activity_title" translatable="false">Messaging photos</string>
+    <string name="pick_image_from_document_library_content_description" translatable="false">Choose image from document library</string>
+    <string name="plus_n" translatable="false">+%d</string>
+    <string name="plus_one" translatable="false">+1</string>
+    <string name="posted_just_now" translatable="false">"Just now"</string>
+    <string name="posted_now" translatable="false">"Now"</string>
+    <string name="pref_version" translatable="false">1</string>
+    <string name="priority_high" translatable="false">High</string>
+    <string name="priority_label" translatable="false">Priority:\u0020</string>
+    <string name="priority_low" translatable="false">Low</string>
+    <string name="priority_normal" translatable="false">Normal</string>
+    <string name="received_label" translatable="false">Received:\u0020</string>
+    <string name="recipient_hint" translatable="false">To</string>
+    <string name="recommend_set_default_sms_app" translatable="false">To receive messages, set Messaging as the default SMS app</string>
+    <string name="reply_activity_title" translatable="false">Reply</string>
+    <string name="required_permissions_promo" translatable="false">Messaging needs permission to SMS, Phone and Contacts.</string>
+    <string name="requires_default_sms_app" translatable="false">Set Messaging as the default SMS app</string>
+    <string name="requires_default_sms_app_to_send" translatable="false">To send, set Messaging as the default SMS app</string>
+    <string name="requires_default_sms_change_button" translatable="false">Change</string>
+    <string name="requires_sms_permissions_close_button" translatable="false">OK</string>
+    <string name="requires_sms_permissions_message" translatable="false">This app isn\'t allowed by the device owner.</string>
+    <string name="restore_default_apn" translatable="false">Restoring default APN settings.</string>
+    <string name="restore_default_apn_completed" translatable="false">Reset default APN settings completed.</string>
+    <string name="save" translatable="false">Save</string>
+    <string name="secondary_user_new_message_ticker" translatable="false">New message.</string>
+    <string name="secondary_user_new_message_title" translatable="false">New message</string>
+    <string name="selected_sim_content_message" translatable="false"><ns1:g id="selected_sim">%s</ns1:g> selected</string>
+    <string name="sendButtonContentDescription" translatable="false">Send Message</string>
+    <string name="send_button_long_click_description_no_sim_selector" translatable="false">Edit subject</string>
+    <string name="send_button_long_click_description_with_sim_selector" translatable="false">Select SIM or edit subject</string>
+    <string name="send_message_failure" translatable="false">Message could not be sent</string>
+    <string name="send_message_failure_airplane_mode" translatable="false">Can\'t send messages in Airplane mode</string>
+    <string name="send_message_failure_no_data" translatable="false">Cellular data is turned off. Check your settings.</string>
+    <string name="send_message_success" translatable="false">Message sent</string>
+    <string name="send_sound_pref_key" translatable="false">send_sound</string>
+    <string name="send_sound_pref_title" translatable="false">Outgoing message sounds</string>
+    <string name="sending_message" translatable="false">Sending message</string>
+    <string name="sent_label" translatable="false">Sent:\u0020</string>
+    <string name="service_message_not_found" translatable="false">Message expired or not available</string>
+    <string name="service_network_problem" translatable="false">Couldn\'t send due to network problem</string>
+    <string name="service_not_activated" translatable="false">Service not activated on network</string>
+    <string name="settings" translatable="false">Settings</string>
+    <string name="settings_activity_title" translatable="false">Settings</string>
+    <string name="settings_with_arrow" translatable="false">Settings ></string>
+    <string name="share_cancel" translatable="false">Cancel</string>
+    <string name="share_intent_activity_label" translatable="false">Select conversation</string>
+    <string name="share_intent_label" translatable="false">Messaging</string>
+    <string name="share_new_message" translatable="false">New message</string>
+    <string name="silent_ringtone" translatable="false">Silent</string>
+    <string name="sim_label" translatable="false">SIM:\u0020</string>
+    <string name="sim_selector_button_content_description" translatable="false">SIM selector</string>
+    <string name="sim_selector_button_content_description_with_selection" translatable="false"><ns1:g id="sim">%1$s</ns1:g> selected, SIM selector</string>
+    <string name="sim_settings_unknown_number" translatable="false">Unknown number</string>
+    <string name="sim_slot_identifier" translatable="false">SIM <ns1:g id="sim_slot_number">%s</ns1:g></string>
+    <string name="sim_specific_settings" translatable="false">\"<ns1:g id="sim_name">%s</ns1:g>\" SIM</string>
+    <string name="skip" translatable="false">Skip</string>
+    <string name="sms_apns_key" translatable="false">sms_apns_key</string>
+    <string name="sms_apns_title" translatable="false">Access Point Names</string>
+    <string name="sms_disabled" translatable="false">SMS disabled</string>
+    <string name="sms_disabled_pref_key" translatable="false">sms_disabled</string>
+    <string name="sms_disabled_pref_title" translatable="false">Default SMS app</string>
+    <string name="sms_enabled_pref_key" translatable="false">sms_enabled</string>
+    <string name="sms_enabled_pref_title" translatable="false">Default SMS app</string>
+    <string name="sms_storage_low_auto_delete_enabled_dialog_text" translatable="false">Device is low on space. Messaging will automatically delete older messages to free up space.</string>
+    <string name="sms_storage_low_notification_ticker" translatable="false">Low SMS storage. You may need to delete messages.</string>
+    <string name="sms_storage_low_text" translatable="false">Messaging might not send or receive messages until more space is available on your device.</string>
+    <string name="sms_storage_low_title" translatable="false">Storage space running out</string>
+    <string name="snack_bar_retry" translatable="false">Retry</string>
+    <string name="snack_bar_undo" translatable="false">Undo</string>
+    <string name="start_conversation" translatable="false">Start</string>
+    <string name="start_new_conversation" translatable="false">Start new conversation</string>
+    <string name="subject_label" translatable="false">Subject:\u0020</string>
+    <string name="subtitle_format_for_version_number" translatable="false">Version %1$s</string>
+    <string name="tap_to_configure" translatable="false">Conversation deleted. Tap to show a different Messaging conversation</string>
+    <string name="tap_to_unblock_message" translatable="false">UNBLOCK</string>
+    <string name="text_message" translatable="false">Text message</string>
+    <string name="to_address_label" translatable="false">To:\u0020</string>
+    <string name="toast_after_setting_default_sms_app" translatable="false">Messaging successfully set as the default SMS app.</string>
+    <string name="toast_after_setting_default_sms_app_for_message_send" translatable="false">All set. Tap Send again.</string>
+    <string name="too_many_participants" translatable="false">Too many participants in a conversation</string>
+    <string name="unarchived_toast_message" translatable="false"><ns1:g id="count">%d</ns1:g> unarchived</string>
+    <string name="unblock_contact_title" translatable="false">Unblock <ns1:g id="destination">%s</ns1:g></string>
+    <string name="unblocked_toast_message" translatable="false">Contact unblocked &amp; unarchived</string>
+    <string name="unknown_phone_number_pref_display_value" translatable="false">Unknown</string>
+    <string name="unknown_self_participant" translatable="false">Me</string>
+    <string name="unknown_sender" translatable="false">Unknown sender</string>
+    <string name="untitled_apn" translatable="false">Untitled</string>
+    <string name="update_destination_blocked" translatable="false">Blocked</string>
+    <string name="update_destination_unblocked" translatable="false">Unblocked</string>
+    <string name="use_local_apn_pref_key" translatable="false">use_local_apn_pref_key</string>
+    <string name="vcard_detail_activity_title" translatable="false">Contact cards</string>
+    <string name="vcard_detail_birthday_label" translatable="false">Birthday</string>
+    <string name="vcard_detail_notes_label" translatable="false">Notes</string>
+    <string name="vcard_tap_hint" translatable="false">View contact card</string>
+    <string name="video_attachment_limit_exceeded_when_sending" translatable="false">You can only send one video per message.  Please remove additional videos and try again.</string>
+    <string name="video_thumbnail_view_play_button_content_description" translatable="false">Play video</string>
+    <string name="view_blocked_contacts_title" translatable="false">Blocked contacts</string>
+    <string name="view_more_conversations" translatable="false">View more conversations</string>
+    <string name="view_more_messages" translatable="false">View more messages</string>
+    <string name="welcome" translatable="false">Welcome</string>
+    <string name="widget_conversation_list_content_description" translatable="false">Conversation list</string>
+    <string name="widget_conversation_list_name" translatable="false">Messaging List</string>
+    <string name="widget_conversation_name" translatable="false">Messaging</string>
+    <string name="widget_new_conversation_content_description" translatable="false">Start new conversation</string>
+    <string name="widget_new_message_content_description" translatable="false">New message</string>
+    <string name="widget_title_content_description" translatable="false">Messaging</string>
+    <string name="wireless_alerts_key" translatable="false">buglesub_wireless_alerts_key</string>
+    <string name="wireless_alerts_title" translatable="false">Wireless alerts</string>
+    <string name="work_directory_display_name" translatable="false">Work Profile contacts</string>
+    <style name="AddContactConfirmationTextStyle" parent="ParticipantListItem">
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">24dp</item>
+    </style>
+    <style name="ApnPreference">
+        <item name="android:layout">@layout/apn_preference_layout</item>
+    </style>
+    <style name="ApnPreferenceLayoutStyle">
+        <item name="android:paddingLeft">?android:attr/listPreferredItemPaddingStart</item>
+        <item name="android:paddingRight">?android:attr/listPreferredItemPaddingEnd</item>
+    </style>
+    <style name="AttachmentGridItemViewCheckBoxStyle">
+        <item name="android:paddingRight">4dp</item>
+    </style>
+    <style name="AttachmentPreviewAttachmentStyle">
+        <item name="android:layout_marginLeft">10dp</item>
+    </style>
+    <style name="AttachmentPreviewCloseButtonStyle">
+        <item name="android:gravity">left</item>
+    </style>
+    <style name="AttachmentPreviewMoreItemsText">
+        <item name="android:textSize">@dimen/attachment_preview_more_items_text_size</item>
+        <item name="android:textColor">@android:color/white</item>
+    </style>
+    <style name="AudioAttachmentTimerText">
+        <item name="android:textSize">@dimen/audio_attachment_text_size</item>
+        <item name="android:textColor">@color/audio_attachment_timer_text_color</item>
+        <item name="android:layout_marginRight">16dp</item>
+    </style>
+    <style name="AudioAttachmentViewPlayPauseButtonStyle">
+        <item name="android:layout_marginRight">16dp</item>
+    </style>
+    <style name="AudioAttachmentViewStyle">
+        <item name="android:paddingRight">16dp</item>
+        <item name="android:paddingLeft">16dp</item>
+    </style>
+    <style name="AudioPickerHintText">
+        <item name="android:textSize">@dimen/audio_picker_text_size</item>
+        <item name="android:textColor">@color/audio_picker_hint_text_color</item>
+    </style>
+    <style name="AudioPickerTimerText">
+        <item name="android:textSize">@dimen/audio_picker_text_size</item>
+        <item name="android:textColor">@color/audio_picker_timer_text_color</item>
+    </style>
+    <style name="BugleActionBar" parent="@style/Widget.AppCompat.Light.ActionBar.Solid">
+        <item name="height">@dimen/action_bar_height</item>
+        <item name="displayOptions">showTitle</item>
+        <item name="titleTextStyle">@style/BugleActionBarTitleTextStyle</item>
+    </style>
+    <style name="BugleActionBarTitleTextStyle" parent="@style/TextAppearance.AppCompat.Widget.ActionBar.Title">
+      <item name="android:textColor">@color/action_bar_title_text_color</item>
+      <item name="android:textSize">@dimen/action_bar_text_size</item>
+      <item name="android:lines">1</item>
+    </style>
+    <style name="BugleBaseTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        
+    </style>
+    <style name="BuglePhotoViewTheme" parent="PhotoViewTheme.Translucent">
+        <item name="actionModeShareDrawable">@drawable/ic_share_light</item>
+    </style>
+    <style name="BugleTheme" parent="BugleBaseTheme">
+        
+         <item name="android:dropDownListViewStyle">@style/DropDownListViewStyle</item>
+         <item name="colorPrimary">@color/action_bar_background_color</item>
+         <item name="colorPrimaryDark">@color/action_bar_background_color_dark</item>
+         <item name="colorAccent">@color/action_bar_background_color</item>
+         <item name="android:textColorHighlight">@color/text_highlight_color</item>
+         <item name="actionBarStyle">@style/BugleActionBar</item>
+         <item name="apnPreferenceStyle">@style/ApnPreference</item>
+    </style>
+    <style name="BugleTheme.ArchivedConversationListActivity" parent="BugleTheme.ConversationListActivity">
+        <item name="colorPrimary">@color/archived_conversation_action_bar_background_color</item>
+        <item name="colorPrimaryDark">@color/archived_conversation_action_bar_background_color_dark</item>
+    </style>
+    <style name="BugleTheme.ConversationActivity" parent="@style/BugleTheme.ConversationActivityBase">
+    </style>
+    <style name="BugleTheme.ConversationActivityBase" parent="BugleTheme">
+        <item name="android:windowBackground">@color/conversation_background</item>
+        <item name="windowActionBarOverlay">true</item>
+        <item name="android:fastScrollPreviewBackgroundLeft">@drawable/contacts_fastscroll_label_left</item>
+        <item name="android:fastScrollPreviewBackgroundRight">@drawable/contacts_fastscroll_label_right</item>
+    </style>
+    <style name="BugleTheme.ConversationListActivity" parent="BugleTheme">
+        <item name="android:windowBackground">@android:color/background_light</item>
+    </style>
+    <style name="BugleTheme.DialogActivity" parent="@style/Theme.AppCompat.Light.Dialog">
+    </style>
+    <style name="BugleTheme.SettingsActivity" parent="BugleTheme">
+        <item name="android:textSize">@dimen/settings_list_text_size</item>
+    </style>
+    <style name="CameraChooserFrameStyle">
+        <item name="android:paddingLeft">16dp</item>
+    </style>
+    <style name="ChipDeleteIconStyle">
+        <item name="android:paddingLeft">8dp</item>
+    </style>
+    <style name="ChipIconStyle">
+        <item name="android:layout_marginRight">12dp</item>
+    </style>
+    <style name="ColorAccentBlueOverrideStyle">
+        <item name="colorAccent">@color/action_bar_background_color</item>
+    </style>
+    <style name="ColorAccentGrayOverrideStyle">
+        <item name="colorAccent">@color/search_view_text_cursor</item>
+    </style>
+    <style name="ComposeMessageViewAttachMediaButtonStyle">
+        <item name="android:paddingLeft">@dimen/compose_message_attachment_padding_sides</item>
+        <item name="android:paddingRight">@dimen/compose_message_attachment_padding_sides</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
+    <style name="ComposeMessageViewDraftViewStyle">
+        <item name="android:layout_marginLeft">53dp</item>
+        <item name="android:layout_marginRight">63dp</item>
+    </style>
+    <style name="ComposeMessageViewFrameLayoutStyle">
+        <item name="android:paddingRight">@dimen/compose_message_send_button_padding_right</item>
+    </style>
+    <style name="ComposeMessageViewMessageBodySizeStyle">
+        <item name="android:textColor">@color/message_body_size_text_color</item>
+        <item name="android:textSize">@dimen/message_body_size_text_size</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:layout_gravity">right|center_vertical</item>
+        <item name="android:paddingRight">@dimen/compose_message_text_box_padding_side</item>
+    </style>
+    <style name="ContactListAlphabetHeader">
+        <item name="android:textSize">@dimen/contact_list_alphabet_header_text_size</item>
+        <item name="android:textColor">@color/contact_list_alphabet_header</item>
+    </style>
+    <style name="ContactListItem">
+        <item name="android:textSize">@dimen/contact_list_text_size</item>
+        <item name="android:textColor">@color/contact_list_text_primary</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="ContactListItemDetail">
+        <item name="android:textSize">@dimen/contact_list_detail_text_size</item>
+        <item name="android:textColor">@color/contact_list_text_secondary</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="ContactListItemDetailType" parent="ContactListItemDetail">
+        <item name="android:paddingLeft">12dp</item>
+    </style>
+    <style name="ContactListItemDrawableIndicator">
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
+    <style name="ContactListItemLinearLayoutStyle">
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">24dp</item>
+    </style>
+    <style name="ContactListItemViewStyle">
+        <item name="android:paddingLeft">16dp</item>
+    </style>
+    <style name="ContactPickerHintText">
+        <item name="android:textSize">@dimen/contact_picker_text_size</item>
+        <item name="android:textColor">@color/contact_picker_hint_text_color</item>
+    </style>
+    <style name="ConversationActionBarTitleTextStyle" parent="BugleActionBarTitleTextStyle">
+      <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
+    <style name="ConversationComposeSendText">
+        <item name="android:textColor">@color/compose_send_text_color</item>
+        <item name="android:singleLine">false</item>
+        <item name="android:textSize">@dimen/conversation_compose_send_text_size</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:paddingLeft">@dimen/compose_message_text_box_padding_side</item>
+        <item name="android:paddingRight">@dimen/compose_message_text_box_padding_side</item>
+        <item name="android:minHeight">@dimen/conversation_message_contact_icon_size</item>
+        <item name="android:maxLines">4</item>
+        <item name="android:background">@null</item>
+        <item name="android:scrollHorizontally">false</item>
+        <item name="android:textCursorDrawable">@null</item>
+        <item name="android:inputType">textShortMessage|textAutoCorrect|textCapSentences|textMultiLine</item>
+    </style>
+    <style name="ConversationComposeSubjectText" parent="ConversationComposeSendText">
+        <item name="android:paddingLeft">18dp</item>
+        <item name="android:layout_marginLeft">@dimen/compose_message_subject_cancel_left_margin</item>
+    </style>
+    <style name="ConversationListFragmentStartNewButtonStyle">
+        <item name="android:layout_marginRight">@dimen/fab_left_right_margin</item>
+    </style>
+    <style name="ConversationListItemViewConversationNameStyle" parent="ConversationListItemViewTextStyle">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/conversation_list_name</item>
+    </style>
+    <style name="ConversationListItemViewPaddingStyle">
+        <item name="android:paddingLeft">@dimen/conversation_list_item_view_padding</item>
+        <item name="android:paddingRight">@dimen/conversation_list_item_view_padding</item>
+    </style>
+    <style name="ConversationListItemViewTextStyle">
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:background">@null</item>
+        <item name="android:textColor">@color/conversation_list_details</item>
+    </style>
+    <style name="ConversationListNotificationBellPaddingStyle">
+        <item name="android:paddingRight">@dimen/conversation_list_notification_bell_padding</item>
+    </style>
+    <style name="ConversationMessage" parent="ConversationMessageText">
+        <item name="android:textSize">@dimen/conversation_message_text_size</item>
+        <item name="android:textColor">@color/message_text</item>
+    </style>
+    <style name="ConversationMessageInfo" parent="ConversationMessageText">
+        <item name="android:textSize">@dimen/conversation_info_text_size</item>
+        <item name="android:textColor">@color/message_info_text</item>
+    </style>
+    <style name="ConversationMessageStatus" parent="ConversationMessageText">
+        <item name="android:textSize">@dimen/conversation_status_text_size</item>
+    </style>
+    <style name="ConversationMessageText">
+        <item name="android:background">@null</item>
+    </style>
+    <style name="ConversationMessageTitle" parent="ConversationMessageText">
+        <item name="android:textSize">@dimen/conversation_title_text_size</item>
+        <item name="android:background">@null</item>
+        <item name="android:textColor">@color/message_title_text</item>
+    </style>
+    <style name="ConversationMessageViewStyle">
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+    </style>
+    <style name="CopyContactDialogTextStyle" parent="ParticipantListItem">
+        <item name="android:paddingLeft">@dimen/copy_contact_dialog_left_padding</item>
+        <item name="android:paddingRight">@dimen/copy_contact_dialog_right_padding</item>
+    </style>
+    <style name="DebugMmsConfigItemStyle">
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">16dp</item>
+    </style>
+    <style name="DirectoryHeaderStyle">
+        <item name="android:paddingLeft">@dimen/directory_header_padding_start</item>
+        <item name="android:paddingStart">@dimen/directory_header_padding_start</item>
+        <item name="android:paddingRight">@dimen/directory_header_padding_end</item>
+        <item name="android:paddingEnd">@dimen/directory_header_padding_end</item>
+        <item name="android:paddingTop">@dimen/directory_header_padding_top</item>
+        <item name="android:paddingBottom">@dimen/directory_header_padding_bottom</item>
+        <item name="android:textSize">@dimen/directory_header_text_size</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="DropDownListViewStyle" parent="Widget.AppCompat.ListView.DropDown">
+      <item name="android:dividerHeight">0dp</item>
+    </style>
+    <style name="GalleryGridItemViewCheckBoxStyle">
+        <item name="android:paddingRight">22dp</item>
+    </style>
+    <style name="GroupMmsSettingItem">
+        <item name="android:textSize">@dimen/group_mms_setting_text_size</item>
+        <item name="android:textColor">@color/group_mms_setting_text_color</item>
+        <item name="android:layout_marginLeft">20dp</item>
+        <item name="android:layout_marginRight">20dp</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:paddingLeft">10dp</item>
+        <item name="android:paddingRight">10dp</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
+    <style name="Invisible" parent="BugleBaseTheme">
+        <item name="android:windowBackground">@null</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowNoDisplay">true</item>
+    </style>
+    <style name="ListEmptyText">
+        <item name="android:textSize">@dimen/list_empty_text_size</item>
+        <item name="android:textColor">@color/list_empty_text</item>
+    </style>
+    <style name="LowStorageActionItemStyle">
+        <item name="android:textColor">@color/low_storage_action_item_color</item>
+        <item name="android:textSize">@dimen/low_storage_action_item_text_size</item>
+        <item name="android:singleLine">false</item>
+    </style>
+    <style name="MessageSimIndicator">
+        <item name="android:textSize">@dimen/conversation_status_text_size</item>
+        <item name="android:layout_marginLeft">4dp</item>
+    </style>
+    <style name="MessageVcardAttachmentStyle">
+        <item name="android:paddingRight">@dimen/message_text_left_right_padding</item>
+        <item name="android:paddingLeft">@dimen/message_text_left_right_padding</item>
+    </style>
+    <style name="MmsIndicatorStyle">
+        <item name="android:textColor">@color/mms_indicator_color</item>
+        <item name="android:textSize">@dimen/mms_indicator_size</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:background">@null</item>
+        <item name="android:paddingRight">@dimen/compose_message_send_button_padding_right</item>
+        <item name="android:paddingTop">@dimen/compose_message_mms_indicator_padding_top</item>
+        <item name="android:layout_gravity">center_horizontal</item>
+    </style>
+    <style name="NotificationSecondaryText">
+        <item name="android:textColor">@color/notification_secondary_text</item>
+    </style>
+    <style name="NotificationSenderText">
+        <item name="android:textColor">@color/notification_sender_text</item>
+    </style>
+    <style name="NotificationSubjectText">
+        <item name="android:textColor">@color/notification_subject_color</item>
+    </style>
+    <style name="NotificationTertiaryText">
+        <item name="android:textColor">@color/notification_tertiary_text</item>
+    </style>
+    <style name="PagerTabHeader">
+        <item name="android:textColor">@color/tab_text_color</item>
+        <item name="android:textSize">@dimen/pager_tab_header_text_size</item>
+        <item name="android:background">@null</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="ParticipantListItem">
+        <item name="android:textSize">@dimen/participant_list_text_size</item>
+        <item name="android:textColor">@color/participant_list_text_primary</item>
+        <item name="android:background">@null</item>
+        <item name="android:layout_gravity">left|center_vertical</item>
+    </style>
+    <style name="ParticipantListItemDetail">
+        <item name="android:textSize">@dimen/participant_list_detail_text_size</item>
+        <item name="android:textColor">@color/participant_list_text_secondary</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="PeopleAndOptionsItemStyle">
+        <item name="android:paddingRight">16dp</item>
+        <item name="android:paddingLeft">16dp</item>
+    </style>
+    <style name="PeopleAndOptionsSectionHeader">
+        <item name="android:textSize">@dimen/people_and_options_header_text_size</item>
+        <item name="android:textColor">@color/people_and_options_header_text</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="PeopleListItemViewStyle">
+        <item name="android:paddingLeft">16dp</item>
+    </style>
+    <style name="PromoScreenButtonStyle">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">roboto-medium</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:gravity">center</item>
+    </style>
+    <style name="PromoScreenTextStyle">
+        <item name="android:paddingLeft">40dp</item>
+        <item name="android:paddingRight">40dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:fontFamily">roboto-regular</item>
+    </style>
+    <style name="PromoScreenTextStyle.CenterAligned">
+        <item name="android:textAlignment">center</item>
+    </style>
+    <style name="RecipientEditTextView">
+        <item name="android:textSize">@dimen/recipient_edit_text_size</item>
+        <item name="android:textColor">@color/compose_contact_text</item>
+        <item name="android:textColorHint">@color/compose_contact_faint_text</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:paddingLeft">4dp</item>
+        <item name="android:paddingRight">4dp</item>
+    </style>
+    <style name="SettingsListItem">
+        <item name="android:textSize">@dimen/settings_list_text_size</item>
+        <item name="android:textColor">@color/settings_list_text_primary</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="SettingsListItemDetail">
+        <item name="android:textSize">@dimen/settings_list_detail_text_size</item>
+        <item name="android:textColor">@color/settings_list_text_secondary</item>
+        <item name="android:background">@null</item>
+    </style>
+    <style name="SimSelectorItem">
+        <item name="android:textSize">@dimen/sim_selector_text_size</item>
+        <item name="android:textColor">@color/sim_selector_text_primary</item>
+        <item name="android:background">@null</item>
+        <item name="android:layout_gravity">right</item>
+    </style>
+    <style name="SimSelectorItemDetail">
+        <item name="android:textSize">@dimen/sim_selector_detail_text_size</item>
+        <item name="android:textColor">@color/sim_selector_text_secondary</item>
+        <item name="android:background">@null</item>
+        <item name="android:layout_gravity">right</item>
+    </style>
+    <style name="SimSelectorItemLinearLayoutStyle">
+        <item name="android:paddingRight">12dp</item>
+    </style>
+    <style name="SmsDeliverdBadge">
+        <item name="android:layout_marginLeft">4dp</item>
+    </style>
+    <style name="SnackBarMessageWrapper">
+        <item name="android:layout_marginLeft">@dimen/snack_bar_left_right_margin</item>
+        <item name="android:layout_marginRight">0dp</item>
+    </style>
+    <style name="SnackBarText">
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+    <style name="SubjectViewStyle">
+        <item name="android:paddingLeft">@dimen/compose_message_subject_left_padding</item>
+        <item name="android:paddingRight">@dimen/compose_message_subject_right_padding</item>
+    </style>
+    <style name="Translucent" parent="BugleBaseTheme">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+    <style name="VcardAttachmentSingleStyle">
+        <item name="android:paddingRight">@dimen/message_text_left_right_padding</item>
+        <item name="android:paddingLeft">@dimen/message_text_left_right_padding</item>
+    </style>
+    <style name="WidgetConversationAppIcon" parent="WidgetHeaderImage">
+        <item name="android:layout_marginLeft">-20dp</item>
+    </style>
+    <style name="WidgetConversationItemAttachment">
+        <item name="android:layout_gravity">bottom|right</item>
+    </style>
+    <style name="WidgetConversationItemAvatarIncoming">
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:layout_alignParentStart">true</item>
+    </style>
+    <style name="WidgetConversationItemAvatarOutgoing">
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:layout_alignParentRight">true</item>
+    </style>
+    <style name="WidgetConversationItemBodyIncoming">
+        <item name="android:layout_toRightOf">@id/avatarFrame</item>
+    </style>
+    <style name="WidgetConversationItemBodyOutgoing">
+        <item name="android:layout_toLeftOf">@id/avatarFrame</item>
+    </style>
+    <style name="WidgetConversationItemDate">
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:layout_marginLeft">5dp</item>
+        <item name="android:layout_alignParentLeft">true</item>
+    </style>
+    <style name="WidgetConversationItemFailed">
+        <item name="android:layout_gravity">bottom|right</item>
+    </style>
+    <style name="WidgetConversationItemIncoming">
+        <item name="android:layout_marginRight">5dp</item>
+        <item name="android:layout_alignParentLeft">true</item>
+        <item name="android:layout_toLeftOf">@id/date</item>
+    </style>
+    <style name="WidgetConversationItemIncomingAvatarShadow">
+        <item name="android:layout_marginLeft">4dp</item>
+    </style>
+    <style name="WidgetConversationItemOutgoingAvatarShadow">
+        <item name="android:layout_marginLeft">-4dp</item>
+    </style>
+    <style name="WidgetConversationItemWidget">
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:layout_marginLeft">5dp</item>
+        <item name="android:layout_alignParentLeft">true</item>
+    </style>
+    <style name="WidgetConversationListItemAvatar">
+        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:layout_alignParentStart">true</item>
+    </style>
+    <style name="WidgetConversationListItemBody">
+        <item name="android:layout_toRightOf">@id/avatarFrame</item>
+    </style>
+    <style name="WidgetConversationListItemDate">
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:layout_marginLeft">5dp</item>
+        <item name="android:layout_gravity">right</item>
+    </style>
+    <style name="WidgetConversationListItemFrom">
+        <item name="android:layout_marginRight">5dp</item>
+        <item name="android:layout_alignParentLeft">true</item>
+    </style>
+    <style name="WidgetConversationListItemStyle">
+        <item name="android:layout_height">80dp</item>
+    </style>
+    <style name="WidgetConversationTitle" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title">
+        <item name="android:textColor">@color/widget_conversation_title_color</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:layout_marginRight">8dp</item>
+        <item name="android:textSize">@dimen/widget_conversation_title_size</item>
+        <item name="android:shadowColor">#000000</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">2</item>
+        <item name="android:shadowRadius">1</item>
+    </style>
+    <style name="WidgetHeaderImage">
+        <item name="android:paddingStart">4dip</item>
+    </style>
+    <style name="WidgetLoading">
+        <item name="android:layout_marginLeft">16dp</item>
+    </style>
+    <style name="WidgetTitle" parent="@android:style/TextAppearance.Holo.Widget.ActionBar.Title">
+        <item name="android:textColor">@color/action_bar_title_text_color</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:layout_marginEnd">8dp</item>
+    </style>
+    <style name="appCopyrightStyle">
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <style name="appTitleStyle">
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <style name="appVersionStyle">
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <declare-styleable name="AsyncImageView">
+        <attr format="boolean" name="fadeIn"/>
+        <attr format="reference" name="placeholderDrawable"/>
+        <attr format="dimension|reference" name="cornerRadius"/>
+        <attr format="boolean" name="reveal"/>
+    </declare-styleable>
+    <declare-styleable name="AudioAttachmentView">
+        <attr format="integer" name="layoutMode">
+            <enum name="normal" value="0"/>
+            <enum name="compact" value="1"/>
+            <enum name="subcompact" value="2"/>
+        </attr>
+    </declare-styleable>
+    <declare-styleable name="ContactIconView">
+    </declare-styleable>
+    <declare-styleable name="ConversationNameView">
+        <attr format="dimension|reference" name="textSize"/>
+        <attr format="color" name="textColor"/>
+    </declare-styleable>
+    <declare-styleable name="MaxHeightScrollView">
+        <attr name="android:maxHeight"/>
+    </declare-styleable>
+    <declare-styleable name="SoundLevels">
+        <attr format="dimension|reference" name="maxLevelRadius"/>
+        <attr format="dimension|reference" name="minLevelRadius"/>
+        <attr format="color" name="primaryColor"/>
+    </declare-styleable>
+    <declare-styleable name="VideoThumbnailView">
+        <attr format="integer" name="mode">
+            <enum name="imageThumbnail" value="0"/>
+            <enum name="playableVideo" value="1"/>
+        </attr>
+        <attr format="boolean" name="playOnLoad"/>
+        <attr format="boolean" name="loop"/>
+        <attr format="boolean" name="allowCrop"/>
+        <attr name="android:maxHeight"/>
+    </declare-styleable>
+</resources>

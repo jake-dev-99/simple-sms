@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-release-54:/xml-mcc218-mnc005/mms_config.xml",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/xml-mcc218-mnc05/mms_config.xml"
+    }
+]

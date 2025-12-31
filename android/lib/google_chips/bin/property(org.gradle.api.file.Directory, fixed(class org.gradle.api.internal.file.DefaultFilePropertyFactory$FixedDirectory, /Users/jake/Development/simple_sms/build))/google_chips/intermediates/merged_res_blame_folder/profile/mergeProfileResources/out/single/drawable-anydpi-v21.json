@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_answer_video_low.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_answer_video_low.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_answer_video.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_answer_video.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_decline.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_decline.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_decline_low.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_decline_low.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_answer_low.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_answer_low.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-profile-22:/drawable-anydpi-v21/ic_call_answer.xml",
+        "source": "com.android.ex.chips.google_chips-core-1.13.0-18:/drawable-anydpi-v21/ic_call_answer.xml"
+    }
+]

@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.android.messaging.google_apps_messaging_core-profile-54:/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/.gradle/caches/8.11.1/transforms/b4987f409c3caa0d9a84a99738df81c2/transformed/material-1.12.0/res/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "63",
+                        "endOffsets": "114"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.android.messaging.google_apps_messaging_core-mergeProfileResources-52:/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+            "map": [
+                {
+                    "source": "/Users/jake/.gradle/caches/8.11.1/transforms/b4987f409c3caa0d9a84a99738df81c2/transformed/material-1.12.0/res/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "63",
+                        "endOffsets": "114"
+                    }
+                }
+            ]
+        }
+    ]
+}

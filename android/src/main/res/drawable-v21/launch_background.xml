@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modify this file to customize your launch splash screen -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- <item android:drawable="@android:color/black" /> -->
+    <!-- <item android:drawable="@android:color/white" /> -->
+    <!-- <item -->
+        <!-- android:drawable="@android:color/background_dark" /> -->
+    <!-- <item android:drawable="@android:color/background_light" /> -->
+    <!-- <item android:drawable="@android:color/darker_gray" /> -->
+    <!-- <item android:drawable="@android:color/holo_blue_bright" /> -->
+    <!--<item android:drawable="@android:color/holo_blue_dark" /> -->
+    <!--<item android:drawable="@android:color/holo_blue_light" /> -->
+    <!--<item android:drawable="@android:color/holo_green_dark" /> -->
+    <!--<item android:drawable="@android:color/holo_orange_dark" /> -->
+    <!--<item android:drawable="@android:color/holo_orange_light" /> -->
+    <!--<item android:drawable="@android:color/holo_purple" /> -->
+    <!--<item android:drawable="@android:color/holo_red_dark" /> -->
+    <!--<item android:drawable="@android:color/holo_red_light" /> -->
+    <!--<item android:drawable="@android:color/primary_text_dark" /> -->
+    <!--<item android:drawable="@android:color/primary_text_light" /> -->
+    <!--<item android:drawable="@android:color/secondary_text_dark" /> -->
+    <!--<item android:drawable="@android:color/secondary_text_light" /> -->
+    <!--<item android:drawable="@android:color/holo_green_light" /> -->
+
+    <!-- <item name="android:windowSplashScreenBackground">@color/holo_green_light</item> -->
+    <!-- <item android:drawable="@android:color/" /> -->
+    <!-- <item android:drawable="@android:color/background_dark" /> -->
+    <!-- You can insert your own image assets here -->
+    <!-- <item name="android:windowSplashScreenBackground">@color/holo_green_light</item> -->
+
+    <item android:drawable="@android:color/holo_green_light" />
+
+</layer-list>

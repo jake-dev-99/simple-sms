@@ -1,0 +1,7 @@
+<paths>  
+    <external-path name="external_files" path="." />
+    <cache-path name="mms" path="."/>
+    <external-cache-path name="mms" path="." />
+    <files-path name="mms" path="." />
+    <external-files-path name="mms" path="." />
+</paths>

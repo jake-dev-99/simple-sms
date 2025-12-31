@@ -1,0 +1,58 @@
+[
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/switch_thumb_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/switch_thumb_material_light.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_primary_text_disable_only_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_primary_text_disable_only_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/chips_dropdown_text.xml",
+        "source": "com.android.ex.chips.google_chips-google_chips-23:/color/chips_dropdown_text.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_secondary_text_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_secondary_text_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_primary_text_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_primary_text_material_light.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_background_cache_hint_selector_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_background_cache_hint_selector_material_light.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_primary_text_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_primary_text_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_search_url_text.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_search_url_text.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_secondary_text_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_secondary_text_material_light.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_primary_text_disable_only_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_primary_text_disable_only_material_light.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_hint_foreground_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_hint_foreground_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/switch_thumb_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/switch_thumb_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_background_cache_hint_selector_material_dark.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_background_cache_hint_selector_material_dark.xml"
+    },
+    {
+        "merged": "com.android.ex.chips.google_chips-release-22:/color/abc_hint_foreground_material_light.xml",
+        "source": "com.android.ex.chips.google_chips-appcompat-1.7.0-12:/color/abc_hint_foreground_material_light.xml"
+    }
+]

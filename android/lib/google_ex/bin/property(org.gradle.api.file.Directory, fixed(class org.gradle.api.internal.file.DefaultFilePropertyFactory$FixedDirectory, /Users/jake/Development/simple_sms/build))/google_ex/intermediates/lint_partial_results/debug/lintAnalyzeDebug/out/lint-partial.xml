@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.7.0" type="partial_results">
+    <map id="ProviderReadPermissionOnly">
+            <map id="com.android.common.content.SQLiteContentProvider">
+                <entry
+                    name="implementedWriteMethods"
+                    string="{`insert`, `update`, `delete`}"/>
+                <location id="location"
+                    file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*2}/com/android/common/content/SQLiteContentProvider.java"
+                    line="35"
+                    column="23"
+                    startOffset="1246"
+                    endLine="35"
+                    endColumn="44"
+                    endOffset="1267"/>
+            </map>
+    </map>
+    <map id="UnsafeImplicitIntentLaunch">
+            <map id="actionsSent">
+                    <map id="com.android.common.speech.LOG_EVENT (used to send a broadcast)">
+                        <location id="0"
+                            file="${:google_ex*debug*MAIN*sourceProvider*0*javaDir*2}/com/android/common/userhappiness/UserHappinessSignals.java"
+                            line="52"
+                            column="24"
+                            startOffset="2156"
+                            endLine="52"
+                            endColumn="66"
+                            endOffset="2198"/>
+                    </map>
+            </map>
+    </map>
+    <map id="UnusedResources">
+        <entry
+            name="model"
+            string=""/>
+    </map>
+
+</incidents>

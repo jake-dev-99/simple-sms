@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_open_exit.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_open_exit.xml"
+    },
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_fade_exit.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_fade_exit.xml"
+    },
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_close_exit.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_close_exit.xml"
+    },
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_close_enter.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_close_enter.xml"
+    },
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_fade_enter.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_fade_enter.xml"
+    },
+    {
+        "merged": "com.android.ex.google_ex-release-24:/animator/fragment_open_enter.xml",
+        "source": "com.android.ex.google_ex-fragment-1.5.4-8:/animator/fragment_open_enter.xml"
+    }
+]

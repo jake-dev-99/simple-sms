@@ -1,0 +1,22 @@
+[
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/drawable-ldrtl-hdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+        "source": "com.android.messaging.google_apps_messaging_core-appcompat-1.7.0-38:/drawable-ldrtl-hdpi-v17/abc_spinner_mtrl_am_alpha.9.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/drawable-ldrtl-hdpi-v17/ic_send_light.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-ldrtl-hdpi/ic_send_light.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/drawable-ldrtl-hdpi-v17/msg_bubble_outgoing.9.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-ldrtl-hdpi/msg_bubble_outgoing.9.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/drawable-ldrtl-hdpi-v17/msg_bubble_incoming.9.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-ldrtl-hdpi/msg_bubble_incoming.9.png"
+    },
+    {
+        "merged": "com.android.messaging.google_apps_messaging_core-profile-54:/drawable-ldrtl-hdpi-v17/msg_bubble_input.9.png",
+        "source": "com.android.messaging.google_apps_messaging_core-main-55:/drawable-ldrtl-hdpi/msg_bubble_input.9.png"
+    }
+]
