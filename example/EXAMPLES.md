@@ -5,7 +5,7 @@ This directory contains multiple example files demonstrating different aspects o
 ## 📱 Quick Reference
 
 | File | Best For | Complexity | Key Features |
-|------|----------|------------|--------------|
+| ------ || --------- | | ---------- | - | ----------- | -- |
 | `main.dart` | Production reference | ⭐⭐⭐ | Full UI, permissions, logging |
 | `simple_example.dart` | Quick start | ⭐ | Minimal code, easy to understand |
 | `advanced_mms_example.dart` | MMS processing | ⭐⭐⭐ | Content types, attachments |

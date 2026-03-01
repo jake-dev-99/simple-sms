@@ -104,7 +104,7 @@ class MmsPart implements ModelInterface {
           ContentType.textPlain,
       contentTypeSub: raw["ctt_s"],
       contentTypeTransferEncoding: raw["ctt_t"],
-      dataLocation: Uri.tryParse(raw["dataLocation"] ?? ''),
+      dataLocation: _parseUri(raw["dataLocation"]),
       fileName: raw["fn"],
       messageId: raw["mid"],
       name: raw["name"],
@@ -118,13 +118,13 @@ class MmsPart implements ModelInterface {
   }
 
   Map<String, dynamic> toRaw() => {
-    "dataLocation": dataLocation,
+    "dataLocation": dataLocation?.toString(),
     "_id": id,
     "cd": contentDisposition,
-    "chset": charset,
+    "chset": charset?.value,
     "cid": contentId,
     "cl": contentLocation,
-    "ct": contentType,
+    "ct": contentType.value,
     "ctt_s": contentTypeSub,
     "ctt_t": contentTypeTransferEncoding,
     "fn": fileName,
@@ -135,4 +135,12 @@ class MmsPart implements ModelInterface {
     "sourceLabel": sourceLabel,
     "text": text,
   };
+
+  /// Parse a Uri from various input types (Uri, String, or null)
+  static Uri? _parseUri(dynamic value) {
+    if (value == null) return null;
+    if (value is Uri) return value;
+    if (value is String && value.isNotEmpty) return Uri.tryParse(value);
+    return null;
+  }
 }

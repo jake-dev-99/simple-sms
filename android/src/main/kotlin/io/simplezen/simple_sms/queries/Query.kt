@@ -57,7 +57,7 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
             }
 
             "getDeviceInfo" -> {
-                val deviceInfo = if (ActivityCompat.checkSelfPermission(
+                if (ActivityCompat.checkSelfPermission(
                         context,
                         Manifest.permission.READ_PHONE_NUMBERS
                     ) != PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(
@@ -65,11 +65,11 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
                         Manifest.permission.READ_PHONE_STATE
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    (result.error("PERMISSION_DENIED", "Permission denied", null))
-                } else {
-                    getDeviceInfo()
+                    result.error("PERMISSION_DENIED", "Permission denied", null)
+                    return
                 }
-                result.success(deviceInfo)
+
+                result.success(getDeviceInfo())
             }
 
             "getSimInfo" -> {

@@ -6,7 +6,6 @@ import './messaging/action.dart';
 import './messaging/destructive_action.dart';
 import './messaging/android_messaging.dart';
 import 'permissions/permissions.dart';
-import 'queries/android_query.dart';
 
 export 'models/conversations/mms_sms_conversations.dart';
 export 'models/conversations/mms_sms_simple_conversations.dart';
@@ -29,7 +28,6 @@ class Android {
   static Android get instance => _instance!;
   static Android? _instance;
 
-  late AndroidQuery query;
   late AndroidDestructiveAction destructiveAction;
   late AndroidAction action;
   late AndroidPermissions provisioning;
@@ -39,7 +37,6 @@ class Android {
     required this.inboundMmsCallback,
     required this.inboundSmsCallback,
   }) {
-    query = AndroidQuery();
     destructiveAction = AndroidDestructiveAction();
     action = AndroidAction();
     provisioning = AndroidPermissions();

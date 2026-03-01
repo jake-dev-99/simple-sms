@@ -17,7 +17,7 @@ Note: This is my first package published to pub.dev and may not fully align with
 ## Platform Support
 
 | Android | iOS | Web | macOS | Windows | Linux |
-|---------|-----|-----|-------|---------|-------|
+| --------- | ----- | ----- | ------- | --------- | ------- |
 | ✅      | ❌  | ❌  | ❌    | ❌      | ❌    |
 
 ## Installation

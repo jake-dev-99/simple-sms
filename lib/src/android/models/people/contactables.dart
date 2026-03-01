@@ -1,17 +1,29 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
-import '../../queries/people/contacts_query.dart';
 import '../enums/contact_enums.dart';
 import 'contact.dart';
 
 class Contactable implements ModelInterface {
   Future<AndroidContact?> get contact async {
     try {
-      return (await ContactsQuery(lookupKey: contactId.toString()).fetch())
-          .first;
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri: 'content://com.android.contacts/contacts',
+          selection: '_id = ?',
+          selectionArgs: [contactId.toString()],
+        ),
+      );
+      if (response.rows.isEmpty || response.rows.first == null) return null;
+      final row = response.rows.first as Map<Object?, Object?>;
+      return AndroidContact.fromRaw(
+        Map<String, dynamic>.from(
+          row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+        ),
+      );
     } catch (e, s) {
       debugPrint(e.toString());
       debugPrint(s.toString());

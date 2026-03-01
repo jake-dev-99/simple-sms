@@ -1,6 +1,8 @@
 package io.simplezen.simple_sms.device
 
 import android.content.Context
+import android.content.Intent
+import android.provider.ContactsContract
 import android.provider.Telephony.Mms
 import androidx.core.net.toUri
 import io.simplezen.simple_sms.BinaryData
@@ -24,7 +26,38 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
             "sendMessage" -> {
                 result.notImplemented()
             }
+            "launchAddContact" -> {
+                val args = call.arguments as? Map<*, *>
+                val phoneNumber = args?.get("phoneNumber") as? String
+                val name = args?.get("name") as? String
+                val launched = launchAddContact(phoneNumber, name)
+                result.success(launched)
+            }
             else ->  result.notImplemented()
+        }
+    }
+
+    /**
+     * Launch the native Android contacts app to add a new contact.
+     * Optionally pre-fill phone number and name.
+     */
+    fun launchAddContact(phoneNumber: String?, name: String?): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_INSERT).apply {
+                type = ContactsContract.Contacts.CONTENT_TYPE
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                phoneNumber?.let {
+                    putExtra(ContactsContract.Intents.Insert.PHONE, it)
+                }
+                name?.let {
+                    putExtra(ContactsContract.Intents.Insert.NAME, it)
+                }
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("DeviceActions", "Failed to launch add contact: ${e.message}")
+            false
         }
     }
      fun getSendStatus(messageId: String): String {

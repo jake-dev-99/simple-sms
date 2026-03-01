@@ -23,7 +23,7 @@ intent.
 Commands are sent as string extras with key ```command``` (required). Possible values are:
 
 | Command              | Subcommand                 | Argument         | Description
-| ---                  |----------------------------|------------------| ---
+| ---                  | ---------------------------- || ----------------- | | ---
 | ```enter```          |                            |                  | Enters demo mode, bar state allowed to be modified (for convenience, any of the other non-exit commands will automatically flip demo mode on, no need to call this explicitly in practice)
 | ```exit```           |                            |                  | Exits demo mode, bars back to their system-driven state
 | ```battery```        |                            |                  | Control the battery display

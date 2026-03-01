@@ -3,12 +3,10 @@
 //     final MmsParticipant = MmsParticipantFromJson(jsonString);
 
 import 'package:flutter/foundation.dart';
+import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
-import 'package:simple_sms/src/android/queries/people/contact_contactables_query.dart';
-import 'package:simple_sms/src/android/queries/people/contacts_query.dart';
 
 import '../../../interfaces/models_interface.dart';
-import '../../queries/messages/mms_query.dart';
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
@@ -17,43 +15,72 @@ import 'contactables.dart';
 
 class MmsParticipant implements ModelInterface {
   Future<AndroidContact?> get contact async {
-    if (contactId != null) {
-      try {
-        return (await ContactsQuery(lookupKey: contactId!.toString()).fetch())
-            .firstOrNull;
-      } catch (e, s) {
-        debugPrint(e.toString());
-        debugPrint(s.toString());
-        return null;
-      }
-    } else {
+    if (contactId == null) return null;
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri: 'content://com.android.contacts/contacts',
+          selection: '_id = ?',
+          selectionArgs: [contactId!.toString()],
+        ),
+      );
+      if (response.rows.isEmpty || response.rows.first == null) return null;
+      final row = response.rows.first as Map<Object?, Object?>;
+      return AndroidContact.fromRaw(
+        Map<String, dynamic>.from(
+          row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+        ),
+      );
+    } catch (e, s) {
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       return null;
     }
   }
 
   Future<Contactable?> get contactable async {
-    if (address != null) {
-      try {
-        List<Contactable> contactables =
-            await ContactableQuery.byPhone(
-              phoneNum: address!.toString(),
-            ).fetch();
-        return contactables.firstOrNull;
-      } catch (e, s) {
-        debugPrint(e.toString());
-        debugPrint(s.toString());
-        return null;
-      }
-    } else {
+    if (address == null) return null;
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri:
+              'content://com.android.contacts/data/phones/filter/$address',
+        ),
+      );
+      if (response.rows.isEmpty || response.rows.first == null) return null;
+      final row = response.rows.first as Map<Object?, Object?>;
+      return Contactable.fromRaw(
+        Map<String, dynamic>.from(
+          row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+        ),
+      );
+    } catch (e, s) {
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       return null;
     }
   }
 
   Future<Mms?> get message async {
-    if (address != null) {
-      List<Mms> mms = await MmsQuery(lookupKey: msgId!.toString()).fetch();
-      return mms.firstOrNull;
-    } else {
+    if (msgId == null) return null;
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri: 'content://mms',
+          selection: '_id = ?',
+          selectionArgs: [msgId!.toString()],
+        ),
+      );
+      if (response.rows.isEmpty || response.rows.first == null) return null;
+      final row = response.rows.first as Map<Object?, Object?>;
+      return Mms.fromRaw(
+        Map<String, dynamic>.from(
+          row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+        ),
+      );
+    } catch (e, s) {
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       return null;
     }
   }

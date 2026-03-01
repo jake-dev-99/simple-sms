@@ -16,4 +16,5 @@ export 'src/android/models/messages/outbound_message.dart';
 export 'src/android/models/people/mms_participant.dart';
 export 'src/android/models/people/contactables.dart';
 export 'src/android/models/people/contact.dart';
+export 'src/android/models/people/contact_name.dart';
 export 'src/android/models/queries/query_obj.dart';

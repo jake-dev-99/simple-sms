@@ -313,7 +313,7 @@ Add to `AndroidManifest.xml`:
 ## 🐛 Common Issues
 
 | Issue | Solution |
-|-------|----------|
+| ------- || --------- | |
 | Messages not sending | Check permissions & default app status |
 | Can't receive messages | Initialize callbacks in main() |
 | Images not attaching | Request file access permissions |

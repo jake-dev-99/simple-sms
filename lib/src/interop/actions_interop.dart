@@ -25,4 +25,16 @@ class ActionsInterop {
         'body': body,
       }) ??
       false;
+
+  /// Launch the native contacts app to add a new contact.
+  /// Optionally pre-fill [phoneNumber] and [name].
+  static Future<bool> launchAddContact({
+    String? phoneNumber,
+    String? name,
+  }) async =>
+      await methodChannel.invokeMethod<bool>("launchAddContact", {
+        'phoneNumber': phoneNumber,
+        'name': name,
+      }) ??
+      false;
 }

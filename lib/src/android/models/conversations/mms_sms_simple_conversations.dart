@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
 import 'package:simple_sms/src/android/models/people/contactables.dart';
-import 'package:simple_sms/src/android/queries/people/canonical_query.dart';
-import 'package:simple_sms/src/android/queries/people/contact_contactables_query.dart';
 import '../../../interfaces/models_interface.dart';
-import '../../queries/messages/mms_query.dart';
-import '../../queries/messages/sms_query.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
 import '../messages/sms.dart';
@@ -15,11 +12,20 @@ class AndroidSimpleConversation implements ModelInterface {
     try {
       final parsedAddresses = <String>[];
       if (displayRecipientIds != null && displayRecipientIds!.isNotEmpty) {
-        for (final address in displayRecipientIds!) {
-          if (address.isNotEmpty) {
-            final parsedAddress = await CanonicalQuery(id: address).fetch();
-            if (parsedAddress.isNotEmpty) {
-              parsedAddresses.add(parsedAddress);
+        for (final recipientId in displayRecipientIds!) {
+          if (recipientId.isNotEmpty) {
+            // Query canonical address
+            final response = await SimpleQuery.instance.query(
+              QueryRequest(
+                contentUri: 'content://mms-sms/canonical-address/$recipientId',
+              ),
+            );
+            if (response.rows.isNotEmpty && response.rows.first != null) {
+              final row = response.rows.first as Map<Object?, Object?>;
+              final address = row['address']?.toString() ?? '';
+              if (address.isNotEmpty) {
+                parsedAddresses.add(address);
+              }
             }
           }
         }
@@ -48,15 +54,24 @@ class AndroidSimpleConversation implements ModelInterface {
           return [];
         } else {
           for (final addr in addrs) {
-            final contactables =
+            final uri =
                 addr.contains('@')
-                    ? await ContactableQuery.byEmail(email: addr).fetch()
-                    : await ContactableQuery.byPhone(phoneNum: addr).fetch();
-            if (contactables.isNotEmpty) {
-              parsedContactables.add(contactables.first);
+                    ? 'content://com.android.contacts/data/emails/filter/$addr'
+                    : 'content://com.android.contacts/data/phones/filter/$addr';
+            final response = await SimpleQuery.instance.query(
+              QueryRequest(contentUri: uri),
+            );
+            if (response.rows.isNotEmpty && response.rows.first != null) {
+              final row = response.rows.first as Map<Object?, Object?>;
+              parsedContactables.add(
+                Contactable.fromRaw(
+                  Map<String, dynamic>.from(
+                    row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+                  ),
+                ),
+              );
             } else {
-              Contactable contactable = Contactable(value: addr);
-              parsedContactables.add(contactable);
+              parsedContactables.add(Contactable(value: addr));
             }
           }
           return parsedContactables;
@@ -76,13 +91,24 @@ class AndroidSimpleConversation implements ModelInterface {
   Future<List<Mms>> get mmsMessages async {
     try {
       final parsedMessages = <Mms>[];
-      final messages =
-          await MmsQuery(
-            selection: 'thread_id = ?',
-            selectionArgs: [id.toString()],
-          ).fetch();
-      for (final message in messages) {
-        parsedMessages.add(message);
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri: 'content://mms',
+          selection: 'thread_id = ?',
+          selectionArgs: [id.toString()],
+        ),
+      );
+      for (final row in response.rows) {
+        if (row != null) {
+          final rowMap = row as Map<Object?, Object?>;
+          parsedMessages.add(
+            await Mms.fromRaw(
+              Map<String, dynamic>.from(
+                rowMap.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+              ),
+            ),
+          );
+        }
       }
       return parsedMessages;
     } catch (e, s) {
@@ -95,13 +121,24 @@ class AndroidSimpleConversation implements ModelInterface {
   Future<List<Sms>> get smsMessages async {
     try {
       final parsedMessages = <Sms>[];
-      final messages =
-          await SmsQuery(
-            selection: 'thread_id = ?',
-            selectionArgs: [id.toString()],
-          ).fetch();
-      for (final message in messages) {
-        parsedMessages.add(message);
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          contentUri: 'content://sms',
+          selection: 'thread_id = ?',
+          selectionArgs: [id.toString()],
+        ),
+      );
+      for (final row in response.rows) {
+        if (row != null) {
+          final rowMap = row as Map<Object?, Object?>;
+          parsedMessages.add(
+            Sms.fromRaw(
+              Map<String, dynamic>.from(
+                rowMap.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+              ),
+            ),
+          );
+        }
       }
       return parsedMessages;
     } catch (e, s) {

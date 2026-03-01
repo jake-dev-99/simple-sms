@@ -24,7 +24,7 @@ More specifically:
 ## On metered networks
 
 |         |       | BS   | ON    | BS   | OFF   |
-|:-------:|-------|------|-------|------|-------|
+|:-------:| ------- || ----- | | ----- | - | --- | -- | --- | --- |
 |         |       | *AL* | *!AL* | *AL* | *!AL* |
 | **DS**  |  *AL* |  ok  | blk   |  ok  |  ok   |
 | **ON**  | *!AL* | blk  | blk   | blk  | blk   |
@@ -37,7 +37,7 @@ More specifically:
 ## On non-metered networks
 
 |         |       | BS   | ON    | BS   | OFF   |
-|:-------:|-------|------|-------|------|-------|
+|:-------:| ------- || ----- | | ----- | - | --- | -- | --- | --- |
 |         |       | *AL* | *!AL* | *AL* | *!AL* |
 | **DS**  |  *AL* |  ok  | blk   |  ok  |  ok   |
 | **ON**  | *!AL* |  ok  | blk   |  ok  |  ok   |

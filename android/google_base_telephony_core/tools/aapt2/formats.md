@@ -12,7 +12,7 @@ meta-data from the compile phase.
 The file starts with a simple header. All multi-byte fields are little-endian.
 
 | Size (in bytes) | Field         | Description                                          |
-|:----------------|:--------------|:-----------------------------------------------------|
+|:---------------- ||:------------- | |:--------------------------------------------------- | - |
 | `4`             | `magic`       | The magic bytes must equal `'AAPT'` or `0x54504141`. |
 | `4`             | `version`     | The version of the container format.                 |
 | `4`             | `entry_count` | The number of entries in this container.             |
@@ -21,7 +21,7 @@ This is followed by `entry_count` of the following data structure. It must be al
 boundary, so if a previous entry ends unaligned, padding must be inserted.
 
 | Size (in bytes) | Field          | Description                                                                                               |
-|:----------------|:---------------|:----------------------------------------------------------------------------------------------------------|
+|:---------------- ||:-------------- | |:-------------------------------------------------------------------------------------------------------- | - |
 | `4`             | `entry_type`   | The type of the entry. This can be one of two types: `RES_TABLE (0x00000000)` or `RES_FILE (0x00000001)`. |
 | `8`             | `entry_length` | The length of the data that follows.  Do not use if `entry_type` is `RES_FILE`; this value may be wrong.  |
 | `entry_length`  | `data`         | The payload. The contents of this varies based on the `entry_type`.                                       |
@@ -33,7 +33,7 @@ If the `entry_type` is equal to `RES_FILE (0x00000001)`, the `data` field contai
 
 
 | Size (in bytes) | Field            | Description                                                                                               |
-|:----------------|:-----------------|:----------------------------------------------------------------------------------------------------------|
+|:---------------- ||:---------------- | |:-------------------------------------------------------------------------------------------------------- | - |
 | `4`             | `header_size`    | The size of the `header` field.                                                                           |
 | `8`             | `data_size`      | The size of the `data` field.                                                                             |
 | `header_size`   | `header`         | The serialized Protobuf message [aapt.pb.internal.CompiledFile](ResourcesInternal.proto).                 |

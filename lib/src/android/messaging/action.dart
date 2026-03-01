@@ -14,4 +14,12 @@ class AndroidAction {
     required String title,
     required String body,
   }) async => ActionsInterop.sendNotification(title, body);
+
+  /// Launch the native contacts app to add a new contact.
+  /// Optionally pre-fill [phoneNumber] and [name].
+  static Future<bool> launchAddContact({
+    String? phoneNumber,
+    String? name,
+  }) async =>
+      ActionsInterop.launchAddContact(phoneNumber: phoneNumber, name: name);
 }

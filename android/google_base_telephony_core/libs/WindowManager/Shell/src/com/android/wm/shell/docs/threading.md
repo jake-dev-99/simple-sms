@@ -10,7 +10,7 @@
                                 WM Shell  | SystemUI
                                           |
                                           |
-FeatureController <-> FeatureInterface <--|--> WMShell <-> SysUI
+FeatureController <-> FeatureInterface <-- || --> WMShell <-> SysUI
        |          (^post to shell thread) |            (^post to main thread)
       ...                                 |
        |                                  |

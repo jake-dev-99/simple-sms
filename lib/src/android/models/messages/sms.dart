@@ -1,8 +1,8 @@
 import 'dart:core';
 
 import 'package:flutter/material.dart';
+import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
-import 'package:simple_sms/src/android/queries/people/contact_contactables_query.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 import '../people/contactables.dart';
@@ -12,12 +12,8 @@ class Sms implements ModelInterface {
   // Recipient - "Address" is represented by SMS Type 1 (Inbox)
   Future<Contactable?>? get recipient async {
     try {
-      return type == SmsMessageType.inbox
-          ? rawSender != null
-              ? (await ContactableQuery.byPhone(phoneNum: rawSender!).fetch())
-                  .firstOrNull
-              : null
-          : null;
+      if (type != SmsMessageType.inbox || rawSender == null) return null;
+      return _lookupContactByPhone(rawSender!);
     } catch (e, s) {
       debugPrint(e.toString());
       debugPrint(s.toString());
@@ -28,17 +24,30 @@ class Sms implements ModelInterface {
   // Sender - "Address" is NOT represented by SMS Type 1 (Inbox)
   Future<Contactable?>? get sender async {
     try {
-      return type != SmsMessageType.inbox
-          ? rawSender != null
-              ? (await ContactableQuery.byPhone(phoneNum: rawSender!).fetch())
-                  .firstOrNull
-              : null
-          : null;
+      if (type == SmsMessageType.inbox || rawSender == null) return null;
+      return _lookupContactByPhone(rawSender!);
     } catch (e, s) {
       debugPrint(e.toString());
       debugPrint(s.toString());
       return null;
     }
+  }
+
+  /// Lookup a contact by phone number using SimpleQuery.
+  static Future<Contactable?> _lookupContactByPhone(String phoneNum) async {
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        contentUri:
+            'content://com.android.contacts/data/phones/filter/$phoneNum',
+      ),
+    );
+    if (response.rows.isEmpty || response.rows.first == null) return null;
+    final row = response.rows.first as Map<Object?, Object?>;
+    return Contactable.fromRaw(
+      Map<String, dynamic>.from(
+        row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
+      ),
+    );
   }
 
   @override

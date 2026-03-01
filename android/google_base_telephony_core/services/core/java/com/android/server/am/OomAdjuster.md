@@ -61,7 +61,7 @@ The update procedure basically consists of 3 parts:
         * Below table captures the results with given various service binding states:
 
         | Condition #1                    | Condition #2                                               | Condition #3                                 | Condition #4                                      | Result                   |
-        |---------------------------------|------------------------------------------------------------|----------------------------------------------|---------------------------------------------------|--------------------------|
+        | --------------------------------- || ----------------------------------------------------------- | | -------------------------------------------- | - | ------------------------------------------------ | -- | ---------------------- | --- |
         | `BIND_WAIVE_PRIORITY` not set   | `BIND_ALLOW_OOM_MANAGEMENT` set                            | Shown UI && Not Home                         |                                                   | Use the app's own Adj    |
         |                                 |                                                            | Inactive for a while                         |                                                   | Use the app's own Adj    |
         |                                 | Client has a higher importance                             | Shown UI && Not Home && client is invisible  |                                                   | Use the app's own Adj    |
@@ -86,7 +86,7 @@ The update procedure basically consists of 3 parts:
         * Below table captures the results with given various content provider binding states:
 
         | Condition #1                    | Condition #2                                               | Condition #3                                 | Result                   |
-        |---------------------------------|------------------------------------------------------------|----------------------------------------------|--------------------------|
+        | --------------------------------- || ----------------------------------------------------------- | | -------------------------------------------- | - | ----------------------- | -- |
         | Client's process state >= cached|                                                            |                                              | Client ProcState = empty |
         | Adj > Client Adj                | Not shown UI or is Home, or Client's Adj <= perceptible    | Client's Adj <= foreground Adj               | Try foreground Adj       |
         |                                 |                                                            | Client's Adj > foreground Adj                | Try client's Adj         |
@@ -99,7 +99,7 @@ The update procedure basically consists of 3 parts:
         * Some additional tweaks after the above ones:
 
         | Condition #1                    | Condition #2                                               | Condition #3                                 | Result                             |
-        |---------------------------------|------------------------------------------------------------|----------------------------------------------|------------------------------------|
+        | --------------------------------- || ----------------------------------------------------------- | | -------------------------------------------- | - | --------------------------------- | -- |
         | Process state >= cached empty   | Has client activities                                      |                                              | ProcState = cached activity client |
         |                                 | treat like activity (IME)                                  |                                              | ProcState = cached activity        |
         | Adj is service adj              | computing all process records                              | Num of new service A > 1/3 of services       | Push it to service B               |

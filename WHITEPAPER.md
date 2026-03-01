@@ -62,7 +62,7 @@ Building SMS/MMS functionality in Flutter applications presents significant chal
 ### Market Gap
 
 | Feature | Existing Plugins | simple_sms |
-|---------|-----------------|------------|
+|--------- ||---------------- | |---------- |- |
 | Send SMS | ✅ | ✅ |
 | Receive SMS | Limited | ✅ |
 | Send MMS | ❌ | ✅ |
@@ -164,7 +164,7 @@ simple_sms/
 ### Development Environment
 
 | Requirement | Specification |
-|-------------|---------------|
+|------------- ||-------------- | |
 | Flutter SDK | ≥ 3.3.0 |
 | Dart SDK | ^3.7.0 |
 | Android Studio | Latest stable |
@@ -176,7 +176,7 @@ simple_sms/
 ### Android Target Configuration
 
 | Setting | Value | Rationale |
-|---------|-------|-----------|
+|--------- ||------ | |--------- |- |
 | minSdk | 30 (Android 11) | Required for modern SMS APIs and scoped storage |
 | compileSdk | 35 (Android 15) | Latest API access |
 | targetSdk | 35 | Current Android recommendations |
@@ -247,7 +247,7 @@ await AndroidPermissions.requestRole(Intention.texting);
 **Channels Implemented:**
 
 | Channel Name | Purpose | Handler |
-|--------------|---------|---------|
+|-------------- ||-------- | |------- |- |
 | `io.simplezen.simple_sms/messaging` | Send SMS/MMS | OutboundMessagingHandler |
 | `io.simplezen.simple_sms/inbound_messaging` | Receive messages | InboundMessaging |
 | `io.simplezen.simple_sms/query` | Database queries | Query |
@@ -268,7 +268,7 @@ await AndroidPermissions.requestRole(Intention.texting);
 **Vendored Projects:**
 
 | Project | Source | Purpose |
-|---------|--------|---------|
+|--------- ||------- | |------- |- |
 | `google_apps_messaging_core` | AOSP + klinker | MMS sending via Transaction/Message classes |
 | `google_i18n_libphonenumber` | Google | Phone number parsing and formatting |
 | `google_chips` | AOSP | UI components (dependency) |
@@ -1280,7 +1280,7 @@ When set as default, the app is responsible for:
 ### 10.4 Data Security Considerations
 
 | Concern | Mitigation |
-|---------|------------|
+|--------- ||----------- | |
 | Message content exposure | Messages stored in system database (encrypted at rest) |
 | Attachment handling | Temp files in app cache directory, deleted after processing |
 | Contact data | Read-only access, no external transmission |
@@ -1424,7 +1424,7 @@ flutter build apk --release
 ### 11.5 Testing Considerations
 
 | Test Type | Approach |
-|-----------|----------|
+|----------- ||--------- | |
 | Unit Tests | Dart model serialization, enum mappings |
 | Integration Tests | Platform channel communication |
 | Manual Testing | Real device with SIM card required |
@@ -1466,7 +1466,7 @@ flutter build apk --release
 ### 12.4 Known Limitations
 
 | Limitation | Reason | Workaround |
-|------------|--------|------------|
+|------------ ||------- | |---------- |- |
 | Android only | iOS SMS APIs are restricted | iOS planned |
 | minSdk 30 | Modern Telephony APIs | Cannot support older devices |
 | MMS requires default app | Android security model | Inform users |
@@ -1480,7 +1480,7 @@ flutter build apk --release
 ### Appendix A: Content Type Reference
 
 | Category | ContentType Values |
-|----------|-------------------|
+|---------- ||------------------ | |
 | Text | `textPlain`, `textHtml`, `textVcard`, `textXVcard`, `textXVcalendar` |
 | Image | `imageJpeg`, `imagePng`, `imageGif`, `imageBmp`, `imageWebp`, `imageHeic` |
 | Video | `videoMp4`, `video3gpp`, `video3gpp2`, `videoWebm`, `videoMpeg` |
@@ -1490,7 +1490,7 @@ flutter build apk --release
 ### Appendix B: Android Telephony URIs
 
 | URI | Purpose |
-|-----|---------|
+|----- ||-------- | |
 | `content://sms` | All SMS messages |
 | `content://sms/inbox` | Received SMS |
 | `content://sms/sent` | Sent SMS |
@@ -1504,7 +1504,7 @@ flutter build apk --release
 ### Appendix C: Error Codes
 
 | Code | Meaning | Resolution |
-|------|---------|------------|
+|------ ||-------- | |---------- |- |
 | `PERMISSION_DENIED` | Missing runtime permission | Request permissions |
 | `NOT_DEFAULT_APP` | Not default SMS handler | Request SMS role |
 | `SEND_FAILED` | Message send failure | Check network/carrier |
@@ -1600,7 +1600,7 @@ Future<void> loadConversations() async {
 ## Document History
 
 | Version | Date | Author | Changes |
-|---------|------|--------|---------|
+|--------- ||----- | |------ |- |------ |-- |
 | 0.0.1 | December 2025 | Jake | Initial whitepaper |
 
 ---
