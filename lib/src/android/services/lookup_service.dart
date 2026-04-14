@@ -1,7 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
+import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/filters/contact_filter.dart';
+import '../models/filters/conversation_filter.dart';
+import '../models/filters/mms_filter.dart';
+import '../models/filters/sms_filter.dart';
+import '../models/filters/sort_direction.dart';
 import '../models/messages/mms.dart';
+import '../models/messages/mms_part.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contactables.dart';
@@ -152,6 +161,44 @@ class LookupService {
     }
   }
 
+  /// Lists SMS messages matching the given [filter], ordered by [sort], paged
+  /// by [limit] / [offset].
+  ///
+  /// Returns an empty list on query failure.
+  Future<List<Sms>> listSms({
+    SmsFilter? filter,
+    SmsSort? sort,
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.messages,
+          entityType: 'sms',
+          filters: _buildSmsFilters(filter),
+          sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
+          page: (limit != null || offset != null)
+              ? QueryPage(limit: limit, offset: offset)
+              : null,
+        ),
+      );
+      return response.records
+          .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+    } catch (e, s) {
+      debugPrint('simple_sms: Failed to list SMS ($filter): $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Fetches a single SMS by its database id. Returns null if not found.
+  Future<Sms?> getSmsById(int id) async {
+    final results = await listSms(filter: SmsFilter(ids: [id]));
+    return results.isEmpty ? null : results.first;
+  }
+
   /// Gets all MMS messages in a conversation thread.
   Future<List<Mms>> getMmsByThread(int threadId) async {
     try {
@@ -178,5 +225,547 @@ class LookupService {
       debugPrint(s.toString());
       return [];
     }
+  }
+
+  /// Lists MMS messages matching the given [filter], ordered by [sort], paged
+  /// by [limit] / [offset].
+  ///
+  /// Returned [Mms] instances have empty `recipients` and `parts` — fetch them
+  /// separately with [listMmsParts] or by re-materializing via [lookupMmsById]
+  /// when nested data is required.
+  Future<List<Mms>> listMms({
+    MmsFilter? filter,
+    MmsSort? sort,
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.messages,
+          entityType: 'mms',
+          filters: _buildMmsFilters(filter),
+          sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
+          page: (limit != null || offset != null)
+              ? QueryPage(limit: limit, offset: offset)
+              : null,
+        ),
+      );
+      final results = <Mms>[];
+      for (final row in response.records) {
+        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
+      }
+      return results;
+    } catch (e, s) {
+      debugPrint('simple_sms: Failed to list MMS ($filter): $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Lists the parts (text body + attachments) that belong to an MMS message.
+  ///
+  /// Queries `content://mms/part` filtered by `mid = mmsId`. If
+  /// [MmsPartFilter.contentTypePrefix] is set, only parts whose `ct` column
+  /// starts with that prefix are returned (e.g. `image/` for all image
+  /// attachments).
+  Future<List<MmsPart>> listMmsParts({
+    required int mmsId,
+    MmsPartFilter? filter,
+  }) async {
+    try {
+      final conditions = <QueryFilterCondition>[
+        QueryFilterCondition(
+          field: 'mid',
+          operator: QueryFilterOperator.equals,
+          value: mmsId.toString(),
+        ),
+      ];
+      final prefix = filter?.contentTypePrefix;
+      if (prefix != null && prefix.isNotEmpty) {
+        conditions.add(QueryFilterCondition(
+          field: 'ct',
+          operator: QueryFilterOperator.contains,
+          value: prefix,
+        ));
+      }
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.messages,
+          entityType: 'mmsPart',
+          filters: conditions,
+          platformData: const {'contentUri': 'content://mms/part'},
+        ),
+      );
+      return response.records
+          .map((row) => MmsPart.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+    } catch (e, s) {
+      debugPrint('simple_sms: Failed to list MMS parts for $mmsId: $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Extracts the binary content of a single MMS part to [outputDirectory],
+  /// returning the resulting [File]. The file is named [filename] if given,
+  /// otherwise a name is derived from the part id + mime type.
+  ///
+  /// Internally this opens a binary handle via `simple_query`, copies the
+  /// temporary content to the caller-specified location, and closes the
+  /// handle. Throws if the part cannot be opened or copied.
+  Future<File> extractMmsPart({
+    required int partId,
+    required String outputDirectory,
+    String? filename,
+  }) async {
+    final handle = await SimpleQuery.instance.openBinary(
+      BinaryRequest(
+        domain: QueryDomain.messages,
+        entityType: 'mmsPart',
+        recordId: partId.toString(),
+      ),
+    );
+    try {
+      final dir = Directory(outputDirectory);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final targetName = filename ?? _deriveMmsPartFilename(partId, handle);
+      final dest = File('${dir.path}/$targetName');
+      await File(handle.localPath).copy(dest.path);
+      return dest;
+    } finally {
+      try {
+        await SimpleQuery.instance.closeBinary(handle.handleId);
+      } catch (e) {
+        debugPrint('simple_sms: closeBinary failed for $partId: $e');
+      }
+    }
+  }
+
+  /// Lists conversations (MMS-SMS threads) matching the given [filter].
+  ///
+  /// If [enrich] is `true` (default), each returned [AndroidSimpleConversation]
+  /// has its `participants`, `latestSms`, and `latestMms` fields populated via
+  /// follow-up lookups. Set to `false` to avoid the extra round-trips when
+  /// only the flat conversation row is needed.
+  Future<List<AndroidSimpleConversation>> listConversations({
+    ConversationFilter? filter,
+    ConversationSort? sort,
+    int? limit,
+    int? offset,
+    bool enrich = true,
+  }) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.messages,
+          filters: _buildConversationFilters(filter),
+          sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
+          page: (limit != null || offset != null)
+              ? QueryPage(limit: limit, offset: offset)
+              : null,
+          platformData: const {
+            'contentUri':
+                'content://mms-sms/conversations?simple=true',
+          },
+        ),
+      );
+      final bare = response.records
+          .map((row) =>
+              AndroidSimpleConversation.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+      if (!enrich) return bare;
+
+      return Future.wait(bare.map(_enrichConversation));
+    } catch (e, s) {
+      debugPrint('simple_sms: Failed to list conversations ($filter): $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Fetches a single conversation by thread id. Returns null if not found.
+  ///
+  /// Enriched by default; see [listConversations] for the `enrich` parameter.
+  Future<AndroidSimpleConversation?> getConversationByThread(
+    int threadId, {
+    bool enrich = true,
+  }) async {
+    final results = await listConversations(
+      filter: ConversationFilter(ids: [threadId]),
+      enrich: enrich,
+      limit: 1,
+    );
+    return results.isEmpty ? null : results.first;
+  }
+
+  /// Resolves participants + latestSms / latestMms for a bare conversation.
+  Future<AndroidSimpleConversation> _enrichConversation(
+    AndroidSimpleConversation base,
+  ) async {
+    // Resolve each recipientId → Contactable.
+    final participants = <Contactable>[];
+    for (final rid in base.recipientIds) {
+      if (rid.isEmpty) continue;
+      final address = await resolveCanonicalAddress(rid);
+      if (address == null) continue;
+      final contactable = await lookupContactableByAddress(address);
+      if (contactable != null) {
+        participants.add(contactable);
+      } else {
+        // Fall back to a minimal Contactable keyed by the address only, so the
+        // caller always has something to show.
+        participants.add(Contactable(id: -1, value: address));
+      }
+    }
+
+    // Latest SMS + MMS for the thread (each capped at 1 row).
+    final latestSmsList = await listSms(
+      filter: SmsFilter(threadId: base.threadId),
+      sort: SmsSort.newestFirst,
+      limit: 1,
+    );
+    final latestMmsList = await listMms(
+      filter: MmsFilter(threadId: base.threadId),
+      sort: MmsSort.newestFirst,
+      limit: 1,
+    );
+
+    return base.enrich(
+      participants: participants,
+      latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
+      latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
+    );
+  }
+
+  /// Lists contacts matching the given [filter], ordered by [sort], paged by
+  /// [limit] / [offset].
+  Future<List<AndroidContact>> listContacts({
+    ContactFilter? filter,
+    ContactSort? sort,
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.contacts,
+          filters: _buildContactFilters(filter),
+          sort: _buildContactSort(sort ?? ContactSort.alphabetical),
+          page: (limit != null || offset != null)
+              ? QueryPage(limit: limit, offset: offset)
+              : null,
+        ),
+      );
+      return response.records
+          .map((row) => AndroidContact.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+    } catch (e, s) {
+      debugPrint('simple_sms: Failed to list contacts ($filter): $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
+    final ext = _extensionForMime(handle.mimeType);
+    return 'mms_part_$partId$ext';
+  }
+
+  String _extensionForMime(String? mime) {
+    if (mime == null) return '';
+    switch (mime) {
+      case 'image/jpeg':
+        return '.jpg';
+      case 'image/png':
+        return '.png';
+      case 'image/gif':
+        return '.gif';
+      case 'video/mp4':
+        return '.mp4';
+      case 'audio/amr':
+        return '.amr';
+      case 'text/plain':
+        return '.txt';
+      default:
+        return '';
+    }
+  }
+
+  // --- Private filter / sort translation -----------------------------------
+
+  /// Translate an [SmsFilter] to the generic [QueryFilterCondition] list the
+  /// underlying `simple_query` transport expects.
+  List<QueryFilterCondition> _buildSmsFilters(SmsFilter? filter) {
+    if (filter == null) return const [];
+    final conditions = <QueryFilterCondition>[];
+
+    final ids = filter.ids;
+    if (ids != null && ids.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: '_id',
+        operator: QueryFilterOperator.inList,
+        value: ids.map((id) => id.toString()).toList(),
+      ));
+    }
+    if (filter.threadId != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'thread_id',
+        operator: QueryFilterOperator.equals,
+        value: filter.threadId.toString(),
+      ));
+    }
+    if (filter.isRead != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'read',
+        operator: QueryFilterOperator.equals,
+        value: filter.isRead! ? '1' : '0',
+      ));
+    }
+    final types = filter.types;
+    if (types != null && types.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: 'type',
+        operator: QueryFilterOperator.inList,
+        value: types.map((t) => t.value.toString()).toList(),
+      ));
+    }
+    if (filter.dateFrom != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.greaterThanOrEqual,
+        value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+      ));
+    }
+    if (filter.dateTo != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.lessThanOrEqual,
+        value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+      ));
+    }
+    if (filter.addressContains != null &&
+        filter.addressContains!.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: 'address',
+        operator: QueryFilterOperator.contains,
+        value: filter.addressContains,
+      ));
+    }
+    if (filter.subscriptionId != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'sub_id',
+        operator: QueryFilterOperator.equals,
+        value: filter.subscriptionId.toString(),
+      ));
+    }
+    return conditions;
+  }
+
+  List<QuerySort> _buildSmsSort(SmsSort sort) {
+    final column = switch (sort.field) {
+      SmsSortField.id => '_id',
+      SmsSortField.date => 'date',
+      SmsSortField.threadId => 'thread_id',
+    };
+    return [QuerySort(field: column, direction: _dir(sort.direction))];
+  }
+
+  /// Translate an [MmsFilter] to [QueryFilterCondition]s.
+  ///
+  /// Note: MMS stores `date` in **seconds** since epoch, not milliseconds, so
+  /// the [DateTime] values are divided by 1000 before being compared.
+  List<QueryFilterCondition> _buildMmsFilters(MmsFilter? filter) {
+    if (filter == null) return const [];
+    final conditions = <QueryFilterCondition>[];
+
+    final ids = filter.ids;
+    if (ids != null && ids.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: '_id',
+        operator: QueryFilterOperator.inList,
+        value: ids.map((id) => id.toString()).toList(),
+      ));
+    }
+    if (filter.threadId != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'thread_id',
+        operator: QueryFilterOperator.equals,
+        value: filter.threadId.toString(),
+      ));
+    }
+    if (filter.isRead != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'read',
+        operator: QueryFilterOperator.equals,
+        value: filter.isRead! ? '1' : '0',
+      ));
+    }
+    final types = filter.types;
+    if (types != null && types.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: 'm_type',
+        operator: QueryFilterOperator.inList,
+        value: types.map((t) => t.value.toString()).toList(),
+      ));
+    }
+    if (filter.dateFrom != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.greaterThanOrEqual,
+        value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
+      ));
+    }
+    if (filter.dateTo != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.lessThanOrEqual,
+        value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
+      ));
+    }
+    if (filter.subscriptionId != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'sub_id',
+        operator: QueryFilterOperator.equals,
+        value: filter.subscriptionId.toString(),
+      ));
+    }
+    return conditions;
+  }
+
+  List<QuerySort> _buildMmsSort(MmsSort sort) {
+    final column = switch (sort.field) {
+      MmsSortField.id => '_id',
+      MmsSortField.date => 'date',
+      MmsSortField.threadId => 'thread_id',
+    };
+    return [QuerySort(field: column, direction: _dir(sort.direction))];
+  }
+
+  QuerySortDirection _dir(SortDirection d) =>
+      d == SortDirection.ascending
+          ? QuerySortDirection.ascending
+          : QuerySortDirection.descending;
+
+  /// Translate a [ContactFilter] to [QueryFilterCondition]s.
+  List<QueryFilterCondition> _buildContactFilters(ContactFilter? filter) {
+    if (filter == null) return const [];
+    final conditions = <QueryFilterCondition>[];
+
+    final ids = filter.ids;
+    if (ids != null && ids.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: '_id',
+        operator: QueryFilterOperator.inList,
+        value: ids.map((id) => id.toString()).toList(),
+      ));
+    }
+    if (filter.displayNameContains != null &&
+        filter.displayNameContains!.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: 'display_name',
+        operator: QueryFilterOperator.contains,
+        value: filter.displayNameContains,
+      ));
+    }
+    if (filter.hasPhoneNumber != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'has_phone_number',
+        operator: QueryFilterOperator.equals,
+        value: filter.hasPhoneNumber! ? '1' : '0',
+      ));
+    }
+    if (filter.hasEmail != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'has_email',
+        operator: QueryFilterOperator.equals,
+        value: filter.hasEmail! ? '1' : '0',
+      ));
+    }
+    if (filter.inVisibleGroup != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'in_visible_group',
+        operator: QueryFilterOperator.equals,
+        value: filter.inVisibleGroup! ? '1' : '0',
+      ));
+    }
+    return conditions;
+  }
+
+  /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
+  ///
+  /// The `content://mms-sms/conversations?simple=true` view exposes `_id`
+  /// as the thread id, `date` as the last-activity timestamp, `read` as an
+  /// int flag, and `has_attachment` as an int flag.
+  List<QueryFilterCondition> _buildConversationFilters(
+    ConversationFilter? filter,
+  ) {
+    if (filter == null) return const [];
+    final conditions = <QueryFilterCondition>[];
+
+    final ids = filter.ids;
+    if (ids != null && ids.isNotEmpty) {
+      conditions.add(QueryFilterCondition(
+        field: '_id',
+        operator: QueryFilterOperator.inList,
+        value: ids.map((id) => id.toString()).toList(),
+      ));
+    }
+    if (filter.isArchived != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'archived',
+        operator: QueryFilterOperator.equals,
+        value: filter.isArchived! ? '1' : '0',
+      ));
+    }
+    if (filter.hasUnread != null) {
+      // `read = 0` on the conversations view means the thread has unread.
+      conditions.add(QueryFilterCondition(
+        field: 'read',
+        operator: QueryFilterOperator.equals,
+        value: filter.hasUnread! ? '0' : '1',
+      ));
+    }
+    if (filter.dateFrom != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.greaterThanOrEqual,
+        value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+      ));
+    }
+    if (filter.dateTo != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'date',
+        operator: QueryFilterOperator.lessThanOrEqual,
+        value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+      ));
+    }
+    if (filter.hasAttachment != null) {
+      conditions.add(QueryFilterCondition(
+        field: 'has_attachment',
+        operator: QueryFilterOperator.equals,
+        value: filter.hasAttachment! ? '1' : '0',
+      ));
+    }
+    return conditions;
+  }
+
+  List<QuerySort> _buildConversationSort(ConversationSort sort) {
+    final column = switch (sort.field) {
+      ConversationSortField.date => 'date',
+      ConversationSortField.id => '_id',
+    };
+    return [QuerySort(field: column, direction: _dir(sort.direction))];
+  }
+
+  List<QuerySort> _buildContactSort(ContactSort sort) {
+    final column = switch (sort.field) {
+      ContactSortField.displayName => 'display_name',
+      ContactSortField.id => '_id',
+      ContactSortField.lastTimeContacted => 'last_time_contacted',
+    };
+    return [QuerySort(field: column, direction: _dir(sort.direction))];
   }
 }

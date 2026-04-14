@@ -37,12 +37,6 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                 }
                 result.success(markConversationAsRead(conversationId))
             }
-            "sendNotification" -> {
-                val args = call.arguments as? Map<*, *>
-                val title = args?.get("title") as? String ?: ""
-                val body = args?.get("body") as? String ?: ""
-                result.success(sendNotification(title, body))
-            }
             "launchAddContact" -> {
                 val args = call.arguments as? Map<*, *>
                 val phoneNumber = args?.get("phoneNumber") as? String
@@ -104,17 +98,6 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
             arrayOf(conversationId)
         )
         return (smsUpdated + mmsUpdated) > 0
-    }
-
-    private fun sendNotification(title: String, body: String): Boolean {
-        return try {
-            val notificationHelper = Notification(context)
-            notificationHelper.showSimpleNotification(title, body)
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send notification: ${e.message}")
-            false
-        }
     }
 
     private fun launchAddContact(phoneNumber: String?, name: String?): Boolean {

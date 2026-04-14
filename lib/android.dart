@@ -24,8 +24,11 @@ export 'src/android/models/conversations/mms_sms_conversations.dart';
 export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 
 // Models - Device
-export 'src/android/models/device/device.dart';
-export 'src/android/models/device/simcard.dart';
+//
+// NOTE: AndroidDevice and AndroidSimCard were intentionally removed from this
+// plugin. Device info and SIM card enumeration are telephony concerns and
+// have moved to `simple_telephony_native` (see its DeviceInfo / SimCard
+// models). Consumers should import from that plugin instead.
 
 // Models - Enums
 export 'src/android/models/enums/attachment_enums.dart';
@@ -36,3 +39,10 @@ export 'src/android/models/enums/sms_mms_enums.dart';
 
 // Models - Queries
 export 'src/android/models/queries/query_obj.dart';
+
+// Models - Filters (typed list-API inputs)
+export 'src/android/models/filters/sort_direction.dart';
+export 'src/android/models/filters/sms_filter.dart';
+export 'src/android/models/filters/mms_filter.dart';
+export 'src/android/models/filters/contact_filter.dart';
+export 'src/android/models/filters/conversation_filter.dart';
