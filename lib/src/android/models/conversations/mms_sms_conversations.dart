@@ -3,206 +3,80 @@ import 'package:simple_sms/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
+/// A detailed conversation model containing all message-level fields.
+///
+/// This is a comprehensive representation of an SMS/MMS conversation thread
+/// with all Android database columns exposed. For a lighter-weight model,
+/// see [AndroidSimpleConversation].
 class AndroidFullConversation implements ModelInterface {
   @override
-  /// Original source data map from which this object was constructed
-  Map<String, dynamic>? sourceMap;
+  final Map<String, dynamic>? sourceMap;
   @override
-  /// Unique identifier for the conversation
-  int id;
-
-  /// Parent conversation identifier for nested or linked conversations
-  String parentId;
-
-  /// Display name for the conversation, typically contact name or phone number
-  String? title;
-
-  /// Indicates if conversation is archived
-  bool? isArchived;
-
-  /// Indicates if sender/conversation is blocked
-  bool? isBlocked;
-
-  /// Indicates if conversation has been deleted
-  bool? isDeleted;
-
-  /// Indicates if notifications are muted for this conversation
-  bool? isMuted;
-
-  /// Indicates if conversation is pinned to top of conversation list
-  bool? isPinned;
-
-  /// Indicates if all messages in conversation have been read
-  bool? isRead;
-
-  /// Indicates if conversation contains secure/encrypted messages
-  bool? isSafeMessage;
-
-  /// Type of chat (e.g., individual, group)
-  String? chatType;
-
-  /// Type of message (SMS, MMS, etc.)
-  SmsMmsType? smsMmsType;
-
-  /// List of phone numbers or identifiers for all participants
-  List<String> recipientIds;
-
-  /// Message classification type
-  String? type;
-
-  /// Current mode being used for this conversation
-  String? usingMode;
-
-  // App-internal field names:
-  /// Recipient's phone number or address
-  String address;
-
-  /// Message content text
-  String body;
-
-  /// Callback number for reply or confirmation
-  String callbackNumber;
-
-  /// MMS content class classification
-  int contentClass;
-
-  /// Length of the content in bytes or characters
-  String contentLength;
-
-  /// MIME type of the message content
-  String contentType;
-
-  /// Timestamp when message was received (milliseconds since epoch)
-  int date;
-
-  /// Timestamp when message was sent (milliseconds since epoch)
-  int dateSent;
-
-  /// Flag indicating if delivery report was requested
-  String deliveryReport;
-
-  /// Number of delivery reports received
-  String deliveryReportCount;
-
-  /// Status code for delivery report
-  int deliveryReportStatus;
-
-  /// Error code if message delivery failed
-  String errorCode;
-
-  /// Message expiration timestamp
-  int expiration;
-
-  /// Flag indicating if message is marked as favorite (1 = favorite)
-  int favorite;
-
-  /// URL contained in or associated with message
-  String linkUrl;
-
-  /// Flag indicating if message is locked from deletion (1 = locked)
-  int locked;
-
-  /// Message class category (e.g., personal, advertisement)
-  String messageClass;
-
-  /// Unique identifier for the message
-  String messageId;
-
-  /// Size of the message in bytes
-  int messageSize;
-
-  /// Box/folder where message is stored (inbox=1, sent=2, draft=3, outbox=4, failed=5)
-  int messageBox;
-
-  /// Contact identifier or name associated with the message
-  String person;
-
-  /// Message priority level (0=normal, 1=high, 2=low)
-  int priority;
-
-  /// Flag indicating if message has been read (0=unread, 1=read)
-  int read;
-
-  /// Status of message read state in detailed form
-  String readStatus;
-
-  /// Flag indicating if reply path is present
-  String replyPathPresent;
-
-  /// Reserved field for future use
-  int reserved;
-
-  /// Status code for message response
-  String responseStatus;
-
-  /// Text of the response message
-  String responseText;
-
-  /// Status code for message retrieval
-  String retrievalStatus;
-
-  /// Character set of the retrieval text
-  String retrievalTextCs;
-
-  /// Flag indicating if reporting is allowed for this message
-  String reportAllowed;
-
-  /// Flag indicating if read receipt was requested (1 = requested)
-  int readReceipt;
-
-  /// Status code for read receipt
-  int readReceiptStatus;
-
-  /// Flag indicating if message is secure/encrypted (1 = safe)
-  int safeMessage;
-
-  /// Flag indicating if conversation is in secret/private mode (1 = secret)
-  int secretMode;
-
-  /// Service center address that processed the message
-  String serviceCenter;
-
-  /// SIM card IMSI that received the message
-  String simImsi;
-
-  /// SIM slot number that received the message (0 = first SIM)
-  int simSlot;
-
-  /// Flag indicating if message was reported as spam (1 = reported)
-  int spamReport;
-
-  /// Status of the message (e.g., sent, delivered, failed)
-  String status;
-
-  /// Message subject text (primarily for MMS)
-  String subject;
-
-  /// Character set of the subject text
-  String subjectCharset;
-
-  /// Network subscription ID associated with the message
-  int subscriptionId;
-
-  /// Service command code
-  String serviceCommand;
-
-  /// Content of the service command
-  String serviceCommandContent;
-
-  /// Teleservice identifier for carrier services
-  String teleserviceId;
-
-  /// Thread identifier grouping related messages
-  int threadId;
-
-  /// Flag indicating if message contains only text (1 = text only)
-  int textOnly;
-
-  /// Unique transaction identifier for message processing
-  String transactionId;
-
-  /// Protocol version number
-  int version;
+  final int id;
+  final String parentId;
+  final String? title;
+  final bool? isArchived;
+  final bool? isBlocked;
+  final bool? isDeleted;
+  final bool? isMuted;
+  final bool? isPinned;
+  final bool? isRead;
+  final bool? isSafeMessage;
+  final String? chatType;
+  final SmsMmsType? smsMmsType;
+  final List<String> recipientIds;
+  final String? type;
+  final String? usingMode;
+  final String address;
+  final String body;
+  final String callbackNumber;
+  final int contentClass;
+  final String contentLength;
+  final String contentType;
+  final int date;
+  final int dateSent;
+  final String deliveryReport;
+  final String deliveryReportCount;
+  final int deliveryReportStatus;
+  final String errorCode;
+  final int expiration;
+  final int favorite;
+  final String linkUrl;
+  final int locked;
+  final String messageClass;
+  final String messageId;
+  final int messageSize;
+  final int messageBox;
+  final String person;
+  final int priority;
+  final int read;
+  final String readStatus;
+  final String replyPathPresent;
+  final int reserved;
+  final String responseStatus;
+  final String responseText;
+  final String retrievalStatus;
+  final String retrievalTextCs;
+  final String reportAllowed;
+  final int readReceipt;
+  final int readReceiptStatus;
+  final int safeMessage;
+  final int secretMode;
+  final String serviceCenter;
+  final String simImsi;
+  final int simSlot;
+  final int spamReport;
+  final String status;
+  final String subject;
+  final String subjectCharset;
+  final int subscriptionId;
+  final String serviceCommand;
+  final String serviceCommandContent;
+  final String teleserviceId;
+  final int threadId;
+  final int textOnly;
+  final String transactionId;
+  final int version;
 
   AndroidFullConversation({
     this.sourceMap,

@@ -25,25 +25,25 @@ class AndroidSimCard implements ModelInterface {
   });
 
   @override
-  int id = 0;
+  final int id;
   @override
-  Map<String, dynamic>? sourceMap;
+  final Map<String, dynamic>? sourceMap;
 
-  String parentId = '';
-  String? type;
-  bool? isNetworkRoaming;
-  int? slot;
-  AndroidSimCardState? state;
-  String? operatorName;
-  String? countryIso;
-  String? serialNumber;
-  String? carrierName;
-  String? mcc; //  Mobile Country Code
-  String? mnc; //  Mobile Network Code
-  String? error;
-  String? phoneNumber;
-  String? imei;
-  String? externalId;
+  final String parentId;
+  final String? type;
+  final bool? isNetworkRoaming;
+  final int? slot;
+  final AndroidSimCardState? state;
+  final String? operatorName;
+  final String? countryIso;
+  final String? serialNumber;
+  final String? carrierName;
+  final String? mcc;
+  final String? mnc;
+  final String? error;
+  final String? phoneNumber;
+  final String? imei;
+  final String? externalId;
 
   Map<String, dynamic> toJson() => {
     'id': id,

@@ -14,15 +14,15 @@ class AndroidDevice implements ModelInterface {
   });
 
   @override
-  int id;
+  final int id;
   @override
-  Map<String, dynamic>? sourceMap;
+  final Map<String, dynamic>? sourceMap;
 
-  String parentId;
-  String brand;
-  String model;
-  String os;
-  List<AndroidSimCard> simCards;
+  final String parentId;
+  final String brand;
+  final String model;
+  final String os;
+  final List<AndroidSimCard> simCards;
 
   Map<String, dynamic> toJson() => {
     'id': id,

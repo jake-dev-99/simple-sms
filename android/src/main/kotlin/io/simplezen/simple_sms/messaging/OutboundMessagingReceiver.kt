@@ -30,12 +30,6 @@ class OutboundMessagingReceiver(
             return
         }
 
-        for(extra in intent.extras?.keySet() ?: emptySet()) {
-            val temp = intent.extras?.get(extra)
-            val type = temp?.javaClass?.simpleName
-            Log.d("OutboundMessagingReceiver", "Extra: $extra = ${intent.extras?.get(extra)} (type: $type)")
-        }
-
         val messageId = intent.getIntExtra("messageID", -1)
         if (messageId == -1) {
             Log.e("OutboundMessagingReceiver", "Received broadcast with no messageID.")

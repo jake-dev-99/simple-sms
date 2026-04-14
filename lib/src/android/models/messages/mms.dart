@@ -22,7 +22,7 @@ class Mms implements ModelInterface {
   @override
   final Map<String, dynamic>? sourceMap;
 
-  String parentId = '';
+  final String parentId;
 
   /// The individual parts/attachments of the MMS
   final List<MmsPart>? parts;
@@ -246,6 +246,7 @@ class Mms implements ModelInterface {
     required this.sender,
     required this.simSlot,
     required this.threadId,
+    this.parentId = '',
     this.address,
     this.addressCharset,
     this.appId,
@@ -489,7 +490,7 @@ class Mms implements ModelInterface {
     'callbackSet': callbackSet,
     'rptA': reportAddress,
     'respTxt': responseText,
-    'respSt': responseStatus,
+    'respSt': responseStatus?.value,
     'retrSt': retrieveStatus?.value,
     'retrTxt': retrievedText,
     'retrTxtCs': retrievedTextCharset,

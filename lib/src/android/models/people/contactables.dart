@@ -1,139 +1,136 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
-import 'contact.dart';
 
+/// A lightweight contact record from the Android contacts database.
+///
+/// Maps to a row in the Android `ContactsContract.CommonDataKinds.Contactables`
+/// table. The [value] field's meaning depends on [mimetype] — it may be a phone
+/// number, email address, postal address, etc.
+///
+/// To resolve a full [AndroidContact] from a contactable, use [LookupService]:
+/// ```dart
+/// final service = LookupService();
+/// final contact = await service.lookupContactById(contactable.contactId);
+/// ```
 class Contactable implements ModelInterface {
-  Future<AndroidContact?> get contact async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          contentUri: 'content://com.android.contacts/contacts',
-          selection: '_id = ?',
-          selectionArgs: [contactId.toString()],
-        ),
-      );
-      if (response.rows.isEmpty || response.rows.first == null) return null;
-      final row = response.rows.first as Map<Object?, Object?>;
-      return AndroidContact.fromRaw(
-        Map<String, dynamic>.from(
-          row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
-        ),
-      );
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return null;
-    }
-  }
-
   @override
-  int id;
+  final int id;
   @override
-  Map<String, dynamic>? sourceMap;
+  final Map<String, dynamic>? sourceMap;
 
-  String parentId;
-  String accountName;
-  String accountType;
-  String accountTypeAndDataSet;
-  String backupId;
-  int carrierPresence;
-  String chatCapability;
-  String contactChatCapability;
-  int contactId;
-  int contactLastUpdatedTimestamp;
-  String contactPresence;
-  String contactStatus;
-  String contactStatusIcon;
-  String contactStatusLabel;
-  String contactStatusResPackage;
-  String contactStatusTs;
-  int creationTime;
-  String customRingtone;
+  final String parentId;
+  final String accountName;
+  final String accountType;
+  final String accountTypeAndDataSet;
+  final String backupId;
+  final int carrierPresence;
+  final String chatCapability;
+  final String contactChatCapability;
+  final int contactId;
+  final int contactLastUpdatedTimestamp;
+  final String contactPresence;
+  final String contactStatus;
+  final String contactStatusIcon;
+  final String contactStatusLabel;
+  final String contactStatusResPackage;
+  final String contactStatusTs;
+  final int creationTime;
+  final String customRingtone;
 
-  // Primary value fields (varies by mimetype)
+  /// Primary value — meaning depends on mimetype (phone number, email, address, etc.)
+  final String value;
+  /// Type of data (e.g. home, work)
+  final int type;
+  /// Custom label if TYPE_CUSTOM
+  final String label;
+  /// Normalized value (e.g. E164 phone number)
+  final String normalized;
+  /// Whether this is the primary value for the mimetype
+  final bool isPrimary;
+  /// Whether this is the super-primary value
+  final bool isSuperPrimary;
+  /// Auxiliary data (rarely used, e.g. SIP address)
+  final String auxData;
+  /// Metadata (rarely used)
+  final String metaData;
+  /// Extra data
+  final String extraData;
+  /// Alternate value representation
+  final String alternateValue;
+  /// Context-specific data (rarely used)
+  final String contextData;
+  /// Context type (rarely used)
+  final String contextType;
+  /// For postal addresses (neighborhood)
+  final String neighborhood;
+  /// For emails (display name)
+  final String emailDisplayName;
+  /// Binary data like photo thumbnails
+  final Uint8List? blob;
 
-  String
-  value; // data1, meaning depends on mimetype (phone number, email, formatted address, etc.)
-  int type; // data2, type of data (e.g. home, work).
-  String label; // data3, custom label, if TYPE_CUSTOM.
-  String normalized; // data4, normalized value (eg. E164 phone).
-  bool isPrimary; // data5, is this the primary value for that mimetype.
-  bool isSuperPrimary; // data6, is this the super primary value.
-  String auxData; // data7, auxiliary data (rarely used, eg. SIP address).
-  String metaData; // data8, metadata (rarely used).
-  String extraData; // data9, extra data.
-  String alternateValue; // data10, alternate value representation.
-  String contextData; // data11, context specific, rarely used.
-  String contextType; // data12, context type, rarely used.
-  String neighborhood; // data13, for postal addresses (neighborhood).
-  String emailDisplayName; // data14, for emails (display name).
-  Uint8List? blob; // data15, reserved for binary data like photo thumbnails.
-
-  String dataSet;
-  String dataSync1;
-  String dataSync2;
-  String dataSync3;
-  String dataSync4;
-  int dataVersion;
-  int dirty;
-  String displayName;
-  String displayNameAlt;
-  String displayNameReverse;
-  DisplayNameSource? displayNameSource;
-  String groupSourceid;
-  bool hasPhoneNumber;
-  String hashId;
-  bool inDefaultDirectory;
-  bool inVisibleGroup;
-  bool isPrivate;
-  bool isSim;
-  int lastTimeContacted;
-  int lastTimeUsed;
-  String lookup;
-  String mimetype;
-  String mode;
-  int nameRawContactId;
-  int phonebookBucket;
-  int phonebookBucketAlt;
-  String phonebookLabel;
-  String phonebookLabelAlt;
-  String phoneticName;
-  String phoneticNameStyle;
-  int photoFileId;
-  int photoId;
-  String photoThumbUri;
-  String photoUri;
-  bool pinned;
-  String preferredPhoneAccountComponentName;
-  String preferredPhoneAccountId;
-  int rawContactId;
-  bool rawContactIsUserProfile;
-  String resPackage;
-  String secCallBackground;
-  String secCustomAlert;
-  String secCustomVibration;
-  String secLed;
-  String secPreferredSim;
-  String secPreferredVideoCallAccountId;
-  String secPreferredVideoCallAccountName;
-  bool sendToVoicemail;
-  String sortKey;
-  String sortKeyAlt;
-  String sourceid;
-  bool starred;
-  String status;
-  String statusIcon;
-  String statusLabel;
-  String statusResPackage;
-  String statusTs;
-  int timesContacted;
-  int timesUsed;
-  int version;
+  final String dataSet;
+  final String dataSync1;
+  final String dataSync2;
+  final String dataSync3;
+  final String dataSync4;
+  final int dataVersion;
+  final int dirty;
+  final String displayName;
+  final String displayNameAlt;
+  final String displayNameReverse;
+  final DisplayNameSource? displayNameSource;
+  final String groupSourceid;
+  final bool hasPhoneNumber;
+  final String hashId;
+  final bool inDefaultDirectory;
+  final bool inVisibleGroup;
+  final bool isPrivate;
+  final bool isSim;
+  final int lastTimeContacted;
+  final int lastTimeUsed;
+  final String lookup;
+  final String mimetype;
+  final String mode;
+  final int nameRawContactId;
+  final int phonebookBucket;
+  final int phonebookBucketAlt;
+  final String phonebookLabel;
+  final String phonebookLabelAlt;
+  final String phoneticName;
+  final String phoneticNameStyle;
+  final int photoFileId;
+  final int photoId;
+  final String photoThumbUri;
+  final String photoUri;
+  final bool pinned;
+  final String preferredPhoneAccountComponentName;
+  final String preferredPhoneAccountId;
+  final int rawContactId;
+  final bool rawContactIsUserProfile;
+  final String resPackage;
+  final String secCallBackground;
+  final String secCustomAlert;
+  final String secCustomVibration;
+  final String secLed;
+  final String secPreferredSim;
+  final String secPreferredVideoCallAccountId;
+  final String secPreferredVideoCallAccountName;
+  final bool sendToVoicemail;
+  final String sortKey;
+  final String sortKeyAlt;
+  final String sourceid;
+  final bool starred;
+  final String status;
+  final String statusIcon;
+  final String statusLabel;
+  final String statusResPackage;
+  final String statusTs;
+  final int timesContacted;
+  final int timesUsed;
+  final int version;
 
   Contactable({
     this.id = -1,

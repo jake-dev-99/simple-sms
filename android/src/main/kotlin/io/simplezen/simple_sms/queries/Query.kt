@@ -1,9 +1,6 @@
 package io.simplezen.simple_sms.queries
 
 import android.Manifest
-import android.R.attr.mimeType
-import android.content.ContentResolver
-import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.AssetFileDescriptor
@@ -39,7 +36,6 @@ data class QueryObj (
     val sortOrder: String? = null
 )
 
-// CuriousPigeon
 class Query(val context: Context ) : MethodChannel.MethodCallHandler {
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -104,23 +100,20 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
         var tempFile: File? = null
 
         try {
-            resolver.query(contentUri, null, null, null, null).use { cursor ->
-                if (cursor?.moveToFirst() == false) {
-                    return null
-                } else {
-                    val contentTypeIndex = cursor!!.getColumnIndex("ct")
-                    if (contentTypeIndex != -1) {
-                        val contentType : String? = cursor.getString(contentTypeIndex) ?: ""
-                        if (contentType!!.isNotEmpty() &&
-                            contentType.contains("smil") || contentType.contains("text")
-                        ) {
-                            return null
-                        }
+            resolver.query(contentUri, null, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return null
+                val contentTypeIndex = cursor.getColumnIndex("ct")
+                if (contentTypeIndex != -1) {
+                    val contentType = cursor.getString(contentTypeIndex).orEmpty()
+                    if (contentType.isNotEmpty() &&
+                        (contentType.contains("smil") || contentType.contains("text"))
+                    ) {
+                        return null
                     }
                 }
-            }
+            } ?: return null
         } catch (e: Exception) {
-            Log.e("loadMmsPartData", "Error checking content type", e)
+            Log.e("Query", "Error checking content type for $contentUri", e)
             return null
         }
 
@@ -139,8 +132,7 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
             fos = FileOutputStream(tempFile)
             inputStream.copyTo(fos) // Efficiently copy stream to file
 
-            // Log.d("saveMmsPartToFile", "Saved MMS part to: ${tempFile.absolutePath}")
-            return tempFile.absolutePath // Return the path of the saved file
+            return tempFile.absolutePath
 
         } catch (e: Exception) {
             Log.e("saveMmsPartToFile", "Error saving MMS part to file", e)
@@ -180,7 +172,7 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
             results["sims"] = sims
         } catch (e: Exception) {
             Log.e("getAllProviders", " <<< Error: ${e.message}")
-            e.printStackTrace()
+            Log.e("Query", "Stack trace:", e)
         }
 
         return results.toSortedMap()
@@ -228,17 +220,16 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
                         "operatorName" to telephonyManager.simOperatorName,
                         "countryIso" to telephonyManager.simCountryIso,
                         "imei" to TelephonyManagerCompat.getImei(telephonyManager),
-//                                "serialNumber" to telephonyManager.getSimSerialNumber(),
                         "carrierName" to telephonyManager.simOperatorName,
                         "isNetworkRoaming" to telephonyManager.isNetworkRoaming
                     )
                 simCards.add(simCard)
             }
-            Log.d("SimsQuery", "SIM cards: $simCards")
+            Log.d("Query", "SIM cards: ${simCards.size}")
             return simCards.map { it.toSortedMap() }
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("Query", "Stack trace:", e)
             val response =
                 mapOf<String, Any?>(
                     "slot" to -1,
@@ -302,20 +293,6 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
         }
         return returnable
     }
-
-//    private fun _printQueryResults(objectName: String, results: Map<String, Any?>) {
-//        val sortedMap = results.toSortedMap(compareBy<String> { it }.thenBy { it.length })
-//
-//        Log.d("printQueryResults", " <<< ")
-//        Log.d("printQueryResults", " <<< -------------------------------")
-//        Log.d("printQueryResults", " <<<    >>>> $objectName Data ")
-//        Log.d("printQueryResults", " <<< -------------------------------")
-//        Log.d("printQueryResults", " <<< ")
-//        for (key in sortedMap.keys) Log.d("printQueryResults", " <<< $key: ${sortedMap[key]}")
-//        Log.d("printQueryResults", " <<< ")
-//        Log.d("printQueryResults", " <<< ")
-//        Log.d("printQueryResults", " <<< ")
-//    }
 }
 
 private class QueryHelper() {

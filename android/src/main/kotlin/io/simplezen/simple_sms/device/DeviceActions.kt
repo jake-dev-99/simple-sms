@@ -1,47 +1,123 @@
 package io.simplezen.simple_sms.device
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.provider.ContactsContract
+import android.provider.Telephony
 import android.provider.Telephony.Mms
 import androidx.core.net.toUri
-import io.simplezen.simple_sms.BinaryData
-import io.simplezen.simple_sms.messaging.OutboundMessagingHandler
 import io.flutter.Log
-import io.simplezen.simple_sms.SimpleSmsPlugin
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import io.flutter.plugin.common.JSONMethodCodec
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodCall
 
-// SargentPigeon
 class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
+    companion object {
+        private const val TAG = "DeviceActions"
+    }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "sendMessage" -> {
-                result.notImplemented()
+            "markMessageAsRead" -> {
+                val messageId = call.arguments as? String
+                if (messageId == null) {
+                    result.error("INVALID_ARGUMENT", "Message ID required", null)
+                    return
+                }
+                result.success(markMessageAsRead(messageId))
+            }
+            "markConversationAsRead" -> {
+                val conversationId = call.arguments as? String
+                if (conversationId == null) {
+                    result.error("INVALID_ARGUMENT", "Conversation ID required", null)
+                    return
+                }
+                result.success(markConversationAsRead(conversationId))
+            }
+            "sendNotification" -> {
+                val args = call.arguments as? Map<*, *>
+                val title = args?.get("title") as? String ?: ""
+                val body = args?.get("body") as? String ?: ""
+                result.success(sendNotification(title, body))
             }
             "launchAddContact" -> {
                 val args = call.arguments as? Map<*, *>
                 val phoneNumber = args?.get("phoneNumber") as? String
                 val name = args?.get("name") as? String
-                val launched = launchAddContact(phoneNumber, name)
-                result.success(launched)
+                result.success(launchAddContact(phoneNumber, name))
             }
-            else ->  result.notImplemented()
+            else -> result.notImplemented()
         }
     }
 
-    /**
-     * Launch the native Android contacts app to add a new contact.
-     * Optionally pre-fill phone number and name.
-     */
-    fun launchAddContact(phoneNumber: String?, name: String?): Boolean {
+    private fun markMessageAsRead(messageId: String): Boolean {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
+        }
+        // Try SMS
+        val smsUpdated = context.contentResolver.update(
+            Telephony.Sms.CONTENT_URI,
+            values,
+            "${Telephony.Sms._ID} = ?",
+            arrayOf(messageId)
+        )
+        if (smsUpdated > 0) return true
+
+        // Try MMS
+        val mmsValues = ContentValues().apply {
+            put(Telephony.Mms.READ, 1)
+            put(Telephony.Mms.SEEN, 1)
+        }
+        val mmsUpdated = context.contentResolver.update(
+            Telephony.Mms.CONTENT_URI,
+            mmsValues,
+            "${Telephony.Mms._ID} = ?",
+            arrayOf(messageId)
+        )
+        return mmsUpdated > 0
+    }
+
+    private fun markConversationAsRead(conversationId: String): Boolean {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
+        }
+        val smsUpdated = context.contentResolver.update(
+            Telephony.Sms.CONTENT_URI,
+            values,
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
+            arrayOf(conversationId)
+        )
+
+        val mmsValues = ContentValues().apply {
+            put(Telephony.Mms.READ, 1)
+            put(Telephony.Mms.SEEN, 1)
+        }
+        val mmsUpdated = context.contentResolver.update(
+            Telephony.Mms.CONTENT_URI,
+            mmsValues,
+            "${Telephony.Mms.THREAD_ID} = ? AND ${Telephony.Mms.READ} = 0",
+            arrayOf(conversationId)
+        )
+        return (smsUpdated + mmsUpdated) > 0
+    }
+
+    private fun sendNotification(title: String, body: String): Boolean {
+        return try {
+            val notificationHelper = Notification(context)
+            notificationHelper.showSimpleNotification(title, body)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send notification: ${e.message}")
+            false
+        }
+    }
+
+    private fun launchAddContact(phoneNumber: String?, name: String?): Boolean {
         return try {
             val intent = Intent(Intent.ACTION_INSERT).apply {
                 type = ContactsContract.Contacts.CONTENT_TYPE
@@ -56,71 +132,30 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.e("DeviceActions", "Failed to launch add contact: ${e.message}")
+            Log.e(TAG, "Failed to launch add contact: ${e.message}")
             false
         }
     }
-     fun getSendStatus(messageId: String): String {
-        throw Exception("Not implemented")
-    }
 
-     fun checkPermissions(permissions: List<String>): Map<String, Boolean> {
-        return SimpleSmsPlugin.Companion.checkPermissions(context, permissions.toTypedArray())
-    }
-
-     fun requestPermissions(permissions: List<String>): Map<String, Boolean> {
-        return SimpleSmsPlugin.Companion.requestPermissions(permissions.toTypedArray())
-    }
-
-     fun sendNotification(): Boolean {
-        TODO("Not yet implemented")
-    }
-
-     fun checkRole(role: String): Boolean {
-        return if (role.isEmpty()) {
-            true
-        } else {
-            SimpleSmsPlugin.Companion.checkRole(context, role)
-        }
-    }
-
-     fun requestRole(role: String): Boolean {
-        return if (role.isEmpty()) {
-            true
-        } else {
-            SimpleSmsPlugin.Companion.requestRole(role)
-        }
-    }
-
-
-    // New method to load MMS attachment content
-     fun loadMmsAttachment(contentUri: String): BinaryData? {
+    fun loadMmsAttachment(contentUri: String): ByteArray? {
         try {
             val uri = contentUri.toUri()
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val outputStream = ByteArrayOutputStream()
-                val buffer = ByteArray(1024)
-                var read: Int
-                while (inputStream.read(buffer).also { read = it } != -1) {
-                    outputStream.write(buffer, 0, read)
-                }
-                Log.d("DeviceActions", "Successfully loaded MMS attachment: $contentUri")
-                return BinaryData(outputStream.toByteArray().map { it.toLong() })
+                inputStream.copyTo(outputStream)
+                return outputStream.toByteArray()
             }
         } catch (e: Exception) {
-            Log.e("DeviceActions", "Error loading MMS attachment: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "Error loading MMS attachment: ${e.message}")
         }
         return null
     }
 
-    // New method to save MMS attachment to a temporary file
-     fun saveMmsAttachmentToFile(contentUri: String): String? {
+    fun saveMmsAttachmentToFile(contentUri: String): String? {
         try {
             val uri = contentUri.toUri()
             val fileName = "mms_${System.currentTimeMillis()}"
 
-            // Get MIME type to determine file extension
             var mimeType = "application/octet-stream"
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
@@ -131,7 +166,6 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                 }
             }
 
-            // Determine file extension based on MIME type
             val extension = when {
                 mimeType.startsWith("image/") -> ".jpg"
                 mimeType.startsWith("video/") -> ".mp4"
@@ -139,25 +173,17 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                 else -> ".bin"
             }
 
-            // Create temp file
             val tempFile = File.createTempFile(fileName, extension, context.cacheDir)
 
-            // Copy content to temp file
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 FileOutputStream(tempFile).use { outputStream ->
-                    val buffer = ByteArray(1024)
-                    var read: Int
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        outputStream.write(buffer, 0, read)
-                    }
+                    inputStream.copyTo(outputStream)
                 }
             }
 
-            Log.d("DeviceActions", "Saved MMS attachment to: ${tempFile.absolutePath}")
             return tempFile.absolutePath
         } catch (e: Exception) {
-            Log.e("DeviceActions", "Error saving MMS attachment: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "Error saving MMS attachment: ${e.message}")
         }
         return null
     }

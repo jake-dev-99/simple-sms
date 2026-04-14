@@ -120,8 +120,6 @@ data class MmsObject(
                 put(Mms.RETRIEVE_STATUS, retrieveStatus)
             if(textOnly != null)
                 put(Mms.TEXT_ONLY, textOnly)
-            if(textOnly != null)
-                put(Mms.TEXT_ONLY, textOnly)
             if(transactionId != null)
                 put(Mms.TRANSACTION_ID, transactionId)
             if(priority != null)

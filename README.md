@@ -1,99 +1,112 @@
 # simple_sms
 
-A modern MMS / SMS plugin for Android that provides comprehensive messaging functionality for Flutter applications. iOS support coming soon!
-
-Note: This is my first package published to pub.dev and may not fully align with best practices. I'll continue iterating on this as my personal needs grow, and my overall knowledge develops. Feel free to submit a PR or contact me directly for any contributions.
+A modern SMS / MMS plugin for Android that provides comprehensive messaging functionality for Flutter applications.
 
 ## Features
 
-- 📱 Send and receive SMS and MMS messages
-- 💬 Manage conversations and threads
-- 👥 Handle contacts and participants
-- 📎 Support for MMS attachments
-- 📞 Access device and SIM card information
-- 🔍 Query message history
-- 🔔 Local notification support
+- Send and receive SMS and MMS messages
+- Background message delivery (even when app is killed)
+- Conversation thread management
+- Contact and participant resolution
+- MMS attachment support (images, video, audio)
+- Permission and default SMS app role management
+- Device and SIM card information queries
 
 ## Platform Support
 
 | Android | iOS | Web | macOS | Windows | Linux |
-| --------- | ----- | ----- | ------- | --------- | ------- |
-| ✅      | ❌  | ❌  | ❌    | ❌      | ❌    |
+|---------|-----|-----|-------|---------|-------|
+| API 30+ | -   | -   | -     | -       | -     |
 
-## Installation
+## Getting Started
 
-Add this to your package's `pubspec.yaml` file:
+Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-    simple_sms: ^0.0.1
+  simple_sms: ^0.0.1
 ```
 
-Then run:
+### Permissions
 
-```bash
-flutter pub get
-```
-
-## Permissions
-
-Add the following permissions to your `AndroidManifest.xml`:
+Add these to your `AndroidManifest.xml`:
 
 ```xml
-<uses-permission android:name="android.permission.READ_SMS" />
 <uses-permission android:name="android.permission.SEND_SMS" />
+<uses-permission android:name="android.permission.READ_SMS" />
 <uses-permission android:name="android.permission.RECEIVE_SMS" />
-<uses-permission android:name="android.permission.READ_CONTACTS" />
+<uses-permission android:name="android.permission.RECEIVE_MMS" />
+<uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
 ```
 
-Don't forget to request runtime permissions in your app.
-
-## Usage
+### Initialize
 
 ```dart
-import 'package:simple_sms/android.dart';
+import 'package:simple_sms/simple_sms.dart';
 
-// Send an SMS
-final message = OutboundMessage(
-    address: '+1234567890',
-    body: 'Hello from simple_sms!',
-);
-await AndroidMessaging.sendMessage(message);
-
-// Query conversations
-final conversations = await AndroidMessaging.getConversations();
-
-// Access device information
-final device = await Device.getDeviceInfo();
-final simCards = await Device.getSimCards();
+void main() {
+  Android.initialize(
+    inboundSmsCallback: (Sms sms) {
+      print('SMS from ${sms.address}: ${sms.body}');
+    },
+    inboundMmsCallback: (Mms mms) {
+      print('MMS from ${mms.address}: ${mms.body}');
+    },
+  );
+  runApp(const MyApp());
+}
 ```
 
-## Models
+### Send a message
 
-The plugin exports various models for working with messages:
+```dart
+final result = await Android.instance.messaging.sendMessage(
+  message: OutboundMessage(
+    body: 'Hello from simple_sms!',
+    addresses: {'+15551234567'},
+    attachmentPaths: null,
+  ),
+);
+```
 
-- `Sms` - SMS message data
-- `Mms` - MMS message data
-- `MmsPart` - MMS attachment parts
-- `OutboundMessage` - For sending messages
-- `MmsSmsConversations` - Conversation threads
-- `Contact` - Contact information
-- `MmsParticipant` - Message participants
-- `Device` - Device information
-- `SimCard` - SIM card details
+### Request permissions
+
+```dart
+// Request SMS permissions
+await AndroidPermissions.requestPermissions(Intention.texting);
+
+// Request default SMS app role (required for full send/receive)
+await AndroidPermissions.requestRole(Intention.texting);
+```
+
+### Look up contacts and messages
+
+```dart
+final service = LookupService();
+
+// Find a contact by phone number
+final contact = await service.lookupContactableByAddress('+15551234567');
+
+// Get all SMS in a thread
+final messages = await service.getSmsByThread(threadId);
+```
+
+### Background message handling
+
+When your app is the default SMS app, messages arrive even when the app is killed. Define a top-level entrypoint:
+
+```dart
+@pragma('vm:entry-point')
+void initializeApp() {
+  AndroidMessaging.initialize(
+    inboundSmsCallback: handleSms,
+    inboundMmsCallback: handleMms,
+  );
+}
+```
+
+See `example/lib/background_example.dart` for the full pattern.
 
 ## License
 
-BSD-style license. See LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
-## Homepage
-
-Visit [simplezen.io](https://simplezen.io) for more information.# simple-sms
-# simple-sms
-# simple-sms
-# simple-sms
-# simple-sms
+BSD 3-Clause. See [LICENSE](LICENSE) for details.

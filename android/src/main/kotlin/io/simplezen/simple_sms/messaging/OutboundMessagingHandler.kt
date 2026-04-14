@@ -2,7 +2,6 @@
 
 package io.simplezen.simple_sms.messaging
 
-import android.R.attr.priority
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
@@ -80,7 +79,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                 PackageManager.FEATURE_TELEPHONY_MESSAGING
                         )
                 ) {
-                    Log.d("SimsQuery", "Device missing FEATURE_TELEPHONY")
+                    Log.d("OutboundMessagingHandler", "Device missing FEATURE_TELEPHONY")
                     result.error(
                             "0x0",
                             "FEATURE_TELEPHONY",
@@ -295,10 +294,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             requestDetails: MessageRequestDetails,
     ): Boolean {
         try {
-            Log.d(
-                    "OutboundMessagingHandler",
-                    "Sending SMS to ${requestDetails.addresses}. Body: \"${requestDetails.body}\""
-            )
+            Log.d("OutboundMessagingHandler", "Sending SMS to ${requestDetails.addresses.size} recipient(s)")
             val newSms = insertSms(context, requestDetails)
             val newUri = newSms["uri"] as Uri
             msgId = ContentUris.parseId(newUri).toInt()
@@ -311,20 +307,6 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                 putExtra("uri", newUri.toString())
                             }
                             .also { it.`package` = context.packageName }
-
-        val sentIntentFilter = IntentFilter(SENTSMS_ACTION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        context.registerReceiver(
-            messageStatusReceiver,
-            sentIntentFilter,
-            Context.RECEIVER_NOT_EXPORTED
-        )
-        } else {
-        context.registerReceiver(
-            messageStatusReceiver,
-            sentIntentFilter
-        )
-        }
 
             val sentRequestCode = msgId.hashCode()
             val outboundPendingIntent =
@@ -410,7 +392,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             date = System.currentTimeMillis(),
                             messageBox = MESSAGE_BOX_INBOX,
                             messageSize = 0,
-                            priority = priority,
+                            priority = 0,
                             subscriptionId = smsManager.subscriptionId,
                             textOnly = if (attachments.isEmpty()) 1 else 0,
                             threadId = threadId
@@ -495,10 +477,6 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                 putExtra("uri", "${Telephony.Mms.CONTENT_URI}/$msgId")
                             }
                             .also { it.`package` = context.packageName }
-            context.registerReceiver(
-                    messageStatusReceiver,
-                    IntentFilter(SENTMMS_ACTION),
-            )
 
             val sendTransaction = Transaction(context, sendSettings)
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
@@ -508,6 +486,5 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             Log.e("OutboundMessagingHandler", "Error initiating MMS send: ${e.message}", e)
             return false
         }
-        return true
     }
 }

@@ -1,3 +1,8 @@
+/// Configuration for a raw Android ContentProvider query.
+///
+/// Used internally to pass query parameters to the native platform
+/// via method channels. Most consumers should use [LookupService]
+/// instead of constructing these directly.
 class QueryObj {
   QueryObj({
     required this.contentUri,
@@ -7,11 +12,11 @@ class QueryObj {
     this.sortOrder,
   });
 
-  Uri contentUri;
-  List<String>? projection;
-  String? selection;
-  List<String>? selectionArgs;
-  String? sortOrder;
+  final Uri contentUri;
+  final List<String>? projection;
+  final String? selection;
+  final List<String>? selectionArgs;
+  final String? sortOrder;
 
   QueryObj copyWith({
     Uri? contentUri,

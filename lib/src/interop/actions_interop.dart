@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 
-// TODO: Create an interface for interop
-
 class ActionsInterop {
   static const MethodChannel methodChannel = MethodChannel(
     'io.simplezen.simple_sms/actions',

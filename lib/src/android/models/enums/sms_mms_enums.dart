@@ -1,4 +1,4 @@
-// ignore_for_file: constant_identifier_names, unused_element, unused_field
+// ignore_for_file: constant_identifier_names
 
 /// Defines the application using mode, which can affect UI layout and message density.
 enum UsingMode {

@@ -93,7 +93,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _requestPermissions() async {
     try {
       _addLog('Requesting SMS permissions...');
-      final granted = await AndroidPermissions.requestPermissions(
+      final smsResults = await AndroidPermissions.requestPermissions(
         Intention.texting,
       );
 
@@ -102,10 +102,11 @@ class _MyAppState extends State<MyApp> {
 
       await _checkPermissions();
 
-      if (granted) {
-        _addLog('✅ SMS permissions granted');
+      final allGranted = smsResults.values.every((granted) => granted);
+      if (allGranted) {
+        _addLog('SMS permissions granted');
       } else {
-        _addLog('❌ SMS permissions denied');
+        _addLog('Some SMS permissions denied');
       }
     } catch (e) {
       _addLog('Error requesting permissions: $e');

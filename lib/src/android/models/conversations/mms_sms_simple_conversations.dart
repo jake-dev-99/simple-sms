@@ -1,289 +1,73 @@
-import 'package:flutter/material.dart';
-import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
-import 'package:simple_sms/src/android/models/people/contactables.dart';
 import '../../../interfaces/models_interface.dart';
+import '../enums/conversation_enums.dart';
 import '../enums/sms_mms_enums.dart';
-import '../messages/mms.dart';
-import '../messages/sms.dart';
 
+/// A simplified conversation model representing an SMS/MMS thread.
+///
+/// This is a pure data object. To resolve addresses, participants, or
+/// messages for this conversation, use [LookupService]:
+///
+/// ```dart
+/// final service = LookupService();
+/// final smsList = await service.getSmsByThread(conversation.id);
+/// final mmsList = await service.getMmsByThread(conversation.id);
+/// ```
 class AndroidSimpleConversation implements ModelInterface {
-  Future<List<String?>> get addresses async {
-    try {
-      final parsedAddresses = <String>[];
-      if (displayRecipientIds != null && displayRecipientIds!.isNotEmpty) {
-        for (final recipientId in displayRecipientIds!) {
-          if (recipientId.isNotEmpty) {
-            // Query canonical address
-            final response = await SimpleQuery.instance.query(
-              QueryRequest(
-                contentUri: 'content://mms-sms/canonical-address/$recipientId',
-              ),
-            );
-            if (response.rows.isNotEmpty && response.rows.first != null) {
-              final row = response.rows.first as Map<Object?, Object?>;
-              final address = row['address']?.toString() ?? '';
-              if (address.isNotEmpty) {
-                parsedAddresses.add(address);
-              }
-            }
-          }
-        }
-      }
-      return parsedAddresses;
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return [];
-    }
-  }
-
-  Future<List<Contactable>> get participants async {
-    try {
-      final addrs = <String>[];
-      final parsedContactables = <Contactable>[];
-      for (final address in await addresses) {
-        if (address != null) {
-          addrs.add(address);
-        }
-      }
-
-      if (addrs.isNotEmpty) {
-        if (addrs.length == 1 && addrs[0].isEmpty) {
-          debugPrint('$id - $displayRecipientIds - No addresses found for $id');
-          return [];
-        } else {
-          for (final addr in addrs) {
-            final uri =
-                addr.contains('@')
-                    ? 'content://com.android.contacts/data/emails/filter/$addr'
-                    : 'content://com.android.contacts/data/phones/filter/$addr';
-            final response = await SimpleQuery.instance.query(
-              QueryRequest(contentUri: uri),
-            );
-            if (response.rows.isNotEmpty && response.rows.first != null) {
-              final row = response.rows.first as Map<Object?, Object?>;
-              parsedContactables.add(
-                Contactable.fromRaw(
-                  Map<String, dynamic>.from(
-                    row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
-                  ),
-                ),
-              );
-            } else {
-              parsedContactables.add(Contactable(value: addr));
-            }
-          }
-          return parsedContactables;
-        }
-      }
-
-      Contactable contactable = Contactable(value: '');
-      debugPrint('$id - $displayRecipientIds - No contactables found');
-      return [contactable];
-    } catch (e, s) {
-      debugPrint('$id - $displayRecipientIds - $e');
-      debugPrint('$id - $displayRecipientIds - $s');
-      return [];
-    }
-  }
-
-  Future<List<Mms>> get mmsMessages async {
-    try {
-      final parsedMessages = <Mms>[];
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          contentUri: 'content://mms',
-          selection: 'thread_id = ?',
-          selectionArgs: [id.toString()],
-        ),
-      );
-      for (final row in response.rows) {
-        if (row != null) {
-          final rowMap = row as Map<Object?, Object?>;
-          parsedMessages.add(
-            await Mms.fromRaw(
-              Map<String, dynamic>.from(
-                rowMap.map((k, v) => MapEntry(k?.toString() ?? '', v)),
-              ),
-            ),
-          );
-        }
-      }
-      return parsedMessages;
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return [];
-    }
-  }
-
-  Future<List<Sms>> get smsMessages async {
-    try {
-      final parsedMessages = <Sms>[];
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          contentUri: 'content://sms',
-          selection: 'thread_id = ?',
-          selectionArgs: [id.toString()],
-        ),
-      );
-      for (final row in response.rows) {
-        if (row != null) {
-          final rowMap = row as Map<Object?, Object?>;
-          parsedMessages.add(
-            Sms.fromRaw(
-              Map<String, dynamic>.from(
-                rowMap.map((k, v) => MapEntry(k?.toString() ?? '', v)),
-              ),
-            ),
-          );
-        }
-      }
-      return parsedMessages;
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return [];
-    }
-  }
-
   @override
-  Map<String, dynamic>? sourceMap = {};
+  final Map<String, dynamic>? sourceMap;
   @override
-  int id;
-  int threadId;
-
-  /// Parent conversation identifier for nested or linked conversations
-  String parentId = '';
-
-  /// Display name for the conversation, typically contact name or phone number
-  String? title = '';
-
-  /// Indicates if conversation is archived
-  bool? isArchived;
-
-  /// Indicates if sender/conversation is blocked
-  bool? isBlocked;
-
-  /// Indicates if conversation has been deleted
-  bool? isDeleted;
-
-  /// Indicates if notifications are muted for this conversation
-  bool? isMuted;
-
-  /// Indicates if conversation is pinned to top of conversation list
-  bool? isPinned;
-
-  /// Indicates if all messages in conversation have been read
-  bool? isRead;
-
-  /// Indicates if conversation contains secure/encrypted messages
-  bool? isSafeMessage;
-
-  /// Type of chat (e.g., individual, group)
-  String? chatType;
-
-  /// Type of message (SMS, MMS, etc.)
-  SmsMmsType? smsMmsType;
-
-  /// List of phone numbers or identifiers for all participants
-  List<String> recipientIds = [];
-
-  /// Message classification type
-  MessageBox? type;
-
-  /// Current mode being used for this conversation
-  UsingMode? usingMode;
-
-  /// Label identifying the message source or platform
-  String? sourceLabel;
-
-  /// Timestamp of the most recent message (milliseconds since epoch)
-  DateTime? date;
-
-  /// Preview text from the most recent message
-  String? snippet;
-
-  /// Formatted string of recipient identifiers for display
-  List<String>? displayRecipientIds;
-
-  /// Current translation mode setting (if applicable)
-  String? translateMode;
-
-  /// Type information for the snippet text
-  dynamic snippetType;
-
-  /// Status code for the conversation in bin/trash (0 = not in bin)
-  int? binStatus;
-
-  /// Flag indicating presence of attachments (1 = has attachments)
-  int? hasAttachment;
-
-  /// Thread identifier for platform-specific threading
-  int? paThread;
-
-  /// Error code if message delivery failed
-  int? error;
-
-  /// Flag indicating if any alerts for this conversation have expired
-  int? alertExpired;
-
-  /// Character set information for the snippet
-  dynamic snippetCs;
-
-  /// Legacy archive status flag (1 = archived)
-  int? archived;
-
-  /// Count of unread messages in the conversation
-  int? unreadCount;
-
-  /// Legacy mute status flag (1 = muted)
-  int? isMute;
-
-  /// Sender's address or phone number
-  String? fromAddress;
-
-  /// Legacy read status flag (1 = read)
-  int? read;
-
-  /// Menu options string for UI context menu
-  String? menustring;
-
-  /// Legacy pin status flag (1 = pinned to top)
-  int? pinToTop;
-
-  /// Flag for default reply behavior (1 = reply to all participants)
-  int? replyAll;
-
-  /// Legacy safe message flag (1 = secure/encrypted)
-  bool? safeMessage;
-
-  /// Message classification code (spam, priority, etc.)
-  int? classification;
-
-  /// Total number of messages in the conversation
-  int? messageCount;
-
-  /// Preview text specifically for group conversations
-  String? groupSnippet;
-
-  /// Formatted date string of the most recent message
-  String? messageDate;
-
-  /// Platform-specific UUID for the conversation
-  String? paUuid;
-
-  /// Flag indicating if conversation is in secret/private mode
-  int? secretMode;
-
-  /// User's own phone number associated with this conversation
-  String? paOwnnumber;
+  final int id;
+  final int threadId;
+  final String parentId;
+  final String? title;
+  final bool? isArchived;
+  final bool? isBlocked;
+  final bool? isDeleted;
+  final bool? isMuted;
+  final bool? isPinned;
+  final bool? isRead;
+  final bool? isSafeMessage;
+  final ChatType? chatType;
+  final SmsMmsType? smsMmsType;
+  final List<String> recipientIds;
+  final MessageBox? type;
+  final UsingMode? usingMode;
+  final String? sourceLabel;
+  final DateTime? date;
+  final String? snippet;
+  final List<String>? displayRecipientIds;
+  final String? translateMode;
+  final dynamic snippetType;
+  final int? binStatus;
+  final int? hasAttachment;
+  final int? paThread;
+  final int? error;
+  final int? alertExpired;
+  final dynamic snippetCs;
+  final int? archived;
+  final int? unreadCount;
+  final int? isMute;
+  final String? fromAddress;
+  final int? read;
+  final String? menustring;
+  final int? pinToTop;
+  final int? replyAll;
+  final bool? safeMessage;
+  final int? classification;
+  final int? messageCount;
+  final String? groupSnippet;
+  final String? messageDate;
+  final String? paUuid;
+  final int? secretMode;
+  final String? paOwnnumber;
 
   AndroidSimpleConversation({
     required this.id,
-    required this.recipientIds,
+    this.recipientIds = const [],
     required this.threadId,
+    this.parentId = '',
+    this.sourceMap,
     this.alertExpired,
     this.archived,
     this.binStatus,
@@ -310,7 +94,6 @@ class AndroidSimpleConversation implements ModelInterface {
     this.paOwnnumber,
     this.paThread,
     this.paUuid,
-    this.parentId = '',
     this.pinToTop,
     this.read,
     this.replyAll,
@@ -320,7 +103,6 @@ class AndroidSimpleConversation implements ModelInterface {
     this.snippetCs,
     this.snippetType,
     this.sourceLabel,
-    this.sourceMap,
     this.title,
     this.translateMode,
     this.type,
@@ -336,7 +118,7 @@ class AndroidSimpleConversation implements ModelInterface {
     alertExpired: raw["alert_expired"],
     archived: raw["archived"],
     binStatus: raw["bin_status"],
-    chatType: raw["chat_type"]?.toString(), // todo - convert to enum
+    chatType: FieldHelper.enumFromValue(ChatType.values, raw["chat_type"]),
     classification: raw["classification"],
     date: FieldHelper.asDateTime(raw["date"]),
     displayRecipientIds: raw["display_recipient_ids"]?.split(' ') ?? <String>[],

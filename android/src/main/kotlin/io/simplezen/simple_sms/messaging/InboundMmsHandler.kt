@@ -1,29 +1,20 @@
 package io.simplezen.simple_sms.messaging
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import android.os.Bundle
 import android.provider.Telephony
 import com.google.android.mms.ContentType
 import com.google.android.mms.pdu_alt.NotificationInd
 import com.google.android.mms.pdu_alt.PduParser
 import com.google.android.mms.pdu_alt.RetrieveConf
-import android.telephony.PhoneNumberUtils
 import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import com.google.android.mms.pdu_alt.PduPersister.toIsoString
 import io.simplezen.simple_sms.models.MmsObject
 import io.simplezen.simple_sms.models.MmsPart
 import java.io.File
@@ -46,48 +37,7 @@ class InboundMmsHandler() : BroadcastReceiver() {
                 return
             }
 
-            val extras : Bundle? = intent.extras
-            val extraStr = extras?.keySet()
-                ?.joinToString(separator = "\n", prefix = "Intent String:\n", postfix = "\n") {
-                    val value = extras.get(it)
-                    if (value is ByteArray) {
-                        "$it - ${String(value)}"
-                    } else {
-                        "$it - $value"
-                    }
-                }
-
-            Log.d("TestInboundMms.onReceive", "Received Inbound MMS")
-            Log.d("TestInboundMms.onReceive", "--------------------------------------")
-            Log.d("TestInboundMms.onReceive", "Intent action: ${intent.action}")
-            Log.d("TestInboundMms.onReceive", "Intent type: ${intent.type}")
-            Log.d("TestInboundMms.onReceive", "Intent extras: ${intent.extras}")
-            Log.d("TestInboundMms.onReceive", "Intent extraString: $extraStr")
-            Log.d("TestInboundMms.onReceive", "Intent data: ${intent.data}")
-            Log.d("TestInboundMms.onReceive", "Intent scheme: ${intent.scheme}")
-            Log.d("TestInboundMms.onReceive", "Intent component: ${intent.component}")
-            Log.d("TestInboundMms.onReceive", "Intent flags: ${intent.flags}")
-            Log.d("TestInboundMms.onReceive", "Intent categories: ${intent.categories}")
-            Log.d("TestInboundMms.onReceive", "Intent package: ${intent.`package`}")
-            Log.d("TestInboundMms.onReceive", "Intent source bounds: ${intent.sourceBounds}")
-            Log.d("TestInboundMms.onReceive", "Intent identifier: ${intent.identifier}")
-            Log.d("TestInboundMms.onReceive", "Intent clipData: ${intent.clipData}")
-            Log.d("TestInboundMms.onReceive", "Intent package: ${intent.`package`}")
-            Log.d("TestInboundMms.onReceive", "Intent dataString: ${intent.dataString}")
-            Log.d("TestInboundMms.onReceive", "--------------------------------------")
-            Log.d("TestInboundMms.onReceive", "Notification contentLocation: ${notification.contentLocation}")
-            Log.d("TestInboundMms.onReceive", "Notification from: ${notification.from?.string ?: ""}")
-            Log.d("TestInboundMms.onReceive", "Notification mmsVersion: ${notification.mmsVersion}")
-            Log.d("TestInboundMms.onReceive", "Notification transactionId: ${toIsoString(notification.transactionId)}")
-            Log.d("TestInboundMms.onReceive", "Notification messageClass: ${String(notification.messageClass)}")
-            Log.d("TestInboundMms.onReceive", "Notification messageSize: ${notification.messageSize}")
-            Log.d("TestInboundMms.onReceive", "Notification subject: ${notification.subject}")
-            Log.d("TestInboundMms.onReceive", "Notification deliveryReport: ${notification.deliveryReport}")
-            Log.d("TestInboundMms.onReceive", "Notification expiry: ${notification.expiry}")
-            Log.d("TestInboundMms.onReceive", "Notification contentClass: ${notification.contentClass}")
-            Log.d("TestInboundMms.onReceive", "Notification from: ${notification.from?.string ?: ""}")
-            Log.d("TestInboundMms.onReceive", "Notification javaClass: ${notification.javaClass}")
-            Log.d("TestInboundMms.onReceive", "--------------------------------------")
+            Log.d("InboundMmsHandler", "Received MMS notification, size: ${notification.messageSize}")
 
             val contentLocation : ByteArray = notification.contentLocation
             if (contentLocation.isEmpty()) {
@@ -126,45 +76,23 @@ class InboundMmsHandler() : BroadcastReceiver() {
             }
 
         } else {
-            Log.w("TestInboundMms.onReceive", " <<< Received unexpected action: ${intent.action}")
-            Log.w("TestInboundMms.onReceive", "--------------------------------------")
-            Log.w("TestInboundMms.onReceive", "Intent action: ${intent.action}")
-            Log.w("TestInboundMms.onReceive", "Intent type: ${intent.type}")
-            Log.w("TestInboundMms.onReceive", "Intent extras: ${intent.extras}")
-            Log.w("TestInboundMms.onReceive", "Intent data: ${intent.data}")
-            Log.w("TestInboundMms.onReceive", "Intent scheme: ${intent.scheme}")
-            Log.w("TestInboundMms.onReceive", "Intent component: ${intent.component}")
-            Log.w("TestInboundMms.onReceive", "Intent flags: ${intent.flags}")
-            Log.w("TestInboundMms.onReceive", "Intent categories: ${intent.categories}")
-            Log.w("TestInboundMms.onReceive", "Intent package: ${intent.`package`}")
-            Log.w("TestInboundMms.onReceive", "Intent source bounds: ${intent.sourceBounds}")
-            Log.w("TestInboundMms.onReceive", "Intent identifier: ${intent.identifier}")
-            Log.w("TestInboundMms.onReceive", "Intent clipData: ${intent.clipData}")
-            Log.w("TestInboundMms.onReceive", "Intent package: ${intent.`package`}")
-            Log.w("TestInboundMms.onReceive", "Intent dataString: ${intent.dataString}")
-            Log.w("TestInboundMms.onReceive", "--------------------------------------")
+            Log.w("InboundMmsHandler", "Received unexpected action: ${intent.action}")
         }
     }
 
     private fun startMmsDownload(context: Context, contentUri: String) {
-        // Temp file for MMS PDU (FileProvider must be set up in manifest)
-        Log.d("startMmsDownload", "--------------------------------------")
-        Log.d("startMmsDownload", "Starting MMS download")
-        Log.d("startMmsDownload", "Content location URL: $contentUri")
+        Log.d("InboundMmsHandler", "Starting MMS download from: $contentUri")
         val tempMmsFile = createTempMmsFile(context)
-        Log.d("startMmsDownload", "Temp MMS file: $tempMmsFile")
         val contentFileUri: Uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
             tempMmsFile
         )
-        Log.d("startMmsDownload", "Content URI: $contentFileUri")
 
         val pi = PendingIntent.getBroadcast(
             context,
             0,
             Intent(context, MmsDownloadReceiver::class.java).apply {
-                Log.d("startMmsDownload", "Intent Content URI: $contentFileUri")
                 putExtra("contentFileUri", contentFileUri.toString())
                 putExtra("contentUri", contentUri.toString())
                 setClass(context, MmsDownloadReceiver::class.java)
@@ -172,17 +100,15 @@ class InboundMmsHandler() : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        Log.d("startMmsDownload", "PendingIntent: $pi")
-
         val smsManager = context.getSystemService(SmsManager::class.java)
         smsManager.downloadMultimediaMessage(
             context,
             contentUri,
             contentFileUri,
-            null,  // No config overrides needed
+            null,
             pi
         )
-        Log.d("startMmsDownload", "MMS download started")
+        Log.d("InboundMmsHandler", "MMS download initiated")
     }
 
     private fun createTempMmsFile(context: Context): File {
@@ -258,7 +184,6 @@ class MmsDownloadReceiver : BroadcastReceiver() {
                         val part = MmsPart.pduPartToMmsPart(context, i, pdu.body.getPart(i))
                         pduParts.add(part)
                     }
-//                    pduParts.forEach { it.saveMmsPart(context, newMmsId) }
                     val newParts = MmsDatabaseWriter.insertMmsParts(context, newMmsId, pduParts)
                     newMms.put("parts", newParts)
 

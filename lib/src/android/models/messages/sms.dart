@@ -1,55 +1,11 @@
 import 'dart:core';
 
-import 'package:flutter/material.dart';
-import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
-import '../people/contactables.dart';
 
 // --- Main Class ---
 class Sms implements ModelInterface {
-  // Recipient - "Address" is represented by SMS Type 1 (Inbox)
-  Future<Contactable?>? get recipient async {
-    try {
-      if (type != SmsMessageType.inbox || rawSender == null) return null;
-      return _lookupContactByPhone(rawSender!);
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return null;
-    }
-  }
-
-  // Sender - "Address" is NOT represented by SMS Type 1 (Inbox)
-  Future<Contactable?>? get sender async {
-    try {
-      if (type == SmsMessageType.inbox || rawSender == null) return null;
-      return _lookupContactByPhone(rawSender!);
-    } catch (e, s) {
-      debugPrint(e.toString());
-      debugPrint(s.toString());
-      return null;
-    }
-  }
-
-  /// Lookup a contact by phone number using SimpleQuery.
-  static Future<Contactable?> _lookupContactByPhone(String phoneNum) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        contentUri:
-            'content://com.android.contacts/data/phones/filter/$phoneNum',
-      ),
-    );
-    if (response.rows.isEmpty || response.rows.first == null) return null;
-    final row = response.rows.first as Map<Object?, Object?>;
-    return Contactable.fromRaw(
-      Map<String, dynamic>.from(
-        row.map((k, v) => MapEntry(k?.toString() ?? '', v)),
-      ),
-    );
-  }
-
   @override
   final int id;
   final int threadId;
@@ -197,11 +153,8 @@ class Sms implements ModelInterface {
     date:
         json["date"] != null
             ? FieldHelper.asDateTime(json["date"])!
-            : DateTime(2097, 12, 31, 23, 59, 59),
-    dateSent:
-        json["dateSent"] != null
-            ? FieldHelper.asDateTime(json["dateSent"]!)
-            : DateTime(2098, 12, 31, 23, 59, 59),
+            : DateTime.fromMillisecondsSinceEpoch(0),
+    dateSent: FieldHelper.asDateTime(json["dateSent"]),
     deletable: FieldHelper.asBool(json["deletable"]),
     deliveryDate: FieldHelper.asDateTime(json["deliveryDate"]),
     deliveryReportCount: json["deliveryReportCount"],
@@ -285,7 +238,7 @@ class Sms implements ModelInterface {
     "deviceName": deviceName,
     "errorCode": errorCode,
     "favorite": favorite,
-    "sender": sender,
+    "fromAddress": rawSender,
     "groupId": groupId,
     "groupType": groupType,
     "hidden": hidden,
@@ -344,11 +297,8 @@ class Sms implements ModelInterface {
     date:
         raw["date"] != null
             ? FieldHelper.asDateTime(raw["date"]!)!
-            : DateTime(2099, 12, 31, 23, 59, 59),
-    dateSent:
-        raw["dateSent"] != null
-            ? FieldHelper.asDateTime(raw["dateSent"]!)
-            : DateTime(2199, 12, 31, 23, 59, 59),
+            : DateTime.fromMillisecondsSinceEpoch(0),
+    dateSent: FieldHelper.asDateTime(raw["date_sent"]),
     deletable: FieldHelper.asBool(raw["deletable"]),
     deliveryDate: FieldHelper.asDateTime(raw["delivery_date"]),
     deliveryReportCount: raw["d_rpt_cnt"],
@@ -425,7 +375,7 @@ class Sms implements ModelInterface {
     "device_name": deviceName,
     "error_code": errorCode,
     "favorite": FieldHelper.boolToInt(favorite),
-    "from_address": sender,
+    "from_address": rawSender,
     "group_id": groupId,
     "group_type": groupType,
     "hidden": FieldHelper.boolToInt(hidden),

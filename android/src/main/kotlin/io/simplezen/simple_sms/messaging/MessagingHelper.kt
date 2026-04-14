@@ -26,14 +26,13 @@ internal fun getExtFromMimeType(mime: String): String? {
 
 // Create the private file dirs
 internal fun getDirFromMimeType(context : Context, mime: String): String {
-    return if(mime.contains("image"))
-        context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)!!.absolutePath
-    else if(mime.contains("video"))
-        context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)!!.absolutePath
-    else if(mime.contains("audio"))
-        context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)!!.absolutePath
-    else
-        context.getExternalFilesDir(Environment.DIRECTORY_RINGTONES)!!.absolutePath
+    val dir = when {
+        mime.contains("image") -> context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        mime.contains("video") -> context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+        mime.contains("audio") -> context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
+        else -> context.getExternalFilesDir(Environment.DIRECTORY_RINGTONES)
+    }
+    return dir?.absolutePath ?: context.cacheDir.absolutePath
 }
 
 internal fun getSelfNumbers(context: Context): Set<String> {

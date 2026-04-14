@@ -39,12 +39,18 @@ class FieldHelper {
 
   static int? boolToInt(bool? v) => v == null ? null : (v ? 1 : 0);
 
+  /// Threshold to distinguish seconds from milliseconds timestamps.
+  /// Timestamps below this value (roughly year 2001 in millis) are treated
+  /// as seconds and multiplied by 1000. Android ContentProviders inconsistently
+  /// store timestamps as seconds (MMS) or milliseconds (SMS).
+  static const int _secondsVsMillisThreshold = 1000000000000;
+
   static DateTime? asDateTime(dynamic value) {
     if (value == null) return null;
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
     if (value is int) {
-      return value < 1000000000000
+      return value < _secondsVsMillisThreshold
           ? DateTime.fromMillisecondsSinceEpoch(value * 1000)
           : DateTime.fromMillisecondsSinceEpoch(value);
     }
@@ -58,25 +64,4 @@ class FieldHelper {
             (v) => (v as dynamic).value == raw,
             orElse: () => null,
           );
-}
-
-/// Converts various value types to a boolean
-/// Returns null if conversion isn't possible
-bool? asBool(dynamic value) {
-  if (value == null) return null;
-  if (value is bool) return value;
-  if (value is int) return value == 1;
-  if (value is String) return value == "1" || value.toLowerCase() == "true";
-  return null;
-}
-
-/// Converts various value types to DateTime
-/// Handles timestamps, ISO strings, and DateTime objects
-/// Returns null if conversion isn't possible
-DateTime? asDateTime(dynamic value) {
-  if (value == null) return null;
-  if (value is DateTime) return value;
-  if (value is String) return DateTime.tryParse(value);
-  if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-  return null;
 }

@@ -14,17 +14,23 @@ class PermissionsInterop {
 
   static Future<Map<String, bool>> checkPermissions(
     List<String> permissions,
-  ) async =>
-      await methodChannel.invokeMethod<Map<String, bool>>(
-        "checkPermissions",
-        permissions,
-      ) ??
-      {};
+  ) async {
+    final result = await methodChannel.invokeMethod<Map>(
+      "checkPermissions",
+      permissions,
+    );
+    if (result == null) return {};
+    return Map<String, bool>.from(result);
+  }
 
-  static Future<bool> requestPermissions(List<String> permissions) async =>
-      await methodChannel.invokeMethod<bool>(
-        "requestPermission",
-        permissions,
-      ) ??
-      false;
+  static Future<Map<String, bool>> requestPermissions(
+    List<String> permissions,
+  ) async {
+    final result = await methodChannel.invokeMethod<Map>(
+      "requestPermission",
+      permissions,
+    );
+    if (result == null) return {};
+    return Map<String, bool>.from(result);
+  }
 }

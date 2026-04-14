@@ -7,9 +7,9 @@ class MmsPart implements ModelInterface {
   final int id;
 
   @override
-  Map<String, dynamic>? sourceMap;
+  final Map<String, dynamic>? sourceMap;
 
-  String parentId = '';
+  final String parentId;
   final String contentLocation;
   final ContentType contentType;
 
@@ -34,6 +34,7 @@ class MmsPart implements ModelInterface {
     required this.id,
     required this.contentLocation,
     required this.contentType,
+    this.parentId = '',
     this.sourceMap,
     this.charset,
     this.contentDisposition,
@@ -53,7 +54,6 @@ class MmsPart implements ModelInterface {
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
     id: FieldHelper.asInt(json["id"]) ?? 0,
     sourceMap: json,
-    // binary: json["_data"],
     charset: FieldHelper.enumFromValue(CharSet.values, json["charset"]),
     contentDisposition: json["contentDisposition"],
     contentId: json["contentId"],
@@ -94,8 +94,7 @@ class MmsPart implements ModelInterface {
     MmsPart part = MmsPart(
       id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
       sourceMap: raw,
-      // binary: json["_data"],
-      charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
+        charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',

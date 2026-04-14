@@ -1,7 +1,5 @@
 package io.simplezen.simple_sms.messaging
 
-import android.content.ClipData.newUri
-import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
@@ -28,11 +26,14 @@ object MmsDatabaseWriter {
         context: Context,
         mms: MmsObject,
     ): Map<String, Any?> {
-        // Insert the MMS
-        val newUri: Uri = context.contentResolver.insert( Mms.Inbox.CONTENT_URI, mms.contentValues)!!
+        val newUri = context.contentResolver.insert(Mms.Inbox.CONTENT_URI, mms.contentValues)
+            ?: throw IllegalStateException("Failed to insert MMS into database")
 
-        // Retrieve and return the inserted MMS
-        return Query(context).query(QueryObj(contentUri = newUri.toString())).first().toMutableMap().apply {
+        val result = Query(context).query(QueryObj(contentUri = newUri.toString()))
+        if (result.isEmpty()) {
+            throw IllegalStateException("Inserted MMS but could not re-query: $newUri")
+        }
+        return result.first().toMutableMap().apply {
             put("uri", newUri)
         }
     }
@@ -69,15 +70,21 @@ object MmsDatabaseWriter {
             if(addr.address.isEmpty()) continue
 
             val contentUri = Mms.Addr.getAddrUriForMessage(msgId.toString())
-            val newUri: Uri = context.contentResolver.insert(contentUri, addr.contentValues)!!
+            val newUri = context.contentResolver.insert(contentUri, addr.contentValues)
+            if (newUri == null) {
+                Log.w(TAG, "Failed to insert MMS address for message $msgId")
+                continue
+            }
             val addrId = ContentUris.parseId(newUri).toLong()
 
-            val newAddr = Query(context).query(
+            val addrResult = Query(context).query(
                 QueryObj(
                     contentUri = contentUri.toString(),
                     selection = "${BaseColumns._ID}=?",
                     selectionArgs = listOf(addrId.toString())
-                )).first().toMutableMap().apply {
+                ))
+            if (addrResult.isEmpty()) continue
+            val newAddr = addrResult.first().toMutableMap().apply {
                 put("uri", newUri)
             }
             Log.d(TAG, "Inserted MMS address with ID: $addrId")
