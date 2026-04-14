@@ -3,8 +3,9 @@ export 'src/android/android.dart';
 export 'src/android/messaging/android_messaging.dart';
 export 'src/android/messaging/action.dart';
 export 'src/android/messaging/destructive_action.dart';
-export 'src/android/permissions/permissions.dart';
-export 'src/android/permissions/permissions_enums.dart';
+// Permissions + default-SMS role management moved to simple_permissions_native;
+// imports of AndroidPermissions / Intention / PermissionsEnums should switch
+// to `package:simple_permissions_native/simple_permissions_native.dart`.
 export 'src/android/services/lookup_service.dart';
 
 // Models - Messages

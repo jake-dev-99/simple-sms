@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:simple_sms_native/simple_sms_native.dart';
+import 'package:simple_permissions_native/simple_permissions_native.dart';
 import 'package:image_picker/image_picker.dart';
 
-void main() {
-  // Initialize the messaging handler with callbacks for incoming messages
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize the permissions plugin before any check/request call.
+  await SimplePermissionsNative.initialize();
+
+  // Initialize the messaging handler with callbacks for incoming messages.
   AndroidMessaging.initialize(
     inboundMmsCallback: handleInboundMms,
     inboundSmsCallback: handleInboundSms,
@@ -66,17 +72,13 @@ class _MyAppState extends State<MyApp> {
     if (!mounted) return;
 
     try {
-      final hasRole = await AndroidPermissions.checkRole(Intention.texting);
-      final permissions = await AndroidPermissions.checkPermissions(
-        Intention.texting,
-      );
-      final hasFileAccess = await AndroidPermissions.checkPermissions(
-        Intention.fileAccess,
-      );
+      final sp = SimplePermissionsNative.instance;
+      final hasRole = await sp.check(const DefaultSmsApp()) ==
+          PermissionGrant.granted;
+      final texting = await sp.checkIntentionDetailed(Intention.texting);
+      final media = await sp.checkIntentionDetailed(Intention.mediaVisual);
 
-      final allGranted =
-          permissions.values.every((granted) => granted) &&
-          hasFileAccess.values.every((granted) => granted);
+      final allGranted = texting.isFullyGranted && media.isFullyGranted;
 
       setState(() {
         _isDefaultSmsApp = hasRole;
@@ -92,18 +94,17 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _requestPermissions() async {
     try {
-      _addLog('Requesting SMS permissions...');
-      final smsResults = await AndroidPermissions.requestPermissions(
-        Intention.texting,
-      );
+      final sp = SimplePermissionsNative.instance;
 
-      _addLog('Requesting file access permissions...');
-      await AndroidPermissions.requestPermissions(Intention.fileAccess);
+      _addLog('Requesting SMS permissions...');
+      final smsResults = await sp.requestIntentionDetailed(Intention.texting);
+
+      _addLog('Requesting media access permissions...');
+      await sp.requestIntentionDetailed(Intention.mediaVisual);
 
       await _checkPermissions();
 
-      final allGranted = smsResults.values.every((granted) => granted);
-      if (allGranted) {
+      if (smsResults.isFullyGranted) {
         _addLog('SMS permissions granted');
       } else {
         _addLog('Some SMS permissions denied');
@@ -116,7 +117,9 @@ class _MyAppState extends State<MyApp> {
   Future<void> _requestDefaultSmsRole() async {
     try {
       _addLog('Requesting default SMS app role...');
-      final granted = await AndroidPermissions.requestRole(Intention.texting);
+      final granted = (await SimplePermissionsNative.instance
+              .request(const DefaultSmsApp())) ==
+          PermissionGrant.granted;
 
       await _checkPermissions();
 

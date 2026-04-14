@@ -16,8 +16,8 @@ void main() {
 }
 
 // 2. Request permissions (call from a widget)
-await AndroidPermissions.requestPermissions(Intention.texting);
-await AndroidPermissions.requestRole(Intention.texting);
+await SimplePermissionsNative.instance.requestIntentionDetailed(Intention.texting);
+await SimplePermissionsNative.instance.request(const DefaultSmsApp());
 
 // 3. Send a message
 final msg = OutboundMessage(
@@ -93,25 +93,25 @@ await AndroidMessaging.instance.sendMessage(message: message);
 
 ### Check Permissions
 ```dart
-final perms = await AndroidPermissions.checkPermissions(Intention.texting);
+final perms = await SimplePermissionsNative.instance.checkIntentionDetailed(Intention.texting);
 final allGranted = perms.values.every((granted) => granted);
 ```
 
 ### Request SMS Permissions
 ```dart
-await AndroidPermissions.requestPermissions(Intention.texting);
+await SimplePermissionsNative.instance.requestIntentionDetailed(Intention.texting);
 ```
 
 ### Request File Access (for MMS)
 ```dart
-await AndroidPermissions.requestPermissions(Intention.fileAccess);
+await SimplePermissionsNative.instance.requestIntentionDetailed(Intention.mediaVisual);
 ```
 
 ### Set as Default SMS App
 ```dart
-final isDefault = await AndroidPermissions.checkRole(Intention.texting);
+final isDefault = await SimplePermissionsNative.instance.check(const DefaultSmsApp());
 if (!isDefault) {
-  await AndroidPermissions.requestRole(Intention.texting);
+  await SimplePermissionsNative.instance.request(const DefaultSmsApp());
 }
 ```
 
@@ -258,7 +258,7 @@ try {
 ```dart
 Future<void> safeSend(OutboundMessage msg) async {
   // Check permissions
-  final perms = await AndroidPermissions.checkPermissions(
+  final perms = await SimplePermissionsNative.instance.checkIntentionDetailed(
     Intention.texting
   );
   if (!perms.values.every((g) => g)) {
@@ -266,9 +266,9 @@ Future<void> safeSend(OutboundMessage msg) async {
   }
 
   // Check default app
-  final isDefault = await AndroidPermissions.checkRole(
-    Intention.texting
-  );
+  final isDefault = await SimplePermissionsNative.instance.check(
+    const DefaultSmsApp(),
+  ) == PermissionGrant.granted;
   if (!isDefault) {
     throw Exception('Not default SMS app');
   }
