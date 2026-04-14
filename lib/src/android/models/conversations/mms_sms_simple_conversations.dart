@@ -2,6 +2,9 @@ import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/conversation_enums.dart';
 import '../enums/sms_mms_enums.dart';
+import '../messages/mms.dart';
+import '../messages/sms.dart';
+import '../people/contactables.dart';
 
 /// A simplified conversation model representing an SMS/MMS thread.
 ///
@@ -62,6 +65,24 @@ class AndroidSimpleConversation implements ModelInterface {
   final int? secretMode;
   final String? paOwnnumber;
 
+  // --- Enrichment (populated by LookupService.listConversations) -----------
+  //
+  // These fields are `null` when the model is built via [fromRaw] alone.
+  // [LookupService.listConversations] resolves them by issuing follow-up
+  // queries (canonical-address + contactable lookup, latest SMS/MMS).
+
+  /// Contactables (lightweight contact rows) resolved from [recipientIds].
+  /// Null when not enriched.
+  final List<Contactable>? participants;
+
+  /// Most recent SMS in the thread, if any. Null when not enriched or when
+  /// the thread has no SMS.
+  final Sms? latestSms;
+
+  /// Most recent MMS in the thread, if any. Null when not enriched or when
+  /// the thread has no MMS.
+  final Mms? latestMms;
+
   AndroidSimpleConversation({
     required this.id,
     this.recipientIds = const [],
@@ -108,7 +129,73 @@ class AndroidSimpleConversation implements ModelInterface {
     this.type,
     this.unreadCount,
     this.usingMode,
+    this.participants,
+    this.latestSms,
+    this.latestMms,
   });
+
+  /// Returns a new instance with the supplied enrichment fields populated,
+  /// preserving all other fields from [this].
+  ///
+  /// Intended for internal use by [LookupService.listConversations]; app code
+  /// should treat `AndroidSimpleConversation` as immutable and request the
+  /// enriched shape from the list API rather than constructing it manually.
+  AndroidSimpleConversation enrich({
+    List<Contactable>? participants,
+    Sms? latestSms,
+    Mms? latestMms,
+  }) {
+    return AndroidSimpleConversation(
+      id: id,
+      recipientIds: recipientIds,
+      threadId: threadId,
+      parentId: parentId,
+      sourceMap: sourceMap,
+      alertExpired: alertExpired,
+      archived: archived,
+      binStatus: binStatus,
+      chatType: chatType,
+      classification: classification,
+      date: date,
+      displayRecipientIds: displayRecipientIds,
+      error: error,
+      fromAddress: fromAddress,
+      groupSnippet: groupSnippet,
+      hasAttachment: hasAttachment,
+      isArchived: isArchived,
+      isBlocked: isBlocked,
+      isDeleted: isDeleted,
+      isMute: isMute,
+      isMuted: isMuted,
+      isPinned: isPinned,
+      isRead: isRead,
+      isSafeMessage: isSafeMessage,
+      menustring: menustring,
+      messageCount: messageCount,
+      messageDate: messageDate,
+      smsMmsType: smsMmsType,
+      paOwnnumber: paOwnnumber,
+      paThread: paThread,
+      paUuid: paUuid,
+      pinToTop: pinToTop,
+      read: read,
+      replyAll: replyAll,
+      safeMessage: safeMessage,
+      secretMode: secretMode,
+      snippet: snippet,
+      snippetCs: snippetCs,
+      snippetType: snippetType,
+      sourceLabel: sourceLabel,
+      title: title,
+      translateMode: translateMode,
+      type: type,
+      unreadCount: unreadCount,
+      usingMode: usingMode,
+      participants: participants ?? this.participants,
+      latestSms: latestSms ?? this.latestSms,
+      latestMms: latestMms ?? this.latestMms,
+    );
+  }
 
   factory AndroidSimpleConversation.fromRaw(
     Map<String, dynamic> raw,

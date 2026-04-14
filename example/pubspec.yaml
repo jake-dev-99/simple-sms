@@ -24,11 +24,26 @@ dependencies:
     # The example app is bundled with the plugin so we use a path dependency on
     # the parent directory to use the current plugin's version.
     path: ../
+  # The example exercises default-SMS-role + texting / media permissions via
+  # the dedicated permissions plugin. A published app should switch this to a
+  # pub.dev constraint (e.g. `simple_permissions_native: ^1.2.0`).
+  simple_permissions_native: ^1.2.0
   url_launcher: ^6.3.1
   image_picker: ^1.1.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
+
+dependency_overrides:
+  # Force path resolution of simple_permissions_native + simple_query so we
+  # align with the local federated workspace (the current published
+  # simple_query_android still pins simple_permissions_native ^0.0.1; see
+  # simple-query:fix/permissions-pin). Drop once simple_query_android ^0.2.1
+  # is published to pub.dev.
+  simple_permissions_native:
+    path: ../../simple-permissions
+  simple_query:
+    path: ../../simple-query/packages/simple_query
 
 dev_dependencies:
   integration_test:

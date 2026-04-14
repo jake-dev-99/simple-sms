@@ -2,8 +2,10 @@ import 'package:simple_sms_native/src/interop/actions_interop.dart';
 
 /// Non-destructive actions for messages and contacts.
 ///
-/// Provides methods to mark messages as read, send local notifications,
-/// and launch the system contacts app.
+/// Provides methods to mark messages as read and launch the system contacts
+/// app. Notifications are intentionally not included — consumers should use
+/// the `simple_notifications` plugin (`SimpleNotifications.showSimple` etc.)
+/// for posting notifications.
 class AndroidAction {
   /// Marks a single message as read by its database ID.
   static Future<bool> markMessageAsRead(String messageId) async =>
@@ -12,12 +14,6 @@ class AndroidAction {
   /// Marks all messages in a conversation as read by the conversation's thread ID.
   static Future<bool> markConversationAsRead(String conversationId) async =>
       ActionsInterop.markConversationAsRead(conversationId);
-
-  /// Shows a local notification with the given [title] and [body].
-  static Future<bool> sendNotification({
-    required String title,
-    required String body,
-  }) async => ActionsInterop.sendNotification(title, body);
 
   /// Launches the native contacts app to add a new contact.
   ///

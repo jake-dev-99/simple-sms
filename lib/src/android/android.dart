@@ -6,12 +6,14 @@ import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 import './messaging/action.dart';
 import './messaging/destructive_action.dart';
 import './messaging/android_messaging.dart';
-import 'permissions/permissions.dart';
 
 /// Main entry point for the simple_sms plugin.
 ///
-/// Provides access to SMS/MMS messaging, permissions, and device actions
-/// on Android. Must be initialized before use via [Android.initialize].
+/// Provides access to SMS/MMS messaging and device actions on Android. Must
+/// be initialized before use via [Android.initialize].
+///
+/// Permission and default-SMS-role management is NOT part of this plugin
+/// anymore — use `simple_permissions_native` for those flows.
 ///
 /// ```dart
 /// final android = Android.initialize(
@@ -49,9 +51,6 @@ class Android {
   /// Mark messages as read, send notifications, launch contacts.
   late AndroidAction action;
 
-  /// Check and request SMS permissions and default SMS app role.
-  late AndroidPermissions provisioning;
-
   /// Send and receive SMS/MMS messages.
   late AndroidMessaging messaging;
 
@@ -61,7 +60,6 @@ class Android {
   }) {
     destructiveAction = AndroidDestructiveAction();
     action = AndroidAction();
-    provisioning = AndroidPermissions();
     messaging = AndroidMessaging.instance;
   }
 

@@ -17,13 +17,6 @@ class ActionsInterop {
       ) ??
       false;
 
-  static Future<bool> sendNotification(String title, String body) async =>
-      await methodChannel.invokeMethod<bool>("sendNotification", {
-        'title': title,
-        'body': body,
-      }) ??
-      false;
-
   /// Launch the native contacts app to add a new contact.
   /// Optionally pre-fill [phoneNumber] and [name].
   static Future<bool> launchAddContact({
