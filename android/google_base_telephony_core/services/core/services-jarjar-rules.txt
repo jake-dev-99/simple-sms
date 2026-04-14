@@ -1,2 +1,0 @@
-# For profiling flags
-rule android.os.profiling.** android.internal.os.profiling.@1

@@ -1,10 +1,10 @@
 name: simple_sms
 description: "A modern MMS / SMS plugin for Android"
-version: 0.0.1
+version: 0.0.3
 homepage: https://simplezen.io
 
 environment:
-  sdk: ^3.7.0-0
+  sdk: ^3.7.0
   flutter: '>=3.3.0'
 
 dependencies:

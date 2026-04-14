@@ -1,0 +1,33 @@
+# Vendored Android directories NOT used by the Gradle build
+# (not referenced in android/build.gradle.kts or android/settings.gradle.kts)
+android/google_base_telephony_core/
+android/google_i18n_libphonenumber/
+android/google_messaging/
+android/google_provider_telephony_core/
+
+# Build artifacts and IDE files
+android/.gradle/
+android/.idea/
+android/build/
+android/src/build/
+android/local.properties
+build/
+.dart_tool/
+.packages
+
+# Stale files at wrong directory level
+android/src/build.gradle
+android/src/build.gradle.kts
+android/src/res/
+android/src/test/
+
+# OS files
+.DS_Store
+**/.DS_Store
+
+# Dev-only files
+WHITEPAPER.md
+.vscode/
+.github/
+.claude/
+tool/
