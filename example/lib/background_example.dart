@@ -10,7 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:simple_sms_native/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms_native.dart';
 
 // ---------------------------------------------------------------------------
 // 1. Define your message handlers as top-level functions.

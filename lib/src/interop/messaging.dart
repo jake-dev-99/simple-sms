@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import 'package:simple_sms_native/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms_native.dart';
 
 class OutboundMessagingInterop {
   static const MethodChannel methodChannel = MethodChannel(

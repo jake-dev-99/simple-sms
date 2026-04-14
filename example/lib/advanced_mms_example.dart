@@ -8,7 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:simple_sms_native/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms_native.dart';
 
 /// Process an incoming MMS message and extract all information
 void processInboundMms(Mms mms) {
