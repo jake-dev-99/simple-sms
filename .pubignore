@@ -1,38 +1,97 @@
-# Vendored Android directories NOT used by the Gradle build
-# (not referenced in android/build.gradle.kts or android/settings.gradle.kts)
-android/google_base_telephony_core/
-android/google_i18n_libphonenumber/
-android/google_messaging/
-android/google_provider_telephony_core/
-
-# Build artifacts and IDE files
-android/.gradle/
-android/.idea/
-android/build/
-android/src/build/
-android/local.properties
-android/lib/**/build/
-android/lib/**/bin/
-android/lib/**/.gradle/
-android/lib/**/tests/
-android/lib/**/local.properties
-build/
-.dart_tool/
-.packages
-
-# Stale files at wrong directory level
-android/src/build.gradle
-android/src/build.gradle.kts
-android/src/res/
-android/src/test/
-
-# OS files
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
 .DS_Store
-**/.DS_Store
-
-# Dev-only files
-WHITEPAPER.md
-.vscode/
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
 .github/
-.claude/
-tool/
+*.bin
+*.lock
+*.zip
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/build/
+**/bin/
+pubspec.lock
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android related
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+
+# iOS/XCode related
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# Web related
+lib/generated_plugin_registrant.dart
+
+# Exceptions to above rules.
+!**/ios/**/default.mode1v3
+!**/ios/**/default.mode2v3
+!**/ios/**/default.pbxuser
+!**/ios/**/default.perspectivev3
+!/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
+!/dev/ci/**/Gemfile.lock

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:simple_sms/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms.dart';
 
 void main() {
   group('Sms', () {

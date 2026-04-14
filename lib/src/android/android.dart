@@ -1,7 +1,7 @@
 import 'dart:core';
 import 'dart:io' show Platform;
-import 'package:simple_sms/src/android/models/messages/mms.dart';
-import 'package:simple_sms/src/android/models/messages/sms.dart';
+import 'package:simple_sms_native/src/android/models/messages/mms.dart';
+import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 
 import './messaging/action.dart';
 import './messaging/destructive_action.dart';

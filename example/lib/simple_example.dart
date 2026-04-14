@@ -5,7 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:simple_sms/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms.dart';
 
 /// STEP 1: Initialize messaging with callbacks
 ///

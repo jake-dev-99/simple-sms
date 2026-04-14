@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:simple_sms/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {

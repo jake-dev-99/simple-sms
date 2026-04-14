@@ -1,4 +1,4 @@
-import 'package:simple_sms/src/interop/actions_interop.dart';
+import 'package:simple_sms_native/src/interop/actions_interop.dart';
 
 /// Non-destructive actions for messages and contacts.
 ///

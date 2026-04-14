@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:simple_sms/src/android/models/model_helpers.dart';
+import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
