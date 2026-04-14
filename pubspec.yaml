@@ -23,9 +23,6 @@ dev_dependencies:
 flutter:
   plugin:
     platforms:
-      dart:
-        sdk: flutter
-        pluginClass: SimpleSms
       android:
         package: io.simplezen.simple_sms
         pluginClass: SimpleSmsPlugin
