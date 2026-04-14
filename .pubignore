@@ -11,6 +11,11 @@ android/.idea/
 android/build/
 android/src/build/
 android/local.properties
+android/lib/**/build/
+android/lib/**/bin/
+android/lib/**/.gradle/
+android/lib/**/tests/
+android/lib/**/local.properties
 build/
 .dart_tool/
 .packages
