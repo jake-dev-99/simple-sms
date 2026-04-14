@@ -9,6 +9,8 @@
 * `LookupService.listContacts({filter, sort, limit, offset})` — typed list query for contacts. `ContactFilter` / `ContactSort` exposed.
 * `LookupService.listConversations({filter, sort, limit, offset, enrich})` — typed list query against `content://mms-sms/conversations?simple=true`. When `enrich` is true (default) each returned `AndroidSimpleConversation` gets its `participants` / `latestSms` / `latestMms` resolved via follow-up lookups.
 * `LookupService.getConversationByThread(threadId, {enrich})` — single-thread lookup shorthand.
+* `LookupService.listContactablesForContact(contactId)` — every `data` row for a contact (phone numbers, emails, other MIME-typed entries) via `content://com.android.contacts/data`.
+* `LookupService.getStructuredName(contactId, {accountType})` — resolve a contact's given/family/phonetic name fields from the structured-name data row.
 * `AndroidSimpleConversation`: new optional fields `participants` (`List<Contactable>?`), `latestSms` (`Sms?`), `latestMms` (`Mms?`); `enrich(...)` copy-constructor.
 
 ### Removed

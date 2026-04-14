@@ -13,6 +13,7 @@ import '../models/messages/mms.dart';
 import '../models/messages/mms_part.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
+import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
 
 /// Centralized service for resolving contacts, messages, and addresses
@@ -438,6 +439,91 @@ class LookupService {
       latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
       latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
     );
+  }
+
+  /// Lists every `data` row belonging to a single contact — phone numbers,
+  /// emails, and any other MIME-typed data entries. Queries
+  /// `content://com.android.contacts/data` filtered by `contact_id`.
+  ///
+  /// Callers typically filter the returned list on `contactable.mimetype`
+  /// (e.g. `vnd.android.cursor.item/phone_v2`,
+  /// `vnd.android.cursor.item/email_v2`) to pick the entries they care about.
+  Future<List<Contactable>> listContactablesForContact(int contactId) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.contacts,
+          filters: [
+            QueryFilterCondition(
+              field: 'contact_id',
+              operator: QueryFilterOperator.equals,
+              value: contactId.toString(),
+            ),
+          ],
+          platformData: const {
+            'contentUri': 'content://com.android.contacts/data',
+          },
+        ),
+      );
+      return response.records
+          .map((row) => Contactable.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+    } catch (e, s) {
+      debugPrint(
+          'simple_sms: Failed to list contactables for contact $contactId: $e');
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Resolves a contact's structured name (given / family / prefix / suffix /
+  /// phonetic variants) from the contacts data provider.
+  ///
+  /// Queries `content://com.android.contacts/data` filtered by `contact_id`,
+  /// `mimetype = vnd.android.cursor.item/name`, and optionally `account_type`.
+  /// Returns null when the contact has no structured-name row.
+  Future<AndroidContactName?> getStructuredName({
+    required int contactId,
+    String? accountType,
+  }) async {
+    try {
+      final filters = <QueryFilterCondition>[
+        QueryFilterCondition(
+          field: 'contact_id',
+          operator: QueryFilterOperator.equals,
+          value: contactId.toString(),
+        ),
+        const QueryFilterCondition(
+          field: 'mimetype',
+          operator: QueryFilterOperator.equals,
+          value: 'vnd.android.cursor.item/name',
+        ),
+        if (accountType != null)
+          QueryFilterCondition(
+            field: 'account_type',
+            operator: QueryFilterOperator.equals,
+            value: accountType,
+          ),
+      ];
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.contacts,
+          filters: filters,
+          platformData: const {
+            'contentUri': 'content://com.android.contacts/data',
+          },
+        ),
+      );
+      if (response.records.isEmpty) return null;
+      return AndroidContactName.fromRaw(
+        Map<String, dynamic>.from(response.records.first),
+      );
+    } catch (e, s) {
+      debugPrint(
+          'simple_sms: Failed to get structured name for $contactId: $e');
+      debugPrint(s.toString());
+      return null;
+    }
   }
 
   /// Lists contacts matching the given [filter], ordered by [sort], paged by
