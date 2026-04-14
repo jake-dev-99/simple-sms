@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:simple_permissions_native/simple_permissions_native.dart';
 import 'package:simple_sms_native/simple_sms_native.dart';
 
 /// STEP 1: Initialize messaging with callbacks
@@ -25,18 +26,26 @@ void initializeMessaging() {
   );
 }
 
-/// STEP 2: Request permissions
+/// STEP 2: Request permissions via simple_permissions_native
 ///
-/// Before you can send/receive messages, you need permissions
+/// Before you can send/receive messages, you need:
+///   1. SMS/MMS permissions (READ_SMS, SEND_SMS, RECEIVE_SMS, RECEIVE_MMS…)
+///   2. Media access for MMS attachments (images/video)
+///   3. The default SMS app role
+///
+/// Remember to await `SimplePermissionsNative.initialize()` once (usually in
+/// `main()`) before calling this.
 Future<void> requestPermissions() async {
-  // Request SMS/MMS permissions
-  await AndroidPermissions.requestPermissions(Intention.texting);
+  final sp = SimplePermissionsNative.instance;
 
-  // Request file access for MMS attachments
-  await AndroidPermissions.requestPermissions(Intention.fileAccess);
+  // Request SMS/MMS permissions
+  await sp.requestIntentionDetailed(Intention.texting);
+
+  // Request media access for MMS attachments (images + video)
+  await sp.requestIntentionDetailed(Intention.mediaVisual);
 
   // Set as default SMS app (required for full functionality)
-  await AndroidPermissions.requestRole(Intention.texting);
+  await sp.request(const DefaultSmsApp());
 }
 
 /// STEP 3: Send a simple SMS
@@ -99,16 +108,20 @@ Future<void> sendGroupMms() async {
   }
 }
 
-/// OPTIONAL: Check if you have permissions before attempting operations
+/// OPTIONAL: Check if you have permissions before attempting operations.
+///
+/// Uses `simple_permissions_native` — make sure
+/// `SimplePermissionsNative.initialize()` has been awaited before calling.
 Future<bool> checkIfReady() async {
-  // Check if default SMS app
-  final isDefaultApp = await AndroidPermissions.checkRole(Intention.texting);
+  final sp = SimplePermissionsNative.instance;
 
-  // Check if we have all required permissions
-  final permissions = await AndroidPermissions.checkPermissions(
-    Intention.texting,
-  );
-  final hasAllPermissions = permissions.values.every((granted) => granted);
+  // Check if default SMS app
+  final isDefaultApp =
+      await sp.check(const DefaultSmsApp()) == PermissionGrant.granted;
+
+  // Check if we have all required SMS permissions
+  final permissions = await sp.checkIntentionDetailed(Intention.texting);
+  final hasAllPermissions = permissions.isFullyGranted;
 
   debugPrint('Default SMS App: $isDefaultApp');
   debugPrint('Has All Permissions: $hasAllPermissions');

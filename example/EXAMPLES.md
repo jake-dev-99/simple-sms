@@ -38,7 +38,7 @@ AndroidMessaging.initialize(
 );
 
 // Request permissions
-await AndroidPermissions.requestPermissions(Intention.texting);
+await SimplePermissionsNative.instance.requestIntentionDetailed(Intention.texting);
 
 // Send MMS with image
 final message = OutboundMessage(
@@ -239,13 +239,13 @@ void main() {
 ### Permissions (All Examples)
 ```dart
 // Check permissions
-final hasPerms = await AndroidPermissions.checkPermissions(Intention.texting);
+final hasPerms = await SimplePermissionsNative.instance.checkIntentionDetailed(Intention.texting);
 
 // Request permissions
-await AndroidPermissions.requestPermissions(Intention.texting);
+await SimplePermissionsNative.instance.requestIntentionDetailed(Intention.texting);
 
 // Request default SMS role
-await AndroidPermissions.requestRole(Intention.texting);
+await SimplePermissionsNative.instance.request(const DefaultSmsApp());
 ```
 
 ### Sending SMS (Simple)
@@ -339,7 +339,7 @@ void handleInboundSms(Sms sms) {
 3. Check callback functions are being called
 
 ### "Image attachments not working"
-1. Request file access permissions (`Intention.fileAccess`)
+1. Request file access permissions (`Intention.mediaVisual`)
 2. Verify file paths are correct and accessible
 3. Check file format is supported (JPEG, PNG, etc.)
 

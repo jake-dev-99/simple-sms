@@ -1,3 +1,38 @@
+## 0.2.0
+
+### Removed (breaking)
+* `AndroidPermissions` class — `checkRole`, `requestRole`, `checkPermissions`,
+  `requestPermissions`, plus the `PermissionsEnums` / `Intention` enum — and
+  the `Android.provisioning` facade property. All of this is covered by
+  `simple_permissions_native` (`SimplePermissionsNative.instance`):
+    - `AndroidPermissions.checkRole(Intention.texting)` →
+      `sp.check(const DefaultSmsApp()) == PermissionGrant.granted`
+    - `AndroidPermissions.requestRole(Intention.texting)` →
+      `sp.request(const DefaultSmsApp())`
+    - `AndroidPermissions.checkPermissions(Intention.texting)` →
+      `sp.checkIntentionDetailed(Intention.texting)` (returns
+      `PermissionResult` — use `.isFullyGranted` / `.denied` / etc.)
+    - `AndroidPermissions.requestPermissions(Intention.texting)` →
+      `sp.requestIntentionDetailed(Intention.texting)`
+    - `Intention.fileAccess` → `Intention.mediaVisual` (+ `Intention.mediaAudio`
+      when audio attachments matter; see the `Intention` class on
+      `simple_permissions_native` for finer-grained splits)
+* Native Kotlin: deleted `device/PermissionsHandler.kt` and the
+  `io.simplezen.simple_sms/permissions` MethodChannel. The associated
+  `REQUEST_CODE_ROLE` / `REQUEST_CODE_PERMISSIONS` + pending-result plumbing
+  in `SimpleSmsPlugin.kt` was removed; the plugin's `onActivityResult` /
+  `onRequestPermissionsResult` overrides now return `false` so sibling
+  plugins on the same `ActivityPluginBinding` own their own results.
+
+### Example
+* Migrated `example/lib/main.dart` + `example/lib/simple_example.dart` +
+  `example/EXAMPLES.md` + `example/QUICK_REFERENCE.md` + other docs to
+  `simple_permissions_native`. Example pubspec adds
+  `simple_permissions_native: ^1.2.0` with a temporary
+  `dependency_overrides` block to force path resolution until
+  `simple_query_android` 0.2.1 (with the updated permissions pin) is
+  published.
+
 ## 0.1.0
 
 ### Added
@@ -14,11 +49,12 @@
 * `AndroidSimpleConversation`: new optional fields `participants` (`List<Contactable>?`), `latestSms` (`Sms?`), `latestMms` (`Mms?`); `enrich(...)` copy-constructor.
 
 ### Removed
-* `AndroidAction.sendNotification` — consumers must use `simple_notifications` (`SimpleNotifications.instance.showSimple`). The corresponding `sendNotification` MethodChannel handler and the orphaned `Notification.kt` class have been removed from the Android side.
+* `AndroidAction.sendNotification` — notifications are out of scope for an SMS plugin. Consumers should use their own notification layer (e.g. [`flutter_local_notifications`](https://pub.dev/packages/flutter_local_notifications), which is widely supported and covers Android MessagingStyle, channels, and actions). The corresponding `sendNotification` MethodChannel handler and the orphaned `Notification.kt` class have been removed from the Android side.
 * `AndroidDevice` and `AndroidSimCard` models — these belong in `simple_telephony_native` and have been relocated there. Import from that plugin instead.
 
 ### Deprecation note (follow-up)
-* `AndroidPermissions` and the `Android.provisioning` property remain for now but are superseded by `simple_permissions_native`. A follow-up PR will migrate the example app off `AndroidPermissions` and remove the class entirely.
+* `AndroidPermissions` and the `Android.provisioning` property remain for now
+  but are superseded by `simple_permissions_native`. Removed entirely in 0.2.0.
 
 ## 0.0.3
 
