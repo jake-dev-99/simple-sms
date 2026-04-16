@@ -2,6 +2,23 @@ import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
+/// A single part of a multipart MMS message — text body, image, video,
+/// audio clip, or SMIL layout descriptor.
+///
+/// An [Mms] decomposes into one or more [MmsPart]s, each addressable by
+/// its own [id] and grouped by [parentId] (matching `Mms.id`). Typical
+/// messages contain:
+///   * one `text/plain` part with the message body,
+///   * one `application/smil` layout part,
+///   * zero or more `image/*` / `video/*` / `audio/*` attachment parts.
+///
+/// For app consumption, the useful fields are [parentId] (which MMS
+/// this belongs to), [contentType], [contentLocation] (typically a
+/// `content://` URI an attachment can be resolved from),
+/// [contentDisposition] (inline / attachment), and the textual payload
+/// shortcuts when present. Raw provider metadata (transfer-encoding,
+/// carrier reserved flags, etc.) flows through unchanged for round-trip
+/// fidelity.
 class MmsPart implements ModelInterface {
   @override
   final int id;
