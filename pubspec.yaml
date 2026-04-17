@@ -1,7 +1,15 @@
 name: simple_sms_native
-description: "A modern MMS / SMS plugin for Android"
+description: "A modern MMS / SMS plugin for Android with typed inbound/outbound messaging, lookup service, conversation enrichment, and default-app role management."
 version: 0.2.0
 homepage: https://simplezen.io
+repository: https://github.com/simplezen/simple-sms
+issue_tracker: https://github.com/simplezen/simple-sms/issues
+
+topics:
+  - sms
+  - mms
+  - messaging
+  - android
 
 environment:
   sdk: ^3.7.0

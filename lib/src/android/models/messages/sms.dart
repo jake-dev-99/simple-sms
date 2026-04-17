@@ -4,7 +4,27 @@ import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
-// --- Main Class ---
+/// An SMS message record read from the Android telephony content provider.
+///
+/// Mirrors the columns in `content://sms` with Dart-friendly names.
+/// Produced by [LookupService.listSms] and by the incoming-SMS callback
+/// registered through [AndroidMessaging.initialize]; consumers rarely
+/// construct instances directly.
+///
+/// The fields consumers usually care about are [id] (stable Hive join
+/// key), [threadId] (conversation grouping key — the same across every
+/// SMS + MMS in a thread), [body] (message text, may be null for system
+/// messages), [address] (sender for inbound, recipient for outbound),
+/// [date] (wall-clock timestamp of delivery or send), [type] ([SmsMessageType]
+/// — inbox / sent / outbox / draft / …), [read] + [seen] flags, and
+/// [simSlot] for multi-SIM device attribution. The remainder of the
+/// surface (priority, reBody, reservedCarrierTags, etc.) is provider
+/// metadata that flows through for completeness but isn't usually read
+/// by app code.
+///
+/// Use [Sms.fromJson] / [toJson] for app-layer round-trips (e.g. cached
+/// records) and [Sms.fromRaw] / [toRaw] when interacting with the raw
+/// platform-channel payload.
 class Sms implements ModelInterface {
   @override
   final int id;

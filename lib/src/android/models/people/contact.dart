@@ -2,6 +2,22 @@ import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
+/// A contact row read from Android's Contacts content provider
+/// (`content://com.android.contacts/contacts`).
+///
+/// This is the high-level "person" record. Individual phone numbers,
+/// emails, and addresses belonging to this contact are modeled
+/// separately as [Contactables] records — use
+/// [LookupService.listContactablesForContact] to resolve them.
+///
+/// Fields consumers typically care about: [id] (stable Android contact
+/// id), [displayName] (the resolved name Android presents in UI),
+/// [displayNameSource] (whether the name came from a structured-name
+/// row, the primary phone number, an email, etc.), [hasPhoneNumber] /
+/// [sendToVoicemail] / [starred] flags, and [lastTimeContacted]. The
+/// remaining fields (presence, chat capability, custom-ringtone URI,
+/// carrier status metadata, etc.) flow through for round-trip fidelity
+/// with the provider.
 class AndroidContact implements ModelInterface {
   @override
   final int id;
