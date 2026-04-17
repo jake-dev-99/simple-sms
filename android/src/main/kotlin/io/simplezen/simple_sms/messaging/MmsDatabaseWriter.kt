@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
