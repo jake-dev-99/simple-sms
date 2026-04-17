@@ -202,11 +202,10 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
                                 Manifest.permission.READ_PHONE_NUMBERS
                             ) != PackageManager.PERMISSION_GRANTED
                         ) {
-                            SimpleSmsPlugin.requestPermissions(
-                                arrayOf(Manifest.permission.READ_PHONE_NUMBERS)
-                            )
+                            null
+                        } else {
+                            subscriptionManager.getPhoneNumber(DEFAULT_SUBSCRIPTION_ID)
                         }
-                        subscriptionManager.getPhoneNumber(DEFAULT_SUBSCRIPTION_ID)
                     } else {
                         subscription.number
                     }
