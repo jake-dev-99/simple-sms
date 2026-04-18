@@ -3,8 +3,6 @@ package io.simplezen.simple_sms.queries
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.content.res.AssetFileDescriptor
-import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +16,7 @@ import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
 import io.simplezen.simple_permissions_android.PermissionGuards
+import io.simplezen.simple_query.ContentQuery
 import androidx.core.telephony.TelephonyManagerCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -102,19 +101,17 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
         var fos: FileOutputStream? = null
         var tempFile: File? = null
 
+        // Content-type probe goes through simple_query so Rule 1
+        // ("content-provider queries route through simple-query")
+        // holds. The stream open below (openInputStream) isn't a
+        // query — it's a bytes-read — and stays on the primitive.
         try {
-            resolver.query(contentUri, null, null, null, null)?.use { cursor ->
-                if (!cursor.moveToFirst()) return null
-                val contentTypeIndex = cursor.getColumnIndex("ct")
-                if (contentTypeIndex != -1) {
-                    val contentType = cursor.getString(contentTypeIndex).orEmpty()
-                    if (contentType.isNotEmpty() &&
-                        (contentType.contains("smil") || contentType.contains("text"))
-                    ) {
-                        return null
-                    }
-                }
-            } ?: return null
+            val rows = ContentQuery.query(context, query.contentUri)
+            if (rows.isEmpty()) return null
+            val ct = rows.first()["ct"] as? String ?: ""
+            if (ct.isNotEmpty() && (ct.contains("smil") || ct.contains("text"))) {
+                return null
+            }
         } catch (e: Exception) {
             Log.e("Query", "Error checking content type for $contentUri", e)
             return null
@@ -251,49 +248,28 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
 
 
     fun getCursorData(context : Context, query : QueryObj): List<Map<String, Any?>> {
-
-        val contentResolver = context.contentResolver
-
-        val contentUri = query.contentUri.toUri()
-        val projection = query.projection?.toTypedArray()
-        val selection = query.selection
-        val selectionArgs = query.selectionArgs?.toTypedArray()
-        val sortOrder = query.sortOrder
-
-        val cursor: Cursor = contentResolver.query(
-            contentUri,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder)
-            ?: return emptyList()
-
-        val returnable: MutableList<Map<String, Any?>> = mutableListOf()
-
-        cursor.use {
-            while (it.moveToNext()) {
-                val row = HashMap<String, Any?>()
-                for (index in 0 until cursor.columnCount) {
-                    val columnName = cursor.getColumnName(index)
-                    val columnType = cursor.getType(index)
-                    when (columnType) {
-                        Cursor.FIELD_TYPE_NULL -> row[columnName] = null
-                        Cursor.FIELD_TYPE_INTEGER -> row[columnName] = cursor.getLong(index)
-                        Cursor.FIELD_TYPE_FLOAT -> row[columnName] = cursor.getFloat(index)
-                        Cursor.FIELD_TYPE_STRING -> row[columnName] = cursor.getString(index)
-                        Cursor.FIELD_TYPE_BLOB -> row[columnName] = cursor.getBlob(index)
-                        else -> {
-                            throw Exception("Unknown column type: $columnType")
-                        }
-                    }
-                }
-                if (row.isEmpty()) {
-                    continue
-                }
-                returnable.add(row)
-            }
-        }
-        return returnable
+        // Delegate to simple_query's ContentQuery helper so Rule 1
+        // ("content-provider queries route through simple-query")
+        // holds at the Kotlin layer too, not just at the Dart API.
+        //
+        // Two deliberate behaviour shifts from the previous inline
+        // implementation — both safe because simple-sms's internal
+        // callers (MmsDatabaseWriter, InboundSmsHandler) read
+        // string / long / uri columns, not BLOB bytes:
+        //
+        //   1. BLOB columns are null-coalesced (matches Pigeon path's
+        //      behaviour so Dart + Kotlin see the same shape; for
+        //      raw bytes drop to ContentResolver.openInputStream).
+        //   2. FIELD_TYPE_FLOAT surfaces as Double (Pigeon default)
+        //      instead of Float.
+        return ContentQuery.query(
+            context,
+            query.contentUri,
+            projection = query.projection?.toTypedArray(),
+            selection = query.selection,
+            selectionArgs = query.selectionArgs?.toTypedArray(),
+            sortOrder = query.sortOrder,
+        )
     }
 }
 

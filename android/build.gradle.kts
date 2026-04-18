@@ -78,6 +78,12 @@ dependencies {
     // this project ref resolves in every app that consumes simple-sms.
     implementation(project(":simple_permissions_android"))
 
+    // simple_query_android's ContentQuery — used by Query.kt +
+    // internal consumers (MmsDatabaseWriter via Query(context).query)
+    // to route all content-provider reads through simple_query.
+    // Same plugin-loader pattern as simple_permissions_android above.
+    implementation(project(":simple_query_android"))
+
     implementation(project(":google_apps_messaging_core"))
     implementation(project(":google_i18n_libphonenumber"))
     implementation(project(":google_chips"))

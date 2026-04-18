@@ -1,3 +1,15 @@
+## 0.4.0
+
+### Changed
+- `Query.kt` internal `getCursorData` + `queryToFile` content-type probe now delegate to `simple_query`'s `ContentQuery` Kotlin helper (added in `simple_query_android` 0.3.0) instead of calling `ContentResolver.query(...)` directly. Rule 1 of the cross-plugin consolidation (*"content-provider queries route through simple_query"*) now upheld at the Kotlin layer too, not just at the Dart API.
+- Bumps the `simple_query` constraint from `^0.2.0` to `^0.3.0` (required for `ContentQuery`).
+- Two deliberate behaviour shifts from the previous inline implementation, safe because simple-sms's internal callers (`MmsDatabaseWriter`, `InboundSmsHandler`) read string / long / uri columns and the `io.simplezen.simple_sms/query` method channel has no Dart consumers:
+  - BLOB columns null-coalesced (matches the Pigeon path).
+  - `FIELD_TYPE_FLOAT` surfaces as `Double` rather than `Float`.
+
+### Internal
+- `android/build.gradle.kts` adds `implementation(project(\":simple_query_android\"))`. Resolves via Flutter's plugin-loader because the root pubspec already declares `simple_query` at the pub level.
+
 ## 0.3.0
 
 ### Added
