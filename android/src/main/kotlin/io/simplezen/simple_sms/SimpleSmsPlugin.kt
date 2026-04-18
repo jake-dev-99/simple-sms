@@ -69,10 +69,16 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     Log.d(TAG, "onDetachedFromEngine")
-    messageChannel.setMethodCallHandler(null)
-    queryChannel.setMethodCallHandler(null)
-    actionsChannel.setMethodCallHandler(null)
-    destructiveActionsChannel.setMethodCallHandler(null)
+    // The channel `lateinit var`s are only populated in onAttachedToActivity
+    // (via initializeMethodChannels). A background FlutterEngine — e.g. the
+    // one Workmanager spins up for a headless sync task — attaches and
+    // detaches from the engine without ever seeing an Activity, so these
+    // channels may legitimately be unset here. Guard each access instead of
+    // crashing with UninitializedPropertyAccessException on engine teardown.
+    if (::messageChannel.isInitialized) messageChannel.setMethodCallHandler(null)
+    if (::queryChannel.isInitialized) queryChannel.setMethodCallHandler(null)
+    if (::actionsChannel.isInitialized) actionsChannel.setMethodCallHandler(null)
+    if (::destructiveActionsChannel.isInitialized) destructiveActionsChannel.setMethodCallHandler(null)
     flutterBinding = null
     BackgroundEngineManager.onForegroundDetached()
   }
