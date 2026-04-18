@@ -59,10 +59,20 @@ jobs:
         with:
           ref: ${{ steps.resolve.outputs.ref }}
 
-      - uses: dart-lang/setup-dart@v1
+      # Flutter plugin (pubspec pins `sdk: flutter`), so `dart pub`
+      # can't resolve — pub reports:
+      #   "Because simple_sms_native requires the Flutter SDK,
+      #    version solving failed. Flutter users should use
+      #    `flutter pub` instead of `dart pub`."
+      # Use the Flutter toolchain, which bundles Dart, and call
+      # `flutter pub ...` throughout. pub.dev's OIDC publish flow
+      # works identically through `flutter pub publish`.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
       - name: Install dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Verify pubspec version matches tag
         run: |
@@ -75,4 +85,4 @@ jobs:
           fi
 
       - name: Publish
-        run: dart pub publish --force
+        run: flutter pub publish --force
