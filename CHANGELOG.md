@@ -1,3 +1,15 @@
+## 0.4.1
+
+### Fixed
+- `SimpleSmsPlugin.onDetachedFromEngine` no longer crashes with
+  `UninitializedPropertyAccessException: lateinit property messageChannel
+  has not been initialized` on engine teardown. The four channel
+  `lateinit var`s are only populated during `onAttachedToActivity`, so a
+  headless background `FlutterEngine` (e.g. the one Workmanager spins up
+  for a sync task) that attaches and detaches without ever seeing an
+  Activity used to bring the app down. Each `setMethodCallHandler(null)`
+  is now guarded by `::channel.isInitialized`.
+
 ## 0.4.0
 
 ### Changed
