@@ -35,13 +35,25 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
 
 dependency_overrides:
-  # Force path resolution of simple_permissions_native + simple_query so we
-  # align with the local federated workspace (the current published
-  # simple_query_android still pins simple_permissions_native ^0.0.1; see
-  # simple-query:fix/permissions-pin). Drop once simple_query_android ^0.2.1
-  # is published to pub.dev.
+  # Force path resolution of simple_permissions_native + its federated
+  # platform packages, and simple_query. Overriding only the facade
+  # root isn't enough — Flutter's plugin-loader registers Gradle
+  # project paths per federated platform package, so a pub.dev pull
+  # of simple_permissions_android (1.2.0) would end up on the
+  # classpath alongside the local facade (1.4.0) and you'd get
+  # "unresolved reference" on new Kotlin API (PermissionGuards).
   simple_permissions_native:
     path: ../../simple-permissions
+  simple_permissions_platform_interface:
+    path: ../../simple-permissions/packages/simple_permissions_platform_interface
+  simple_permissions_android:
+    path: ../../simple-permissions/packages/simple_permissions_android
+  simple_permissions_ios:
+    path: ../../simple-permissions/packages/simple_permissions_ios
+  simple_permissions_macos:
+    path: ../../simple-permissions/packages/simple_permissions_macos
+  simple_permissions_web:
+    path: ../../simple-permissions/packages/simple_permissions_web
   simple_query:
     path: ../../simple-query/packages/simple_query
 

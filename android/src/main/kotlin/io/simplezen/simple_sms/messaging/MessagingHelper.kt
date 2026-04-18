@@ -10,7 +10,7 @@ import android.telephony.PhoneNumberUtils
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.webkit.MimeTypeMap
-import androidx.core.app.ActivityCompat
+import io.simplezen.simple_permissions_android.PermissionGuards
 
 
 // Utility method to get mime type from file path
@@ -38,18 +38,13 @@ internal fun getDirFromMimeType(context : Context, mime: String): String {
 internal fun getSelfNumbers(context: Context): Set<String> {
     val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
     val subscriptionManager  = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-    // getLine1Number() may return null, so fallback to known numbers or preferences if needed
-    val phoneNums = if (ActivityCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_SMS
-        ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_PHONE_NUMBERS
-        ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_PHONE_STATE
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
+    // Bail if NONE of these three are granted — each is a distinct
+    // path to the self-number across SDKs, so if the caller has any
+    // one we try. Request flow belongs to simple_permissions_native.
+    val anyGranted = PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_SMS) ||
+        PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_PHONE_NUMBERS) ||
+        PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
+    val phoneNums = if (!anyGranted) {
         return emptySet()
     } else {
 

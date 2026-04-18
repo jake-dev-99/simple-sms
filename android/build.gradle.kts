@@ -68,6 +68,16 @@ android {
 dependencies {
 //    implementation(project(":simple_sms"))
 
+    // simple_permissions_android's PermissionGuards — used by Query.kt
+    // + MessagingHelper.kt for runtime permission checks. Flutter's
+    // plugin-loader (applied in the final app's settings.gradle.kts)
+    // registers `:simple_permissions_android` alongside `:simple_sms`
+    // when the app's pubspec graph includes both. Our root
+    // simple_sms_native pubspec declares simple_permissions_native as
+    // a runtime dep, so the plugin-loader picks it up transitively —
+    // this project ref resolves in every app that consumes simple-sms.
+    implementation(project(":simple_permissions_android"))
+
     implementation(project(":google_apps_messaging_core"))
     implementation(project(":google_i18n_libphonenumber"))
     implementation(project(":google_chips"))

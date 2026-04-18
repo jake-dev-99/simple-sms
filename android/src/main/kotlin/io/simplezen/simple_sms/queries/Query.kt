@@ -16,8 +16,8 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
-import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
+import io.simplezen.simple_permissions_android.PermissionGuards
 import androidx.core.telephony.TelephonyManagerCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -53,13 +53,16 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
             }
 
             "getDeviceInfo" -> {
-                if (ActivityCompat.checkSelfPermission(
+                // Delegate the check to simple_permissions_native so all
+                // access-state reads go through one plugin. Request flow
+                // still lives in Dart via SimplePermissionsNative.request(...).
+                if (!PermissionGuards.areAllPermissionsGranted(
                         context,
-                        Manifest.permission.READ_PHONE_NUMBERS
-                    ) != PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.READ_PHONE_STATE
-                    ) != PackageManager.PERMISSION_GRANTED
+                        listOf(
+                            Manifest.permission.READ_PHONE_NUMBERS,
+                            Manifest.permission.READ_PHONE_STATE,
+                        )
+                    )
                 ) {
                     result.error("PERMISSION_DENIED", "Permission denied", null)
                     return
@@ -197,10 +200,10 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
 
                 val phoneNumber =
                     if(Build.VERSION .SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (ActivityCompat.checkSelfPermission(
+                        if (!PermissionGuards.isPermissionGranted(
                                 context,
-                                Manifest.permission.READ_PHONE_NUMBERS
-                            ) != PackageManager.PERMISSION_GRANTED
+                                Manifest.permission.READ_PHONE_NUMBERS,
+                            )
                         ) {
                             null
                         } else {
