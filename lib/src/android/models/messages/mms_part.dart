@@ -111,7 +111,7 @@ class MmsPart implements ModelInterface {
     MmsPart part = MmsPart(
       id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
       sourceMap: raw,
-        charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
+      charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',

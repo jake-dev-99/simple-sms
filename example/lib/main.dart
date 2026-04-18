@@ -73,8 +73,8 @@ class _MyAppState extends State<MyApp> {
 
     try {
       final sp = SimplePermissionsNative.instance;
-      final hasRole = await sp.check(const DefaultSmsApp()) ==
-          PermissionGrant.granted;
+      final hasRole =
+          await sp.check(const DefaultSmsApp()) == PermissionGrant.granted;
       final texting = await sp.checkIntentionDetailed(Intention.texting);
       final media = await sp.checkIntentionDetailed(Intention.mediaVisual);
 
@@ -117,8 +117,10 @@ class _MyAppState extends State<MyApp> {
   Future<void> _requestDefaultSmsRole() async {
     try {
       _addLog('Requesting default SMS app role...');
-      final granted = (await SimplePermissionsNative.instance
-              .request(const DefaultSmsApp())) ==
+      final granted =
+          (await SimplePermissionsNative.instance.request(
+            const DefaultSmsApp(),
+          )) ==
           PermissionGrant.granted;
 
       await _checkPermissions();

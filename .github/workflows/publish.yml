@@ -1,0 +1,39 @@
+name: Publish to pub.dev
+
+# Single-package repo: one tag prefix, no matrix. See
+# docs/RELEASE.md for the cut-a-release runbook and the
+# required one-time pub.dev "Automated publishing" setup.
+#
+# Tag pattern uses GitHub Actions glob syntax, not regex; the
+# verify-version step below enforces exact semver.
+on:
+  push:
+    tags:
+      - 'simple_sms_native-v*'
+
+jobs:
+  publish:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify pubspec version matches tag
+        run: |
+          tag_ref="${GITHUB_REF#refs/tags/}"
+          expected="${tag_ref#simple_sms_native-v}"
+          actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Tag ${tag_ref} does not match pubspec version ${actual} (expected ${expected})"
+            exit 1
+          fi
+
+      - name: Publish
+        run: dart pub publish --force
