@@ -4,12 +4,32 @@ name: Publish to pub.dev
 # docs/RELEASE.md for the cut-a-release runbook and the
 # required one-time pub.dev "Automated publishing" setup.
 #
-# Tag pattern uses GitHub Actions glob syntax, not regex; the
-# verify-version step below enforces exact semver.
+# Two triggers, both needed:
+#
+#   push: tags — classic path, still wired so a manually-
+#     pushed tag (human-cut release) fires publish without
+#     any extra steps.
+#
+#   workflow_dispatch — the auto-tag workflow runs after a
+#     main merge, creates a tag, and pushes it with the
+#     default GITHUB_TOKEN. GitHub deliberately suppresses
+#     `push: tags` workflow triggers when the pusher is the
+#     runner's own token (anti-infinite-loop), so without
+#     this dispatch entrypoint every auto-tag landed without
+#     a publish run. The auto-tag workflow now calls
+#     `gh workflow run publish.yml -f tag=<tag>` per new tag;
+#     workflow_dispatch is the one event that *does* fire
+#     from GITHUB_TOKEN.
 on:
   push:
     tags:
       - 'simple_sms_native-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Package tag to publish (e.g. simple_sms_native-v0.4.1)'
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -18,7 +38,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Resolve the tag up front so downstream steps don't need
+      # to branch on event type every time. `push` path comes
+      # from GITHUB_REF; `workflow_dispatch` path comes from the
+      # input. Both formats match the `<pkg>-v<semver>` shape.
+      - name: Resolve tag
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+            ref="refs/tags/$tag"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+            ref="$GITHUB_REF"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
 
       - uses: dart-lang/setup-dart@v1
 
@@ -27,11 +66,11 @@ jobs:
 
       - name: Verify pubspec version matches tag
         run: |
-          tag_ref="${GITHUB_REF#refs/tags/}"
-          expected="${tag_ref#simple_sms_native-v}"
+          tag="${{ steps.resolve.outputs.tag }}"
+          expected="${tag#simple_sms_native-v}"
           actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
           if [ "$expected" != "$actual" ]; then
-            echo "::error::Tag ${tag_ref} does not match pubspec version ${actual} (expected ${expected})"
+            echo "::error::Tag ${tag} does not match pubspec version ${actual} (expected ${expected})"
             exit 1
           fi
 
