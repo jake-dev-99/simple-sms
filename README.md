@@ -9,8 +9,9 @@ A modern SMS / MMS plugin for Android that provides comprehensive messaging func
 - Conversation thread management
 - Contact and participant resolution
 - MMS attachment support (images, video, audio)
-- Permission and default SMS app role management
-- Device and SIM card information queries
+- Runtime permissions + default-SMS-app role management are delegated
+  to [`simple_permissions_native`](https://pub.dev/packages/simple_permissions_native)
+  so consumers have one source of truth for access state.
 
 ## Platform Support
 
@@ -29,7 +30,7 @@ dependencies:
 
 ### Permissions
 
-Add these to your `AndroidManifest.xml`:
+Declare these in your `AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.SEND_SMS" />
@@ -38,6 +39,40 @@ Add these to your `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.RECEIVE_MMS" />
 <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
 ```
+
+**Runtime grants + the default-SMS-app role** go through
+`simple_permissions_native`:
+
+```dart
+import 'package:simple_permissions_native/simple_permissions_native.dart';
+
+// Check and request everything the plugin needs to function.
+final ok = await SimplePermissionsNative.instance.requestAll(const [
+  ReceiveSms(),
+  ReadSms(),
+  SendSms(),
+  DefaultSmsApp(), // Android role; only the default SMS app can write
+                   // the Telephony provider or mark messages delivered.
+]);
+if (!ok.isFullyGranted) {
+  // Show "grant to continue" banner / disable writes.
+}
+
+// Or observe reactively so the UI updates when the user grants via
+// system Settings.
+final observer = SimplePermissionsNative.instance.observe(const [
+  DefaultSmsApp(),
+  ReceiveSms(),
+  SendSms(),
+]);
+```
+
+| Operation | Needs |
+| --- | --- |
+| Read conversations / threads / messages | `ReadSms` |
+| Receive inbound SMS broadcasts | `ReceiveSms` |
+| Receive MMS / write Telephony provider | `DefaultSmsApp` |
+| Send SMS | `SendSms` + `DefaultSmsApp` (to mark delivered) |
 
 ### Initialize
 
