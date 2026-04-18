@@ -1,3 +1,16 @@
+## 0.3.0
+
+### Added
+- `simple_permissions_native` is now a declared pubspec dependency (formerly referenced only by doc comment). It owns every runtime permission **and** the `DefaultSmsApp` role that this plugin relies on at runtime — consumers use a single API for access state across the plugin family.
+
+### Docs
+- Every public operation that depends on a permission or role now names it explicitly in its doc comment and links the `simple_permissions_native` call that grants it (`check(...)`, `request(...)`, `observe([...])`).
+- README gains a vocabulary table: `ReadSms` / `ReceiveSms` / `SendSms` / `DefaultSmsApp` and which operations need which.
+- Plugin description updated to stop listing "default-app role management" as a native feature — that lives in `simple_permissions_native`.
+
+### Unchanged
+- No native code changes. The plugin already delegated at runtime (`SimpleSmsPlugin.onRequestPermissionsResult` returns false, internal queries do silent permission checks); this release formalises the contract with a real dep + explicit docs.
+
 ## 0.2.0
 
 ### Removed (breaking)

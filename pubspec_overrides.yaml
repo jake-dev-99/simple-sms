@@ -1,0 +1,17 @@
+# Dev-only override — uses the sibling path checkout of
+# simple_permissions_native (and its federated platform packages) so
+# local dev resolves against the in-progress version ahead of
+# whatever is currently published on pub.
+dependency_overrides:
+  simple_permissions_native:
+    path: ../simple-permissions
+  simple_permissions_platform_interface:
+    path: ../simple-permissions/packages/simple_permissions_platform_interface
+  simple_permissions_android:
+    path: ../simple-permissions/packages/simple_permissions_android
+  simple_permissions_ios:
+    path: ../simple-permissions/packages/simple_permissions_ios
+  simple_permissions_macos:
+    path: ../simple-permissions/packages/simple_permissions_macos
+  simple_permissions_web:
+    path: ../simple-permissions/packages/simple_permissions_web

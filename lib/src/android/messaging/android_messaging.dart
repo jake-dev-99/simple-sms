@@ -62,6 +62,20 @@ class AndroidMessaging {
   /// after the message has been sent (or failed). The returned map contains
   /// all database columns for the sent message.
   ///
+  /// **Access state:** requires the `SendSms` permission; writing the
+  /// sent record into the Telephony store additionally requires the
+  /// `DefaultSmsApp` role. Check + request via `simple_permissions_native`:
+  ///
+  /// ```dart
+  /// import 'package:simple_permissions_native/simple_permissions_native.dart';
+  ///
+  /// final ok = await SimplePermissionsNative.instance.requestAll(
+  ///   const [SendSms(), DefaultSmsApp()],
+  /// );
+  /// if (!ok.isFullyGranted) return;
+  /// await android.messaging.sendMessage(message: ...);
+  /// ```
+  ///
   /// Throws a [PlatformException] if the device lacks telephony capability
   /// or if sending fails.
   Future<Map<String, dynamic>> sendMessage({

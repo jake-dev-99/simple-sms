@@ -9,11 +9,47 @@ import './messaging/android_messaging.dart';
 
 /// Main entry point for the simple_sms plugin.
 ///
-/// Provides access to SMS/MMS messaging and device actions on Android. Must
-/// be initialized before use via [Android.initialize].
+/// Provides access to SMS/MMS messaging and device actions on Android.
+/// Must be initialized before use via [Android.initialize].
 ///
-/// Permission and default-SMS-role management is NOT part of this plugin
-/// anymore — use `simple_permissions_native` for those flows.
+/// ## Access-state model
+///
+/// Runtime permissions **and** the default-SMS-app role live in
+/// `simple_permissions_native` — this plugin assumes the caller has
+/// already granted whatever the specific operation needs and will
+/// surface `SecurityException` / silent empty results otherwise.
+///
+/// The relevant vocabulary:
+///
+/// | Operation | Needs |
+/// | --- | --- |
+/// | Read conversations / threads / messages | `ReadSms` permission (`READ_SMS`) |
+/// | Receive inbound SMS via the native broadcast | `ReceiveSms` permission (`RECEIVE_SMS`) |
+/// | Receive inbound MMS / write to the Telephony store | `DefaultSmsApp` role (`RoleManager.ROLE_SMS`) — only the default SMS app can write the provider |
+/// | Send SMS | `SendSms` permission (`SEND_SMS`); marking a sent message as delivered also needs `DefaultSmsApp` |
+///
+/// Check / request via the unified permissions API:
+///
+/// ```dart
+/// import 'package:simple_permissions_native/simple_permissions_native.dart';
+///
+/// // One-off request.
+/// await SimplePermissionsNative.instance
+///     .request(const DefaultSmsApp());
+///
+/// // Reactive observation — gate your UI on the role being held.
+/// final observer = SimplePermissionsNative.instance.observe(const [
+///   DefaultSmsApp(),
+///   ReceiveSms(),
+///   SendSms(),
+/// ]);
+/// observer.stream.listen((result) {
+///   final canSend = result.isFullyGranted;
+///   // enable compose, show "grant to continue" banner, etc.
+/// });
+/// ```
+///
+/// ## Usage
 ///
 /// ```dart
 /// final android = Android.initialize(
@@ -21,7 +57,7 @@ import './messaging/android_messaging.dart';
 ///   inboundMmsCallback: (mms) => print('MMS: ${mms.body}'),
 /// );
 ///
-/// // Send a message
+/// // Send a message — requires SendSms + DefaultSmsApp at runtime.
 /// await android.messaging.sendMessage(
 ///   message: OutboundMessage(
 ///     body: 'Hello!',
