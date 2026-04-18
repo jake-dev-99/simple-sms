@@ -60,20 +60,20 @@ class SmsFilter {
     DateTime? dateTo,
     String? addressContains,
     int? subscriptionId,
-  }) =>
-      SmsFilter(
-        ids: ids ?? this.ids,
-        threadId: threadId ?? this.threadId,
-        isRead: isRead ?? this.isRead,
-        types: types ?? this.types,
-        dateFrom: dateFrom ?? this.dateFrom,
-        dateTo: dateTo ?? this.dateTo,
-        addressContains: addressContains ?? this.addressContains,
-        subscriptionId: subscriptionId ?? this.subscriptionId,
-      );
+  }) => SmsFilter(
+    ids: ids ?? this.ids,
+    threadId: threadId ?? this.threadId,
+    isRead: isRead ?? this.isRead,
+    types: types ?? this.types,
+    dateFrom: dateFrom ?? this.dateFrom,
+    dateTo: dateTo ?? this.dateTo,
+    addressContains: addressContains ?? this.addressContains,
+    subscriptionId: subscriptionId ?? this.subscriptionId,
+  );
 
   @override
-  String toString() => 'SmsFilter('
+  String toString() =>
+      'SmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
       'dateFrom: $dateFrom, dateTo: $dateTo, '
       'addressContains: $addressContains, subscriptionId: $subscriptionId)';
@@ -93,12 +93,16 @@ class SmsSort {
   final SortDirection direction;
 
   /// Newest-first ordering by `date` (the common UI default).
-  static const SmsSort newestFirst =
-      SmsSort(field: SmsSortField.date, direction: SortDirection.descending);
+  static const SmsSort newestFirst = SmsSort(
+    field: SmsSortField.date,
+    direction: SortDirection.descending,
+  );
 
   /// Oldest-first ordering by `date`.
-  static const SmsSort oldestFirst =
-      SmsSort(field: SmsSortField.date, direction: SortDirection.ascending);
+  static const SmsSort oldestFirst = SmsSort(
+    field: SmsSortField.date,
+    direction: SortDirection.ascending,
+  );
 
   @override
   String toString() => 'SmsSort(field: $field, direction: $direction)';

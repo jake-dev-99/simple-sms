@@ -42,32 +42,46 @@ class Contactable implements ModelInterface {
 
   /// Primary value — meaning depends on mimetype (phone number, email, address, etc.)
   final String value;
+
   /// Type of data (e.g. home, work)
   final int type;
+
   /// Custom label if TYPE_CUSTOM
   final String label;
+
   /// Normalized value (e.g. E164 phone number)
   final String normalized;
+
   /// Whether this is the primary value for the mimetype
   final bool isPrimary;
+
   /// Whether this is the super-primary value
   final bool isSuperPrimary;
+
   /// Auxiliary data (rarely used, e.g. SIP address)
   final String auxData;
+
   /// Metadata (rarely used)
   final String metaData;
+
   /// Extra data
   final String extraData;
+
   /// Alternate value representation
   final String alternateValue;
+
   /// Context-specific data (rarely used)
   final String contextData;
+
   /// Context type (rarely used)
   final String contextType;
+
   /// For postal addresses (neighborhood)
   final String neighborhood;
+
   /// For emails (display name)
   final String emailDisplayName;
+
   /// Binary data like photo thumbnails
   final Uint8List? blob;
 

@@ -116,18 +116,8 @@ void main() {
         'sub_id': 1,
         'date': 1700000000,
         'recipients': [
-          {
-            '_id': 1,
-            'address': '+15551111111',
-            'type': 0x89,
-            'charset': 106,
-          },
-          {
-            '_id': 2,
-            'address': '+15552222222',
-            'type': 0x97,
-            'charset': 106,
-          },
+          {'_id': 1, 'address': '+15551111111', 'type': 0x89, 'charset': 106},
+          {'_id': 2, 'address': '+15552222222', 'type': 0x97, 'charset': 106},
         ],
         'parts': [
           {

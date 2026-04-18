@@ -1,29 +1,18 @@
 name: Publish to pub.dev
 
-# Triggered by tag pushes on `main` matching simple_sms_native's
-# version scheme. simple-sms is a single-package repo (not
-# federated), so there's exactly one tag pattern.
+# Single-package repo: one tag prefix, no matrix. See
+# docs/RELEASE.md for the cut-a-release runbook and the
+# required one-time pub.dev "Automated publishing" setup.
 #
-# Tag example:
-#   simple_sms_native-v0.4.0
-#
-# To cut a release, see docs/RELEASE.md.
-#
-# This package must be set up on pub.dev's "Automated publishing"
-# panel (admin tab) pointing at this repo with the matching tag
-# pattern before the first release. Without that, publish errors
-# with "missing OIDC authorization" and the package is never
-# half-published.
+# Tag pattern uses GitHub Actions glob syntax, not regex; the
+# verify-version step below enforces exact semver.
 on:
   push:
     tags:
-      - 'simple_sms_native-v[0-9]+.[0-9]+.[0-9]+*'
+      - 'simple_sms_native-v*'
 
 jobs:
   publish:
-    # `id-token: write` is required for the OIDC exchange that
-    # pub.dev's GitHub Actions publishing flow uses. No long-
-    # lived pub.dev tokens anywhere in this workflow.
     permissions:
       id-token: write
     runs-on: ubuntu-latest
@@ -47,6 +36,4 @@ jobs:
           fi
 
       - name: Publish
-        # --force skips the interactive "publish this?" prompt.
-        # pub.dev's server still enforces ownership + OIDC.
         run: dart pub publish --force
