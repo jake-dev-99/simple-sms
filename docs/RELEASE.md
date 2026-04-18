@@ -11,7 +11,8 @@ feature branch
   staging
      │  PR  ▼  (CI runs)
     main
-     │  tag push ▼  (CD publishes to pub.dev)
+     │  push to main ▼  (auto-tag bumps version + tags commit)
+     │  tag push ▼      (publish.yml runs OIDC pub.dev release)
     pub.dev
 ```
 
@@ -30,21 +31,27 @@ is the explicit release gesture.
 ## Cutting a release
 
 1. Land your work on `develop` via PRs.
-2. When ready, open a PR `develop` -> `staging`. CI runs. Merge.
-3. Open a PR `staging` -> `main`. CI runs. Merge.
-4. On `main`, bump `version:` in `pubspec.yaml` + add a
-   `CHANGELOG.md` entry (if not already in the merge).
-5. Tag the release commit:
+2. `develop` -> `staging` PR. CI runs. Merge.
+3. `staging` -> `main` PR. CI runs. Merge.
+4. The push to `main` triggers
+   [`auto-tag.yml`](../.github/workflows/auto-tag.yml), which:
+   - Reads the current `pubspec.yaml` version.
+   - Finds the highest existing `simple_sms_native-v<semver>`
+     tag.
+   - Picks the next version with
+     `max(pubspec_version, highest_tag + 0.0.1)`. Default
+     path is a patch bump; an explicit minor/major bump in the
+     pubspec wins over the patch default.
+   - Rewrites the pubspec, commits with `[skip ci]`, tags,
+     pushes.
+5. The tag push fires
+   [`publish.yml`](../.github/workflows/publish.yml), which
+   verifies the tag version matches `pubspec.yaml` and runs
+   `dart pub publish --force`. pub.dev authenticates via OIDC
+   — no long-lived credentials.
 
-   ```sh
-   git tag simple_sms_native-v0.4.0
-   git push origin simple_sms_native-v0.4.0
-   ```
-
-   The [`publish.yml`](../.github/workflows/publish.yml) workflow
-   matches the tag, verifies the pubspec version agrees, and
-   runs `dart pub publish --force`. pub.dev authenticates via
-   OIDC — no long-lived credentials.
+**Shipping a minor or major release** is just *"bump the
+pubspec on the merge PR"*. The auto-tagger respects it.
 
 ## Tag pattern
 
