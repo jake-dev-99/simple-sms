@@ -56,6 +56,20 @@ dependency_overrides:
     path: ../../simple-permissions/packages/simple_permissions_web
   simple_query:
     path: ../../simple-query/packages/simple_query
+  simple_query_platform_interface:
+    path: ../../simple-query/packages/simple_query_platform_interface
+  simple_query_android:
+    path: ../../simple-query/packages/simple_query_android
+  simple_query_ios:
+    path: ../../simple-query/packages/simple_query_ios
+  simple_query_macos:
+    path: ../../simple-query/packages/simple_query_macos
+  simple_query_linux:
+    path: ../../simple-query/packages/simple_query_linux
+  simple_query_windows:
+    path: ../../simple-query/packages/simple_query_windows
+  simple_query_shared:
+    path: ../../simple-query/packages/simple_query_shared
 
 dev_dependencies:
   integration_test:
