@@ -35,17 +35,17 @@ class ContactFilter {
     bool? hasPhoneNumber,
     bool? hasEmail,
     bool? inVisibleGroup,
-  }) =>
-      ContactFilter(
-        ids: ids ?? this.ids,
-        displayNameContains: displayNameContains ?? this.displayNameContains,
-        hasPhoneNumber: hasPhoneNumber ?? this.hasPhoneNumber,
-        hasEmail: hasEmail ?? this.hasEmail,
-        inVisibleGroup: inVisibleGroup ?? this.inVisibleGroup,
-      );
+  }) => ContactFilter(
+    ids: ids ?? this.ids,
+    displayNameContains: displayNameContains ?? this.displayNameContains,
+    hasPhoneNumber: hasPhoneNumber ?? this.hasPhoneNumber,
+    hasEmail: hasEmail ?? this.hasEmail,
+    inVisibleGroup: inVisibleGroup ?? this.inVisibleGroup,
+  );
 
   @override
-  String toString() => 'ContactFilter('
+  String toString() =>
+      'ContactFilter('
       'ids: $ids, displayNameContains: $displayNameContains, '
       'hasPhoneNumber: $hasPhoneNumber, hasEmail: $hasEmail, '
       'inVisibleGroup: $inVisibleGroup)';

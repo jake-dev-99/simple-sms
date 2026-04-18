@@ -42,18 +42,18 @@ class ConversationFilter {
     DateTime? dateFrom,
     DateTime? dateTo,
     bool? hasAttachment,
-  }) =>
-      ConversationFilter(
-        ids: ids ?? this.ids,
-        isArchived: isArchived ?? this.isArchived,
-        hasUnread: hasUnread ?? this.hasUnread,
-        dateFrom: dateFrom ?? this.dateFrom,
-        dateTo: dateTo ?? this.dateTo,
-        hasAttachment: hasAttachment ?? this.hasAttachment,
-      );
+  }) => ConversationFilter(
+    ids: ids ?? this.ids,
+    isArchived: isArchived ?? this.isArchived,
+    hasUnread: hasUnread ?? this.hasUnread,
+    dateFrom: dateFrom ?? this.dateFrom,
+    dateTo: dateTo ?? this.dateTo,
+    hasAttachment: hasAttachment ?? this.hasAttachment,
+  );
 
   @override
-  String toString() => 'ConversationFilter('
+  String toString() =>
+      'ConversationFilter('
       'ids: $ids, isArchived: $isArchived, hasUnread: $hasUnread, '
       'dateFrom: $dateFrom, dateTo: $dateTo, hasAttachment: $hasAttachment)';
 }
@@ -78,6 +78,5 @@ class ConversationSort {
   );
 
   @override
-  String toString() =>
-      'ConversationSort(field: $field, direction: $direction)';
+  String toString() => 'ConversationSort(field: $field, direction: $direction)';
 }
