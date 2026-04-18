@@ -1,0 +1,42 @@
+name: CI
+
+# Runs on every PR against the three promotion-flow branches
+# (develop -> staging -> main). Deliberately not on `push` —
+# CD handles the merge side, CI only validates proposed change.
+on:
+  pull_request:
+    branches: [develop, staging, main]
+
+jobs:
+  analyze-and-test:
+    name: Analyze + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  format:
+    name: dart format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .

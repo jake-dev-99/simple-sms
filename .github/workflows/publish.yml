@@ -1,0 +1,52 @@
+name: Publish to pub.dev
+
+# Triggered by tag pushes on `main` matching simple_sms_native's
+# version scheme. simple-sms is a single-package repo (not
+# federated), so there's exactly one tag pattern.
+#
+# Tag example:
+#   simple_sms_native-v0.4.0
+#
+# To cut a release, see docs/RELEASE.md.
+#
+# This package must be set up on pub.dev's "Automated publishing"
+# panel (admin tab) pointing at this repo with the matching tag
+# pattern before the first release. Without that, publish errors
+# with "missing OIDC authorization" and the package is never
+# half-published.
+on:
+  push:
+    tags:
+      - 'simple_sms_native-v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  publish:
+    # `id-token: write` is required for the OIDC exchange that
+    # pub.dev's GitHub Actions publishing flow uses. No long-
+    # lived pub.dev tokens anywhere in this workflow.
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify pubspec version matches tag
+        run: |
+          tag_ref="${GITHUB_REF#refs/tags/}"
+          expected="${tag_ref#simple_sms_native-v}"
+          actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Tag ${tag_ref} does not match pubspec version ${actual} (expected ${expected})"
+            exit 1
+          fi
+
+      - name: Publish
+        # --force skips the interactive "publish this?" prompt.
+        # pub.dev's server still enforces ownership + OIDC.
+        run: dart pub publish --force
