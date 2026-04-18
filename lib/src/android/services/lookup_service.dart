@@ -64,9 +64,10 @@ class LookupService {
   Future<Contactable?> lookupContactableByAddress(String address) async {
     try {
       final isEmail = address.contains('@');
-      final uri = isEmail
-          ? 'content://com.android.contacts/data/emails/filter/$address'
-          : 'content://com.android.contacts/data/phones/filter/$address';
+      final uri =
+          isEmail
+              ? 'content://com.android.contacts/data/emails/filter/$address'
+              : 'content://com.android.contacts/data/phones/filter/$address';
       final response = await SimpleQuery.instance.query(
         QueryRequest(
           domain: QueryDomain.contacts,
@@ -121,8 +122,7 @@ class LookupService {
         QueryRequest(
           domain: QueryDomain.messages,
           platformData: {
-            'contentUri':
-                'content://mms-sms/canonical-address/$recipientId',
+            'contentUri': 'content://mms-sms/canonical-address/$recipientId',
           },
         ),
       );
@@ -131,7 +131,8 @@ class LookupService {
       return (address != null && address.isNotEmpty) ? address : null;
     } catch (e, s) {
       debugPrint(
-          'simple_sms: Failed to resolve canonical address $recipientId: $e');
+        'simple_sms: Failed to resolve canonical address $recipientId: $e',
+      );
       debugPrint(s.toString());
       return null;
     }
@@ -179,9 +180,10 @@ class LookupService {
           entityType: 'sms',
           filters: _buildSmsFilters(filter),
           sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
-          page: (limit != null || offset != null)
-              ? QueryPage(limit: limit, offset: offset)
-              : null,
+          page:
+              (limit != null || offset != null)
+                  ? QueryPage(limit: limit, offset: offset)
+                  : null,
         ),
       );
       return response.records
@@ -247,9 +249,10 @@ class LookupService {
           entityType: 'mms',
           filters: _buildMmsFilters(filter),
           sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
-          page: (limit != null || offset != null)
-              ? QueryPage(limit: limit, offset: offset)
-              : null,
+          page:
+              (limit != null || offset != null)
+                  ? QueryPage(limit: limit, offset: offset)
+                  : null,
         ),
       );
       final results = <Mms>[];
@@ -284,11 +287,13 @@ class LookupService {
       ];
       final prefix = filter?.contentTypePrefix;
       if (prefix != null && prefix.isNotEmpty) {
-        conditions.add(QueryFilterCondition(
-          field: 'ct',
-          operator: QueryFilterOperator.contains,
-          value: prefix,
-        ));
+        conditions.add(
+          QueryFilterCondition(
+            field: 'ct',
+            operator: QueryFilterOperator.contains,
+            value: prefix,
+          ),
+        );
       }
       final response = await SimpleQuery.instance.query(
         QueryRequest(
@@ -364,18 +369,21 @@ class LookupService {
           domain: QueryDomain.messages,
           filters: _buildConversationFilters(filter),
           sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
-          page: (limit != null || offset != null)
-              ? QueryPage(limit: limit, offset: offset)
-              : null,
+          page:
+              (limit != null || offset != null)
+                  ? QueryPage(limit: limit, offset: offset)
+                  : null,
           platformData: const {
-            'contentUri':
-                'content://mms-sms/conversations?simple=true',
+            'contentUri': 'content://mms-sms/conversations?simple=true',
           },
         ),
       );
       final bare = response.records
-          .map((row) =>
-              AndroidSimpleConversation.fromRaw(Map<String, dynamic>.from(row)))
+          .map(
+            (row) => AndroidSimpleConversation.fromRaw(
+              Map<String, dynamic>.from(row),
+            ),
+          )
           .toList(growable: false);
       if (!enrich) return bare;
 
@@ -470,7 +478,8 @@ class LookupService {
           .toList(growable: false);
     } catch (e, s) {
       debugPrint(
-          'simple_sms: Failed to list contactables for contact $contactId: $e');
+        'simple_sms: Failed to list contactables for contact $contactId: $e',
+      );
       debugPrint(s.toString());
       return const [];
     }
@@ -520,7 +529,8 @@ class LookupService {
       );
     } catch (e, s) {
       debugPrint(
-          'simple_sms: Failed to get structured name for $contactId: $e');
+        'simple_sms: Failed to get structured name for $contactId: $e',
+      );
       debugPrint(s.toString());
       return null;
     }
@@ -540,9 +550,10 @@ class LookupService {
           domain: QueryDomain.contacts,
           filters: _buildContactFilters(filter),
           sort: _buildContactSort(sort ?? ContactSort.alphabetical),
-          page: (limit != null || offset != null)
-              ? QueryPage(limit: limit, offset: offset)
-              : null,
+          page:
+              (limit != null || offset != null)
+                  ? QueryPage(limit: limit, offset: offset)
+                  : null,
         ),
       );
       return response.records
@@ -590,62 +601,77 @@ class LookupService {
 
     final ids = filter.ids;
     if (ids != null && ids.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: '_id',
-        operator: QueryFilterOperator.inList,
-        value: ids.map((id) => id.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.inList,
+          value: ids.map((id) => id.toString()).toList(),
+        ),
+      );
     }
     if (filter.threadId != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'thread_id',
-        operator: QueryFilterOperator.equals,
-        value: filter.threadId.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'thread_id',
+          operator: QueryFilterOperator.equals,
+          value: filter.threadId.toString(),
+        ),
+      );
     }
     if (filter.isRead != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'read',
-        operator: QueryFilterOperator.equals,
-        value: filter.isRead! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'read',
+          operator: QueryFilterOperator.equals,
+          value: filter.isRead! ? '1' : '0',
+        ),
+      );
     }
     final types = filter.types;
     if (types != null && types.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: 'type',
-        operator: QueryFilterOperator.inList,
-        value: types.map((t) => t.value.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'type',
+          operator: QueryFilterOperator.inList,
+          value: types.map((t) => t.value.toString()).toList(),
+        ),
+      );
     }
     if (filter.dateFrom != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.greaterThanOrEqual,
-        value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.greaterThanOrEqual,
+          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+        ),
+      );
     }
     if (filter.dateTo != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.lessThanOrEqual,
-        value: filter.dateTo!.millisecondsSinceEpoch.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.lessThanOrEqual,
+          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+        ),
+      );
     }
-    if (filter.addressContains != null &&
-        filter.addressContains!.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: 'address',
-        operator: QueryFilterOperator.contains,
-        value: filter.addressContains,
-      ));
+    if (filter.addressContains != null && filter.addressContains!.isNotEmpty) {
+      conditions.add(
+        QueryFilterCondition(
+          field: 'address',
+          operator: QueryFilterOperator.contains,
+          value: filter.addressContains,
+        ),
+      );
     }
     if (filter.subscriptionId != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'sub_id',
-        operator: QueryFilterOperator.equals,
-        value: filter.subscriptionId.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'sub_id',
+          operator: QueryFilterOperator.equals,
+          value: filter.subscriptionId.toString(),
+        ),
+      );
     }
     return conditions;
   }
@@ -669,54 +695,68 @@ class LookupService {
 
     final ids = filter.ids;
     if (ids != null && ids.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: '_id',
-        operator: QueryFilterOperator.inList,
-        value: ids.map((id) => id.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.inList,
+          value: ids.map((id) => id.toString()).toList(),
+        ),
+      );
     }
     if (filter.threadId != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'thread_id',
-        operator: QueryFilterOperator.equals,
-        value: filter.threadId.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'thread_id',
+          operator: QueryFilterOperator.equals,
+          value: filter.threadId.toString(),
+        ),
+      );
     }
     if (filter.isRead != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'read',
-        operator: QueryFilterOperator.equals,
-        value: filter.isRead! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'read',
+          operator: QueryFilterOperator.equals,
+          value: filter.isRead! ? '1' : '0',
+        ),
+      );
     }
     final types = filter.types;
     if (types != null && types.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: 'm_type',
-        operator: QueryFilterOperator.inList,
-        value: types.map((t) => t.value.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'm_type',
+          operator: QueryFilterOperator.inList,
+          value: types.map((t) => t.value.toString()).toList(),
+        ),
+      );
     }
     if (filter.dateFrom != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.greaterThanOrEqual,
-        value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.greaterThanOrEqual,
+          value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
+        ),
+      );
     }
     if (filter.dateTo != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.lessThanOrEqual,
-        value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.lessThanOrEqual,
+          value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
+        ),
+      );
     }
     if (filter.subscriptionId != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'sub_id',
-        operator: QueryFilterOperator.equals,
-        value: filter.subscriptionId.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'sub_id',
+          operator: QueryFilterOperator.equals,
+          value: filter.subscriptionId.toString(),
+        ),
+      );
     }
     return conditions;
   }
@@ -742,40 +782,50 @@ class LookupService {
 
     final ids = filter.ids;
     if (ids != null && ids.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: '_id',
-        operator: QueryFilterOperator.inList,
-        value: ids.map((id) => id.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.inList,
+          value: ids.map((id) => id.toString()).toList(),
+        ),
+      );
     }
     if (filter.displayNameContains != null &&
         filter.displayNameContains!.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: 'display_name',
-        operator: QueryFilterOperator.contains,
-        value: filter.displayNameContains,
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'display_name',
+          operator: QueryFilterOperator.contains,
+          value: filter.displayNameContains,
+        ),
+      );
     }
     if (filter.hasPhoneNumber != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'has_phone_number',
-        operator: QueryFilterOperator.equals,
-        value: filter.hasPhoneNumber! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'has_phone_number',
+          operator: QueryFilterOperator.equals,
+          value: filter.hasPhoneNumber! ? '1' : '0',
+        ),
+      );
     }
     if (filter.hasEmail != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'has_email',
-        operator: QueryFilterOperator.equals,
-        value: filter.hasEmail! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'has_email',
+          operator: QueryFilterOperator.equals,
+          value: filter.hasEmail! ? '1' : '0',
+        ),
+      );
     }
     if (filter.inVisibleGroup != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'in_visible_group',
-        operator: QueryFilterOperator.equals,
-        value: filter.inVisibleGroup! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'in_visible_group',
+          operator: QueryFilterOperator.equals,
+          value: filter.inVisibleGroup! ? '1' : '0',
+        ),
+      );
     }
     return conditions;
   }
@@ -793,47 +843,59 @@ class LookupService {
 
     final ids = filter.ids;
     if (ids != null && ids.isNotEmpty) {
-      conditions.add(QueryFilterCondition(
-        field: '_id',
-        operator: QueryFilterOperator.inList,
-        value: ids.map((id) => id.toString()).toList(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.inList,
+          value: ids.map((id) => id.toString()).toList(),
+        ),
+      );
     }
     if (filter.isArchived != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'archived',
-        operator: QueryFilterOperator.equals,
-        value: filter.isArchived! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'archived',
+          operator: QueryFilterOperator.equals,
+          value: filter.isArchived! ? '1' : '0',
+        ),
+      );
     }
     if (filter.hasUnread != null) {
       // `read = 0` on the conversations view means the thread has unread.
-      conditions.add(QueryFilterCondition(
-        field: 'read',
-        operator: QueryFilterOperator.equals,
-        value: filter.hasUnread! ? '0' : '1',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'read',
+          operator: QueryFilterOperator.equals,
+          value: filter.hasUnread! ? '0' : '1',
+        ),
+      );
     }
     if (filter.dateFrom != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.greaterThanOrEqual,
-        value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.greaterThanOrEqual,
+          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+        ),
+      );
     }
     if (filter.dateTo != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'date',
-        operator: QueryFilterOperator.lessThanOrEqual,
-        value: filter.dateTo!.millisecondsSinceEpoch.toString(),
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'date',
+          operator: QueryFilterOperator.lessThanOrEqual,
+          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+        ),
+      );
     }
     if (filter.hasAttachment != null) {
-      conditions.add(QueryFilterCondition(
-        field: 'has_attachment',
-        operator: QueryFilterOperator.equals,
-        value: filter.hasAttachment! ? '1' : '0',
-      ));
+      conditions.add(
+        QueryFilterCondition(
+          field: 'has_attachment',
+          operator: QueryFilterOperator.equals,
+          value: filter.hasAttachment! ? '1' : '0',
+        ),
+      );
     }
     return conditions;
   }

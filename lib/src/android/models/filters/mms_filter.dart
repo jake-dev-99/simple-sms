@@ -47,19 +47,19 @@ class MmsFilter {
     DateTime? dateFrom,
     DateTime? dateTo,
     int? subscriptionId,
-  }) =>
-      MmsFilter(
-        ids: ids ?? this.ids,
-        threadId: threadId ?? this.threadId,
-        isRead: isRead ?? this.isRead,
-        types: types ?? this.types,
-        dateFrom: dateFrom ?? this.dateFrom,
-        dateTo: dateTo ?? this.dateTo,
-        subscriptionId: subscriptionId ?? this.subscriptionId,
-      );
+  }) => MmsFilter(
+    ids: ids ?? this.ids,
+    threadId: threadId ?? this.threadId,
+    isRead: isRead ?? this.isRead,
+    types: types ?? this.types,
+    dateFrom: dateFrom ?? this.dateFrom,
+    dateTo: dateTo ?? this.dateTo,
+    subscriptionId: subscriptionId ?? this.subscriptionId,
+  );
 
   @override
-  String toString() => 'MmsFilter('
+  String toString() =>
+      'MmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
       'dateFrom: $dateFrom, dateTo: $dateTo, subscriptionId: $subscriptionId)';
 }
@@ -78,12 +78,16 @@ class MmsSort {
   final SortDirection direction;
 
   /// Newest-first ordering by `date`.
-  static const MmsSort newestFirst =
-      MmsSort(field: MmsSortField.date, direction: SortDirection.descending);
+  static const MmsSort newestFirst = MmsSort(
+    field: MmsSortField.date,
+    direction: SortDirection.descending,
+  );
 
   /// Oldest-first ordering by `date`.
-  static const MmsSort oldestFirst =
-      MmsSort(field: MmsSortField.date, direction: SortDirection.ascending);
+  static const MmsSort oldestFirst = MmsSort(
+    field: MmsSortField.date,
+    direction: SortDirection.ascending,
+  );
 
   @override
   String toString() => 'MmsSort(field: $field, direction: $direction)';
@@ -97,8 +101,9 @@ class MmsPartFilter {
   /// (e.g. `image/` for all image attachments).
   final String? contentTypePrefix;
 
-  MmsPartFilter copyWith({String? contentTypePrefix}) =>
-      MmsPartFilter(contentTypePrefix: contentTypePrefix ?? this.contentTypePrefix);
+  MmsPartFilter copyWith({String? contentTypePrefix}) => MmsPartFilter(
+    contentTypePrefix: contentTypePrefix ?? this.contentTypePrefix,
+  );
 
   @override
   String toString() => 'MmsPartFilter(contentTypePrefix: $contentTypePrefix)';
