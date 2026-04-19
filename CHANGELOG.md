@@ -1,3 +1,24 @@
+## 0.4.2
+
+### Fixed
+- `LookupService` (`listContacts`, `listSms`, `listMms`,
+  `listConversations`, and the `lookup*`/`getStructuredName`
+  helpers) now queries `simple_query` with
+  `QueryDomain.platformSpecific` + explicit `contentUri`,
+  instead of the typed domains. Previously the typed-domain
+  path went through `_normalizeRecord` in
+  `simple_query_android`, which reshapes rows into the
+  canonical `{id, displayName, …}` schema — stripping the raw
+  Android columns (`_id`, `display_name`, `date`, `body`, …)
+  that `AndroidContact.fromRaw` / `Sms.fromRaw` / `Mms.fromRaw`
+  / `AndroidSimpleConversation.fromRaw` all depend on. Every
+  list call crashed with
+  `"Null check operator used on a null value"` on the missing
+  `_id`, and `LookupService`'s `try/catch` swallowed the error
+  and returned `[]` — so consumer sync loops cleanly but
+  silently reported 0 rows. Switching to `platformSpecific`
+  restores the raw-row contract.
+
 ## 0.4.1
 
 ### Fixed
