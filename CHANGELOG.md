@@ -1,3 +1,15 @@
+## 0.4.3
+
+### Added
+- `idAfter` field on `SmsFilter`, `MmsFilter`, `ConversationFilter`,
+  and `ContactFilter` — cursor-based pagination anchor emitting
+  `_id > ?` in the underlying query. Pair with the matching
+  `SortField.id` on the corresponding `*Sort` so "after this id" is
+  well-defined. Lets large-history sync pipelines avoid the
+  `OFFSET` scan cost on the ContentProvider: index-served
+  `WHERE _id > cursor ORDER BY _id ASC LIMIT N` stays `O(N)` per
+  page regardless of how deep into the table the cursor is.
+
 ## 0.4.2
 
 ### Fixed
