@@ -85,4 +85,13 @@ jobs:
           fi
 
       - name: Publish
+        # 2-minute cap. A healthy OIDC-backed publish finishes in
+        # 10-30 s; anything much longer means pub fell back to the
+        # interactive OAuth flow (which happens if the OIDC token's
+        # `ref` claim doesn't match pub.dev's configured tag
+        # pattern — e.g. the workflow was dispatched from `main`
+        # instead of from the tag ref). Better to fail fast than
+        # sit on the runner for 40 minutes waiting for someone to
+        # click a browser link that will never arrive.
+        timeout-minutes: 2
         run: flutter pub publish --force

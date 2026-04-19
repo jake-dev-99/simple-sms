@@ -25,6 +25,7 @@ class SmsFilter {
     this.dateTo,
     this.addressContains,
     this.subscriptionId,
+    this.idAfter,
   });
 
   /// Match any of these database ids (`_id IN (...)`).
@@ -51,6 +52,23 @@ class SmsFilter {
   /// Match only messages on a specific SIM subscription (`sub_id = ?`).
   final int? subscriptionId;
 
+  /// Match only rows where `_id > idAfter` — cursor-based pagination
+  /// anchor. Used by paged sync pipelines to resume past a previously-
+  /// seen high-water mark without paying the scan cost of a large
+  /// `OFFSET`: `WHERE _id > <cursor> ORDER BY _id ASC LIMIT N` is
+  /// index-served on the SMS provider's primary key, so each page
+  /// costs `O(N)` regardless of how far into the table we are. For
+  /// `offset` above a few thousand rows the ContentProvider starts
+  /// materialising the offset prefix before discarding it, which
+  /// dominates page cost on large histories.
+  ///
+  /// When used, the caller is responsible for ordering rows by `_id
+  /// ASC` — otherwise "after this id" isn't a meaningful cursor.
+  /// [SmsSort.oldestFirst] (the default for paged sync reads) already
+  /// orders by `date` not `_id`; pair [idAfter] with a sort on
+  /// [SmsSortField.id] to make cursor pagination correct.
+  final int? idAfter;
+
   SmsFilter copyWith({
     List<int>? ids,
     int? threadId,
@@ -60,6 +78,7 @@ class SmsFilter {
     DateTime? dateTo,
     String? addressContains,
     int? subscriptionId,
+    int? idAfter,
   }) => SmsFilter(
     ids: ids ?? this.ids,
     threadId: threadId ?? this.threadId,
@@ -69,6 +88,7 @@ class SmsFilter {
     dateTo: dateTo ?? this.dateTo,
     addressContains: addressContains ?? this.addressContains,
     subscriptionId: subscriptionId ?? this.subscriptionId,
+    idAfter: idAfter ?? this.idAfter,
   );
 
   @override
@@ -76,7 +96,8 @@ class SmsFilter {
       'SmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
       'dateFrom: $dateFrom, dateTo: $dateTo, '
-      'addressContains: $addressContains, subscriptionId: $subscriptionId)';
+      'addressContains: $addressContains, subscriptionId: $subscriptionId, '
+      'idAfter: $idAfter)';
 }
 
 /// Sort column for SMS listings.

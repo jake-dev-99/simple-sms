@@ -28,6 +28,17 @@ import '../models/people/contactables.dart';
 /// final contact = await service.lookupContactById(42);
 /// final messages = await service.getSmsByThread(7);
 /// ```
+// Content URIs for the Android provider tables this service reads.
+// Kept as constants so the (platformSpecific) domain switch below is
+// easy to audit and stay consistent with `Query.kt` / `ContentQuery`
+// on the Kotlin side.
+const String _contactsUri = 'content://com.android.contacts/contacts';
+const String _smsUri = 'content://sms';
+const String _mmsUri = 'content://mms';
+const String _mmsPartUri = 'content://mms/part';
+const String _mmsSmsConversationsUri =
+    'content://mms-sms/conversations?simple=true';
+
 class LookupService {
   /// Looks up a contact by their database ID.
   ///
@@ -36,7 +47,12 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.contacts,
+          // Use platformSpecific so simple_query doesn't canonicalize
+          // the row into its domain schema (id/displayName/…) — we
+          // need raw Android columns (_id, display_name, …) to feed
+          // AndroidContact.fromRaw.
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _contactsUri},
           filters: [
             QueryFilterCondition(
               field: '_id',
@@ -70,7 +86,7 @@ class LookupService {
               : 'content://com.android.contacts/data/phones/filter/$address';
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.contacts,
+          domain: QueryDomain.platformSpecific,
           platformData: {'contentUri': uri},
         ),
       );
@@ -90,8 +106,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
-          entityType: 'mms',
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _mmsUri},
           filters: [
             QueryFilterCondition(
               field: '_id',
@@ -120,7 +136,7 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
+          domain: QueryDomain.platformSpecific,
           platformData: {
             'contentUri': 'content://mms-sms/canonical-address/$recipientId',
           },
@@ -143,7 +159,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _smsUri},
           filters: [
             QueryFilterCondition(
               field: 'thread_id',
@@ -176,8 +193,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
-          entityType: 'sms',
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _smsUri},
           filters: _buildSmsFilters(filter),
           sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
           page:
@@ -207,8 +224,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
-          entityType: 'mms',
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _mmsUri},
           filters: [
             QueryFilterCondition(
               field: 'thread_id',
@@ -245,8 +262,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
-          entityType: 'mms',
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _mmsUri},
           filters: _buildMmsFilters(filter),
           sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
           page:
@@ -297,10 +314,9 @@ class LookupService {
       }
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
-          entityType: 'mmsPart',
+          domain: QueryDomain.platformSpecific,
           filters: conditions,
-          platformData: const {'contentUri': 'content://mms/part'},
+          platformData: {'contentUri': _mmsPartUri},
         ),
       );
       return response.records
@@ -366,16 +382,14 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.messages,
+          domain: QueryDomain.platformSpecific,
           filters: _buildConversationFilters(filter),
           sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
           page:
               (limit != null || offset != null)
                   ? QueryPage(limit: limit, offset: offset)
                   : null,
-          platformData: const {
-            'contentUri': 'content://mms-sms/conversations?simple=true',
-          },
+          platformData: {'contentUri': _mmsSmsConversationsUri},
         ),
       );
       final bare = response.records
@@ -460,7 +474,7 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.contacts,
+          domain: QueryDomain.platformSpecific,
           filters: [
             QueryFilterCondition(
               field: 'contact_id',
@@ -516,7 +530,7 @@ class LookupService {
       ];
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.contacts,
+          domain: QueryDomain.platformSpecific,
           filters: filters,
           platformData: const {
             'contentUri': 'content://com.android.contacts/data',
@@ -547,7 +561,8 @@ class LookupService {
     try {
       final response = await SimpleQuery.instance.query(
         QueryRequest(
-          domain: QueryDomain.contacts,
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': _contactsUri},
           filters: _buildContactFilters(filter),
           sort: _buildContactSort(sort ?? ContactSort.alphabetical),
           page:
@@ -673,6 +688,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -758,6 +782,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -824,6 +857,15 @@ class LookupService {
           field: 'in_visible_group',
           operator: QueryFilterOperator.equals,
           value: filter.inVisibleGroup! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }
@@ -894,6 +936,15 @@ class LookupService {
           field: 'has_attachment',
           operator: QueryFilterOperator.equals,
           value: filter.hasAttachment! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }
