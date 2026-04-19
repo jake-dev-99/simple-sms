@@ -688,6 +688,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -773,6 +782,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -839,6 +857,15 @@ class LookupService {
           field: 'in_visible_group',
           operator: QueryFilterOperator.equals,
           value: filter.inVisibleGroup! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }
@@ -909,6 +936,15 @@ class LookupService {
           field: 'has_attachment',
           operator: QueryFilterOperator.equals,
           value: filter.hasAttachment! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }

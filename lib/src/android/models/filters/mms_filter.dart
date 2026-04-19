@@ -15,6 +15,7 @@ class MmsFilter {
     this.dateFrom,
     this.dateTo,
     this.subscriptionId,
+    this.idAfter,
   });
 
   /// Match any of these database ids (`_id IN (...)`).
@@ -39,6 +40,11 @@ class MmsFilter {
   /// Match only messages on a specific SIM subscription (`sub_id = ?`).
   final int? subscriptionId;
 
+  /// Match only rows where `_id > idAfter` — cursor-based pagination
+  /// anchor. See [SmsFilter.idAfter] for rationale. Pair with
+  /// [MmsSortField.id] ordering so "after this id" is well-defined.
+  final int? idAfter;
+
   MmsFilter copyWith({
     List<int>? ids,
     int? threadId,
@@ -47,6 +53,7 @@ class MmsFilter {
     DateTime? dateFrom,
     DateTime? dateTo,
     int? subscriptionId,
+    int? idAfter,
   }) => MmsFilter(
     ids: ids ?? this.ids,
     threadId: threadId ?? this.threadId,
@@ -55,13 +62,15 @@ class MmsFilter {
     dateFrom: dateFrom ?? this.dateFrom,
     dateTo: dateTo ?? this.dateTo,
     subscriptionId: subscriptionId ?? this.subscriptionId,
+    idAfter: idAfter ?? this.idAfter,
   );
 
   @override
   String toString() =>
       'MmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
-      'dateFrom: $dateFrom, dateTo: $dateTo, subscriptionId: $subscriptionId)';
+      'dateFrom: $dateFrom, dateTo: $dateTo, subscriptionId: $subscriptionId, '
+      'idAfter: $idAfter)';
 }
 
 /// Sort column for MMS listings.
