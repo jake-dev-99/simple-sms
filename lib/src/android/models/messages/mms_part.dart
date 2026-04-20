@@ -97,6 +97,7 @@ class MmsPart implements ModelInterface {
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
     id: FieldHelper.asInt(json["id"]) ?? 0,
     sourceMap: json,
+    parentId: json["parentId"]?.toString() ?? '',
     charset: FieldHelper.enumFromValue(
       CharSet.values,
       FieldHelper.asInt(json["charset"]),
@@ -138,6 +139,7 @@ class MmsPart implements ModelInterface {
     // String for ContentType) so `jsonEncode(mms.toJson())` works —
     // previously these emitted Enum instances directly, which isn't
     // JSON-encodable and blew up at encode time.
+    "parentId": parentId,
     "charset": charset?.value,
     "contentDisposition": contentDisposition,
     "contentId": contentId,
@@ -167,9 +169,17 @@ class MmsPart implements ModelInterface {
     // `id` column; the old fallback `?? raw['id']!` was dead code that would
     // throw on any row where the `_id` coercion returned null. A 0 default
     // matches the other "unparseable row" behaviours elsewhere in the parser.
+    // `mid` is the owning MMS `_id` on `content://mms/part`. Populate
+    // `parentId` (the generic cross-model foreign-key String) from it so
+    // downstream consumers — e.g. `simple-messages`' external-parent
+    // linking in `android_converters` — can thread parts back to their
+    // MMS without re-reading `sourceMap`. The typed `messageId: int` stays
+    // for callers that already use it.
+    final parentId = raw["mid"]?.toString() ?? '';
     MmsPart part = MmsPart(
       id: FieldHelper.asInt(raw['_id']) ?? 0,
       sourceMap: raw,
+      parentId: parentId,
       charset: FieldHelper.enumFromValue(
         CharSet.values,
         FieldHelper.asInt(raw["chset"]),
@@ -218,7 +228,12 @@ class MmsPart implements ModelInterface {
     "ctt_s": contentTypeSub,
     "ctt_t": contentTypeTransferEncoding,
     "fn": fileName,
-    "mid": messageId,
+    // `mid` is the authoritative owning-MMS column on content://mms/part.
+    // Prefer the typed `messageId` int; fall back to a parseable
+    // `parentId` String (kept in sync by `fromRaw`). This keeps a
+    // fromRaw/toRaw round-trip from dropping the parent link when callers
+    // construct MmsPart from app data that only has `parentId`.
+    "mid": messageId ?? int.tryParse(parentId),
     "name": name,
     "sef_type": sefType,
     "seq": sequence,
