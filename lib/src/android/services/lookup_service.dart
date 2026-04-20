@@ -210,8 +210,14 @@ class LookupService {
       if (rawId is String) return int.tryParse(rawId.trim());
       return null;
     } catch (e, s) {
+      // Don't log the addresses themselves — phone numbers + emails are
+      // PII and debugPrint ends up in Crashlytics + device logs on
+      // consumer builds. Count is enough to triage without leaking
+      // values. Mirrors `resolveCanonicalAddress` above, which logs
+      // only the opaque recipientId.
       debugPrint(
-        'simple_sms: Failed to resolve threadId for $cleaned: $e',
+        'simple_sms: Failed to resolve threadId for ${cleaned.length} '
+        'address(es): $e',
       );
       debugPrint(s.toString());
       return null;

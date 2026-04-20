@@ -26,7 +26,11 @@ class FieldHelper {
     // numerics, and returns null for non-numeric junk — which matches our
     // nullable return contract.
     if (value is String) return int.tryParse(value.trim());
-    if (value is double) return value.toInt();
+    // `double.nan.toInt()` and `double.infinity.toInt()` both throw
+    // `UnsupportedError`, which breaks this helper's "null for bad input"
+    // contract. Rare from a ContentProvider cursor, but `fromJson` paths
+    // can deserialize non-finite doubles from server payloads, so guard.
+    if (value is double) return value.isFinite ? value.toInt() : null;
     if (value is bool) return value ? 1 : 0;
     return null;
   }
@@ -56,10 +60,27 @@ class FieldHelper {
   static DateTime? asDateTime(dynamic value) {
     if (value == null) return null;
     if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      // Try ISO-8601 first (how app-layer JSON round-trips carry dates),
+      // then fall back to stringified-int epochs (how some ContentProvider
+      // columns surface — `toRaw()` round-trips pre-fix, OEM quirks, etc.).
+      final iso = DateTime.tryParse(trimmed);
+      if (iso != null) return iso;
+      final asInt = int.tryParse(trimmed);
+      if (asInt != null) return asDateTime(asInt);
+      return null;
+    }
     if (value is int) {
+      // Bail out on pathological sentinels before multiplying by 1000 —
+      // a huge negative seconds value wraps on 64-bit Dart native and
+      // could produce an in-range `millis` that looks like a valid
+      // (garbage) date. We only accept seconds whose millisecond-
+      // equivalent fits Dart's DateTime range.
+      if (value.abs() > _maxDartMillis) return null;
       final millis =
-          value < _secondsVsMillisThreshold ? value * 1000 : value;
+          value.abs() < _secondsVsMillisThreshold ? value * 1000 : value;
       if (millis.abs() > _maxDartMillis) return null;
       return DateTime.fromMillisecondsSinceEpoch(millis);
     }
