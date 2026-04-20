@@ -537,42 +537,60 @@ class LookupService {
   }
 
   /// Resolves participants + latestSms / latestMms for a bare conversation.
+  ///
+  /// Runs recipient resolution and latest-message lookups in parallel — each
+  /// query is an independent content-provider roundtrip, and on a populous
+  /// inbox (200 threads × 3 participants) the old serial version paid ~800
+  /// sequential provider calls. `Future.wait` drops that to three
+  /// concurrent batches per thread.
   Future<AndroidSimpleConversation> _enrichConversation(
     AndroidSimpleConversation base,
   ) async {
-    // Resolve each recipientId → Contactable.
-    final participants = <Contactable>[];
-    for (final rid in base.recipientIds) {
-      if (rid.isEmpty) continue;
-      final address = await resolveCanonicalAddress(rid);
-      if (address == null) continue;
-      final contactable = await lookupContactableByAddress(address);
-      if (contactable != null) {
-        participants.add(contactable);
-      } else {
-        // Fall back to a minimal Contactable keyed by the address only, so the
-        // caller always has something to show.
-        participants.add(Contactable(id: -1, value: address));
-      }
-    }
+    // Resolve every recipientId → Contactable concurrently.
+    final participantsFuture = Future.wait(
+      base.recipientIds.where((rid) => rid.isNotEmpty).map(_resolveParticipant),
+    );
 
-    // Latest SMS + MMS for the thread (each capped at 1 row).
-    final latestSmsList = await listSms(
+    // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
+    final latestSmsFuture = listSms(
       filter: SmsFilter(threadId: base.threadId),
       sort: SmsSort.newestFirst,
       limit: 1,
     );
-    final latestMmsList = await listMms(
+    final latestMmsFuture = listMms(
       filter: MmsFilter(threadId: base.threadId),
       sort: MmsSort.newestFirst,
       limit: 1,
     );
+
+    final results = await Future.wait<Object>([
+      participantsFuture,
+      latestSmsFuture,
+      latestMmsFuture,
+    ]);
+    final participants =
+        (results[0] as List<Contactable?>).whereType<Contactable>().toList(
+              growable: false,
+            );
+    final latestSmsList = results[1] as List<Sms>;
+    final latestMmsList = results[2] as List<Mms>;
 
     return base.enrich(
       participants: participants,
       latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
       latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
     );
+  }
+
+  /// Resolves a single recipient id to a [Contactable]: canonical-address
+  /// lookup → contactable-by-address lookup, with a minimal fallback so
+  /// the UI always has *something* to render. Returns null only when the
+  /// recipient id doesn't resolve to any canonical address.
+  Future<Contactable?> _resolveParticipant(String recipientId) async {
+    final address = await resolveCanonicalAddress(recipientId);
+    if (address == null) return null;
+    final contactable = await lookupContactableByAddress(address);
+    return contactable ?? Contactable(id: -1, value: address);
   }
 
   /// Lists every `data` row belonging to a single contact — phone numbers,
