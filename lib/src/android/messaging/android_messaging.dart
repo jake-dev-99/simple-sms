@@ -43,17 +43,24 @@ class AndroidMessaging {
   /// Initializes the messaging singleton with callbacks for incoming messages.
   ///
   /// Must be called before [instance] is accessed. Safe to call multiple
-  /// times — subsequent calls return the existing instance.
+  /// times — subsequent calls update the callbacks on the existing
+  /// singleton so the last caller always wins (matching what a developer
+  /// naturally expects when they re-invoke `Android.initialize` from a
+  /// hot-reload path or a background-engine entrypoint).
   factory AndroidMessaging.initialize({
     required Function(Sms) inboundSmsCallback,
     required Function(Mms) inboundMmsCallback,
   }) {
-    _instance ??= AndroidMessaging._internal(
+    final existing = _instance;
+    if (existing != null) {
+      existing.smsCallback = inboundSmsCallback;
+      existing.mmsCallback = inboundMmsCallback;
+      return existing;
+    }
+    return _instance = AndroidMessaging._internal(
       smsCallback: inboundSmsCallback,
       mmsCallback: inboundMmsCallback,
     );
-
-    return _instance!;
   }
 
   /// Sends an SMS or MMS message.
