@@ -108,10 +108,17 @@ class MmsPart implements ModelInterface {
   };
 
   factory MmsPart.fromRaw(Map<String, dynamic> raw) {
+    // `Telephony.Mms.Part` primary key is `_id` (BaseColumns). There is no
+    // `id` column; the old fallback `?? raw['id']!` was dead code that would
+    // throw on any row where the `_id` coercion returned null. A 0 default
+    // matches the other "unparseable row" behaviours elsewhere in the parser.
     MmsPart part = MmsPart(
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+      id: FieldHelper.asInt(raw['_id']) ?? 0,
       sourceMap: raw,
-      charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
+      charset: FieldHelper.enumFromValue(
+        CharSet.values,
+        FieldHelper.asInt(raw["chset"]),
+      ),
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',
@@ -120,12 +127,17 @@ class MmsPart implements ModelInterface {
           ContentType.textPlain,
       contentTypeSub: raw["ctt_s"],
       contentTypeTransferEncoding: raw["ctt_t"],
-      dataLocation: _parseUri(raw["dataLocation"]),
+      // Real column on `content://mms/part` is `_data` (the file path to the
+      // part blob). The previous `raw["dataLocation"]` key never matches any
+      // provider row, so the URI was silently null and attachment extraction
+      // fell through to the `partId`-based plugin fallback. Prospector dump
+      // confirms `_data` is the authoritative column.
+      dataLocation: _parseUri(raw["_data"]),
       fileName: raw["fn"],
-      messageId: raw["mid"],
+      messageId: FieldHelper.asInt(raw["mid"]),
       name: raw["name"],
-      sefType: raw["sef_type"],
-      sequence: raw["seq"],
+      sefType: FieldHelper.asInt(raw["sef_type"]),
+      sequence: FieldHelper.asInt(raw["seq"]),
       sourceLabel: raw["sourceLabel"],
       text: raw["text"],
     );
@@ -134,7 +146,7 @@ class MmsPart implements ModelInterface {
   }
 
   Map<String, dynamic> toRaw() => {
-    "dataLocation": dataLocation?.toString(),
+    "_data": dataLocation?.toString(),
     "_id": id,
     "cd": contentDisposition,
     "chset": charset?.value,
