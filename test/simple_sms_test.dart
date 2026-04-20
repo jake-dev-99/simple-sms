@@ -262,6 +262,39 @@ void main() {
       final json = message.toJson();
       expect(json['attachmentPaths'], isNull);
     });
+
+    test('toJson emits Lists (not Sets) for channel-safe encoding', () {
+      // Regression for Tier 0 #12: toJson used to emit raw `Set<String>`
+      // for attachmentPaths, which isn't encodable through jsonEncode.
+      // The interop layer patched it post-hoc — that patch is gone now.
+      final message = OutboundMessage(
+        body: 'MMS',
+        addresses: {'+15551111111', '+15552222222'},
+        attachmentPaths: {'/a.jpg', '/b.png'},
+      );
+      final json = message.toJson();
+      expect(json['recipients'], isA<List>());
+      expect(json['attachmentPaths'], isA<List>());
+    });
+
+    test('fromJson tolerates wire payloads with either List or null', () {
+      // After jsonEncode/jsonDecode, Sets surface as Lists. fromJson has
+      // to accept both without throwing a TypeError.
+      final fromList = OutboundMessage.fromJson({
+        'body': 'test',
+        'recipients': ['+15551234567'],
+        'attachmentPaths': ['/image.jpg'],
+      });
+      expect(fromList.addresses, {'+15551234567'});
+      expect(fromList.attachmentPaths, {'/image.jpg'});
+
+      final missingAttachments = OutboundMessage.fromJson({
+        'body': 'noatt',
+        'recipients': ['+15559999999'],
+      });
+      expect(missingAttachments.attachmentPaths, isNull);
+      expect(missingAttachments.addresses, {'+15559999999'});
+    });
   });
 
   group('FieldHelper (via Sms.fromRaw)', () {

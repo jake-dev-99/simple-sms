@@ -10,12 +10,9 @@ class OutboundMessagingInterop {
   static Future<Map<String, dynamic>> sendMessage(
     OutboundMessage message,
   ) async {
-    final messageJson = message.toJson();
-    messageJson['attachmentPaths'] = message.attachmentPaths?.toList();
-
     final result = await methodChannel.invokeMethod<String>(
       "sendMessage",
-      messageJson,
+      message.toJson(),
     );
     return jsonDecode(result ?? '{}');
   }
