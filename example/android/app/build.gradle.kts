@@ -9,7 +9,7 @@ plugins {
 android {
     namespace = "com.example.simple_sms_example"
     compileSdk = 35
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "30.0.14904198"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
