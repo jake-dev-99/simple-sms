@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import '../../interop/messaging.dart';
+import '../../interop/channels.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/outbound_message.dart';
 import '../models/messages/sms.dart';
