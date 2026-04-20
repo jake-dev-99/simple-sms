@@ -1016,12 +1016,19 @@ class LookupService {
         ),
       );
     }
+    // The `mms-sms/conversations?simple=true` view surfaces `date` in
+    // **seconds** on Samsung Android 16 (Prospector dump confirms:
+    // 1776546259, not 1776546259000). Matches the MMS `date` column the
+    // row originates from — the simple conversations view is effectively
+    // the newest SMS/MMS row per thread, and MMS stores `date` in
+    // seconds per OMA MMS. SMS stores `date` in millis. So this builder
+    // mirrors `_buildMmsFilters` (÷1000), not `_buildSmsFilters`.
     if (filter.dateFrom != null) {
       conditions.add(
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.greaterThanOrEqual,
-          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }
@@ -1030,7 +1037,7 @@ class LookupService {
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.lessThanOrEqual,
-          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }
