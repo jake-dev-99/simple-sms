@@ -130,7 +130,7 @@ void main() {
         ],
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
 
       expect(mms.id, 10);
       expect(mms.threadId, 5);
@@ -152,7 +152,7 @@ void main() {
         'body': '',
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
       expect(mms.id, 20);
       expect(mms.recipients, isEmpty);
       expect(mms.parts, isEmpty);
@@ -181,7 +181,7 @@ void main() {
           'parts': <Map<String, dynamic>>[],
         };
 
-        final original = await Mms.fromRaw(raw);
+        final original = Mms.fromRaw(raw);
         expect(original.deliveryReport, DeliveryReport.requested);
         expect(original.readReport, DeliveryReport.notRequested);
         expect(original.responseStatus, AndroidMessageStatus.retrieved);
@@ -197,7 +197,7 @@ void main() {
 
         // Round-trip: parse the emitted raw back into an Mms and
         // confirm the enums land on the same values.
-        final restored = await Mms.fromRaw(rawOut);
+        final restored = Mms.fromRaw(rawOut);
         expect(restored.deliveryReport, DeliveryReport.requested);
         expect(restored.readReport, DeliveryReport.notRequested);
         expect(restored.responseStatus, AndroidMessageStatus.retrieved);
@@ -218,7 +218,7 @@ void main() {
         'parts': <Map<String, dynamic>>[],
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
       final json = mms.toJson();
 
       expect(json['id'], 30);

@@ -125,7 +125,7 @@ class AndroidMessaging {
         final Sms smsMessage = Sms.fromRaw(messageData);
         return await smsCallback(smsMessage);
       } else if (methodCall.method == 'receiveInboundMmsMessage') {
-        final Mms mmsMessage = await Mms.fromRaw(messageData);
+        final Mms mmsMessage = Mms.fromRaw(messageData);
         return await mmsCallback(mmsMessage);
       } else {
         throw PlatformException(

@@ -112,7 +112,7 @@ void main() {
 
     test('parses core fields without throwing on Samsung OEM shape',
         () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
 
       expect(mms.id, 6244);
       expect(mms.threadId, 3);
@@ -127,7 +127,7 @@ void main() {
     });
 
     test('empty-string sentinels coerce to null, not throw', () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
       // `d_tm`, `retr_st`, `retr_txt_cs`, `st`, `read_status`, `sub_cs`
       // all arrive as "" on Samsung. Previously these either threw or
       // silently became a malformed value; now they should read as null.
@@ -141,7 +141,7 @@ void main() {
 
     test('Samsung pass-through fields land in their nullable slots',
         () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
       expect(mms.predefinedId, -1);
       expect(mms.spamType, 0);
       expect(mms.blockFilteredStatus, isNull); // "" → null

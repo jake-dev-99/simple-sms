@@ -554,11 +554,16 @@ class Mms {
     'deviceName': deviceName,
   };
 
-  /// Creates an MMS instance from Android/DB raw data
+  /// Creates an MMS instance from Android/DB raw data.
   ///
-  /// Handles the Android-style field naming conventions (snake_case and abbreviations)
-  /// and data type peculiarities from the Android database
-  static Future<Mms> fromRaw(Map<String, dynamic> raw) async {
+  /// Handles the Android-style field naming conventions (snake_case and
+  /// abbreviations) and the data-type peculiarities of the Android database.
+  /// Pure CPU work — no IO — so this factory is synchronous. Callers that
+  /// `await` the result still compile (await-on-non-Future is a passthrough)
+  /// but should drop the `await` to unlock bulk `.map(...).toList()` in
+  /// callers that previously looped `results.add(await Mms.fromRaw(...))`
+  /// one row at a time.
+  static Mms fromRaw(Map<String, dynamic> raw) {
     List<MmsParticipant> recipients =
         raw['recipients'] != null
             ? raw['recipients'] is List<MmsParticipant>

@@ -127,7 +127,7 @@ class LookupService {
         ),
       );
       if (response.records.isEmpty) return null;
-      return await Mms.fromRaw(
+      return Mms.fromRaw(
         Map<String, dynamic>.from(response.records.first),
       );
     } catch (e, s) {
@@ -339,11 +339,9 @@ class LookupService {
           ],
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to get MMS for thread $threadId: $e');
       debugPrint(s.toString());
@@ -384,11 +382,9 @@ class LookupService {
                   : null,
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to list MMS ($filter): $e');
       debugPrint(s.toString());
