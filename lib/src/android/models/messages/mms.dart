@@ -705,7 +705,15 @@ class Mms implements ModelInterface {
         FieldHelper.asInt(raw['retr_st']),
       ),
       retrievedText: raw['retr_txt'],
-      retrievedTextCharset: raw['retr_txt_cs'],
+      // Samsung rows surface `retr_txt_cs` as "" when unset; coerce to
+      // null so the field reads as absent rather than an empty-string
+      // marker. Matches the treatment of other empty-string sentinels
+      // (st, d_tm, read_status, sub_cs) across this parser.
+      retrievedTextCharset: (() {
+        final v = raw['retr_txt_cs'];
+        if (v is String && v.isEmpty) return null;
+        return v as String?;
+      })(),
       sourceLabel: raw['sourceLabel'],
       transactionId: raw['tr_id'],
       usingMode: FieldHelper.enumFromValue(

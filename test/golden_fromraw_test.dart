@@ -133,7 +133,7 @@ void main() {
       // silently became a malformed value; now they should read as null.
       expect(mms.deliveryDate, isNull);
       expect(mms.retrieveStatus, isNull);
-      expect(mms.retrievedTextCharset, anyOf(isNull, equals('')));
+      expect(mms.retrievedTextCharset, isNull);
       expect(mms.status, isNull);
       expect(mms.readStatus, isNull);
       expect(mms.subCs, isNull);
@@ -173,7 +173,10 @@ void main() {
       'seq': 0,
       'smart_suggestion_classification': 0,
       'sub_id': -1,
-      'text': 'On my way home babe ',
+      // Synthetic body; original fixture carried a real user message.
+      // Keep the trailing space to exercise the "body with trailing
+      // whitespace" path of the text-part parser.
+      'text': 'Synthetic golden body — do not redact further. ',
     };
 
     test('reads _id (not raw["id"]) and _data (not raw["dataLocation"])',
@@ -184,7 +187,7 @@ void main() {
       // important invariant is that the parser read from the right
       // column name and didn't crash on an empty string.
       expect(part.dataLocation, isNull);
-      expect(part.text, 'On my way home babe ');
+      expect(part.text, 'Synthetic golden body — do not redact further. ');
     });
 
     test('messageId, sequence, sefType coerce via FieldHelper.asInt', () {
@@ -214,9 +217,14 @@ void main() {
       'reply_path_present': 0,
       'group_type': '',
       'type': 1,
+      // Synthetic body; original fixture carried real financial SMS
+      // content. Preserves the parser-relevant shape: long text with an
+      // escaped dollar sign, digits with thousands separators, and a
+      // single-period end-of-sentence so we still exercise body length
+      // + escape-sequence handling.
       'body':
-          'Your Available balance on account: x1863-S01 MAX CHECKING today '
-          'is \$25,717.24. Thank you for choosing LMCU.',
+          'Synthetic balance notice for account x0000-S00 FAKE ACCOUNT '
+          'today is \$12,345.67. Thank you for banking with us.',
       'thread_id': 173,
       'protocol': 0,
       're_type': 0,
@@ -289,10 +297,14 @@ void main() {
   });
 
   group('MmsParticipant.fromRaw golden', () {
-    // Lifted from mms_addr.json — a sender row (type 137 / 0x89).
+    // Shape lifted from mms_addr.json — a sender row (type 137 / 0x89).
+    // The address is a fabricated number from the 555-prefix reserved
+    // range (NANP assigns 555-0100..555-0199 for fictional use); the
+    // `+` prefix is preserved so we still exercise the E.164 parsing
+    // path without committing a real phone number to the repo.
     final senderRow = <String, dynamic>{
       'charset': 106,
-      'address': '+16164019593',
+      'address': '+15550100123',
       'sub_id': -1,
       '_id': 5,
       'msg_id': 3,
@@ -304,7 +316,7 @@ void main() {
       final p = MmsParticipant.fromRaw(senderRow);
       expect(p.id, 5);
       expect(p.msgId, 3);
-      expect(p.address, '+16164019593');
+      expect(p.address, '+15550100123');
       expect(p.subId, -1);
       expect(p.contactId, isNull); // "" → null via asInt
     });

@@ -97,11 +97,20 @@ class MmsPart implements ModelInterface {
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
     id: FieldHelper.asInt(json["id"]) ?? 0,
     sourceMap: json,
-    charset: FieldHelper.enumFromValue(CharSet.values, json["charset"]),
+    charset: FieldHelper.enumFromValue(
+      CharSet.values,
+      FieldHelper.asInt(json["charset"]),
+    ),
     contentDisposition: json["contentDisposition"],
     contentId: json["contentId"],
-    contentLocation: json["contentLocation"],
-    contentType: json["contentType"],
+    contentLocation: json["contentLocation"] ?? '',
+    // `contentType` is required (non-nullable); fall back to textPlain
+    // so a malformed cache row doesn't throw at the constructor. The
+    // server side is expected to emit the enum `.value` (a MIME string
+    // like "text/plain") so the lookup works on the forward path.
+    contentType:
+        FieldHelper.enumFromValue(ContentType.values, json["contentType"]) ??
+            ContentType.textPlain,
     contentTypeSub: json["contentTypeSub"],
     contentTypeTransferEncoding: json["contentTypeTransferEncoding"],
     // `Uri.tryParse` used to throw here when the key was absent (its first
@@ -125,11 +134,15 @@ class MmsPart implements ModelInterface {
   );
 
   Map<String, dynamic> toJson() => {
-    "charset": charset,
+    // Enums serialize as their underlying `.value` (int for CharSet,
+    // String for ContentType) so `jsonEncode(mms.toJson())` works —
+    // previously these emitted Enum instances directly, which isn't
+    // JSON-encodable and blew up at encode time.
+    "charset": charset?.value,
     "contentDisposition": contentDisposition,
     "contentId": contentId,
     "contentLocation": contentLocation,
-    "contentType": contentType,
+    "contentType": contentType.value,
     "contentTypeSub": contentTypeSub,
     "contentTypeTransferEncoding": contentTypeTransferEncoding,
     "dataLocation": dataLocation?.toString(),
