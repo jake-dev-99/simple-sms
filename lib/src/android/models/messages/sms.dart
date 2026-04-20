@@ -182,10 +182,13 @@ class Sms implements ModelInterface {
 
   // ---- JSON (App/Server) ----
   factory Sms.fromJson(Map<String, dynamic> json) => Sms(
-    id: FieldHelper.asInt(json["id"])!,
+    // Match fromRaw's fallback semantics (was `!` force-unwrap). A
+    // cached/server payload missing `id` previously threw; 0 is the
+    // "unparseable row" default used elsewhere in these models.
+    id: FieldHelper.asInt(json["id"]) ?? 0,
     address: json["address"],
     announcementsScenarioId: json["announcementsScenarioId"],
-    announcementsSubtype: json["announcementsSubtype"],
+    announcementsSubtype: FieldHelper.asInt(json["announcementsSubtype"]),
     appId: FieldHelper.asInt(json["appId"]),
     binInfo: FieldHelper.asInt(json["binInfo"]),
     blockFilteredStatus: FieldHelper.asInt(json["blockFilteredStatus"]),
@@ -207,7 +210,7 @@ class Sms implements ModelInterface {
     deviceName: json["deviceName"],
     errorCode: FieldHelper.asInt(json["errorCode"]),
     favorite: FieldHelper.asBool(json["favorite"]),
-    groupCotag: json["groupCotag"],
+    groupCotag: json["groupCotag"]?.toString(),
     isSatellite: FieldHelper.asBool(json["isSatellite"]),
     reCountInfoCustomReaction: json["reCountInfoCustomReaction"]?.toString(),
     spamType: FieldHelper.asInt(json["spamType"]),
@@ -217,7 +220,10 @@ class Sms implements ModelInterface {
     hidden: FieldHelper.asBool(json["hidden"]),
     linkUrl: json["linkUrl"],
     locked: FieldHelper.asBool(json["locked"]),
-    messageId: json["messageId"],
+    // Coerce stringified IDs too — some providers emit msg_id as a
+    // stringified long, and cached round-trips preserve whatever
+    // shape the provider produced originally.
+    messageId: FieldHelper.asInt(json["messageId"]),
     objectId: json["objectId"],
     person: json["person"],
     priority: FieldHelper.enumFromValue(
@@ -454,7 +460,10 @@ class Sms implements ModelInterface {
     "date_sent": dateSent?.millisecondsSinceEpoch,
     "decorate_bubble_value": decorateBubbleValue,
     "deletable": FieldHelper.boolToInt(deletable),
-    "delivery_date": deliveryDate?.millisecondsSinceEpoch.toString(),
+    // Emit as int millis so fromRaw's FieldHelper.asDateTime picks it
+    // up on round-trip (previously serialized as a numeric String that
+    // only parsed via the now-hardened asDateTime String→int fallback).
+    "delivery_date": deliveryDate?.millisecondsSinceEpoch,
     "d_rpt_cnt": deliveryReportCount,
     "device_name": deviceName,
     "error_code": errorCode,
