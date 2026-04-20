@@ -213,10 +213,11 @@ class AndroidSimpleConversation implements ModelInterface {
     // matched. The fallback to `_id` stays only for the degenerate
     // case where a provider row legitimately lacks `thread_id` (not
     // expected on real Android, but safer than a null).
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
     threadId: FieldHelper.asInt(raw['thread_id']) ??
         FieldHelper.asInt(raw['_id']) ??
-        FieldHelper.asInt(raw['id'])!,
+        FieldHelper.asInt(raw['id']) ??
+        0,
     alertExpired: raw["alert_expired"],
     archived: raw["archived"],
     binStatus: raw["bin_status"],

@@ -297,7 +297,9 @@ class AndroidFullConversation implements ModelInterface {
   factory AndroidFullConversation.fromRaw(Map<String, dynamic> raw) {
     return AndroidFullConversation(
       sourceMap: raw,
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+      // Last-resort default of 0 matches the "unparseable row" behaviour
+      // used by Sms/Mms/MmsPart rather than throwing at construction time.
+      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
       address: raw['address']?.toString() ?? '',
       body: raw['body']?.toString() ?? '',
       callbackNumber: raw['callback_number']?.toString() ?? '',

@@ -46,7 +46,7 @@ class AndroidContactName implements ModelInterface {
 
   factory AndroidContactName.fromJson(Map<String, dynamic> json) =>
       AndroidContactName(
-        id: FieldHelper.asInt(json['id'])!,
+        id: FieldHelper.asInt(json['id']) ?? 0,
         sourceMap: json,
         displayName: json['displayName'],
         givenName: json['givenName'],
@@ -75,7 +75,7 @@ class AndroidContactName implements ModelInterface {
   // == Android/DB-style (raw, snake_case) ==
   factory AndroidContactName.fromRaw(Map<String, dynamic> raw) =>
       AndroidContactName(
-        id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+        id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
         sourceMap: raw,
         displayName: raw['data1'],
         givenName: raw['data2'],

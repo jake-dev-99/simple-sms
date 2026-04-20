@@ -246,7 +246,10 @@ class Contactable implements ModelInterface {
 
   // ==== APP JSON ====
   factory Contactable.fromJson(Map<String, dynamic> json) => Contactable(
-    id: FieldHelper.asInt(json['id'])!,
+    // Default to 0 on missing/unparseable id, matching the other `fromJson`
+    // paths in this package — throwing at deserialization on a legacy cache
+    // row was the original bug this pattern replaces.
+    id: FieldHelper.asInt(json['id']) ?? 0,
     sourceMap: json,
     parentId: json['parentId'] ?? '',
     accountName: json['accountName'] ?? '',
@@ -452,7 +455,7 @@ class Contactable implements ModelInterface {
 
   // ==== ANDROID/DB RAW ====
   factory Contactable.fromRaw(Map<String, dynamic> raw) => Contactable(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
     sourceMap: raw,
     parentId: raw['parent_id'] ?? '',
     accountName: raw['account_name'] ?? '',
