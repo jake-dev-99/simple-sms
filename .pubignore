@@ -38,6 +38,14 @@ migrate_working_dir/
 **/bin/
 pubspec.lock
 
+# Local path-dep overrides used during plugin development
+# (simple_permissions_*, simple_query, etc.). Consumers of the published
+# package resolve against the pub.dev versions declared in `pubspec.yaml`;
+# shipping overrides in the tarball makes the solver pick local paths that
+# don't exist on their disk and triggers "Non-dev dependencies are
+# overridden" hints during `pub publish`.
+pubspec_overrides.yaml
+
 # Symbolication related
 app.*.symbols
 
