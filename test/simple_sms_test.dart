@@ -159,6 +159,51 @@ void main() {
       expect(mms.sender, isNull);
     });
 
+    test(
+      'deliveryReport / readReport / responseStatus round-trip through '
+      'toRaw + toJson as int values, not enum instances',
+      () async {
+        // Regression for Tier 0 #9: toRaw used to emit enum *instances*
+        // for d_rpt, rr, and resp_st — unencodable over the platform
+        // channel and unreadable back through fromRaw's int-coerced
+        // enumFromValue. The round-trip now survives a full toRaw →
+        // fromRaw cycle without losing the enum values.
+        final raw = <String, dynamic>{
+          '_id': 42,
+          'thread_id': 5,
+          'read': 1,
+          'sim_slot': 0,
+          'body': 'roundtrip',
+          'd_rpt': 0x81, // DeliveryReport.requested
+          'rr': 0x80, // DeliveryReport.notRequested
+          'resp_st': 0x81, // AndroidMessageStatus.retrieved
+          'recipients': <Map<String, dynamic>>[],
+          'parts': <Map<String, dynamic>>[],
+        };
+
+        final original = await Mms.fromRaw(raw);
+        expect(original.deliveryReport, DeliveryReport.requested);
+        expect(original.readReport, DeliveryReport.notRequested);
+        expect(original.responseStatus, AndroidMessageStatus.retrieved);
+
+        final rawOut = original.toRaw();
+        expect(rawOut['d_rpt'], 0x81);
+        expect(rawOut['rr'], 0x80);
+        expect(rawOut['resp_st'], 0x81);
+
+        final jsonOut = original.toJson();
+        expect(jsonOut['deliveryReport'], 0x81);
+        expect(jsonOut['readReport'], 0x80);
+
+        // Round-trip: parse the emitted raw back into an Mms and
+        // confirm the enums land on the same values.
+        final restored = await Mms.fromRaw(rawOut);
+        expect(restored.deliveryReport, DeliveryReport.requested);
+        expect(restored.readReport, DeliveryReport.notRequested);
+        expect(restored.responseStatus, AndroidMessageStatus.retrieved);
+      },
+    );
+
     test('toJson produces correct camelCase keys', () async {
       final raw = <String, dynamic>{
         '_id': 30,
