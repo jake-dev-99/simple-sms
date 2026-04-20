@@ -200,8 +200,23 @@ class AndroidSimpleConversation implements ModelInterface {
   factory AndroidSimpleConversation.fromRaw(
     Map<String, dynamic> raw,
   ) => AndroidSimpleConversation(
+    // `_id` on a `content://mms-sms/conversations?simple=true` row is
+    // the most-recent MESSAGE id for the thread the row represents —
+    // NOT the thread id. The actual thread primary key is the
+    // `thread_id` column. Earlier revisions of this parser mapped
+    // `threadId = raw['_id']`, which meant every downstream
+    // Conversation model's `threadId` was actually a message id.
+    // Consumers that join messages on `thread_id` (simple-messages
+    // does this to attach SMS/MMS to conversations) had their joins
+    // silently fail — the conversation's stored id was a message id,
+    // the messages' stored parent id was a thread id, and they never
+    // matched. The fallback to `_id` stays only for the degenerate
+    // case where a provider row legitimately lacks `thread_id` (not
+    // expected on real Android, but safer than a null).
     id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
-    threadId: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    threadId: FieldHelper.asInt(raw['thread_id']) ??
+        FieldHelper.asInt(raw['_id']) ??
+        FieldHelper.asInt(raw['id'])!,
     alertExpired: raw["alert_expired"],
     archived: raw["archived"],
     binStatus: raw["bin_status"],
