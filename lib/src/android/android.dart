@@ -3,8 +3,6 @@ import 'dart:io' show Platform;
 import 'package:simple_sms_native/src/android/models/messages/mms.dart';
 import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 
-import './messaging/action.dart';
-import './messaging/destructive_action.dart';
 import './messaging/android_messaging.dart';
 
 /// Main entry point for the simple_sms plugin.
@@ -90,18 +88,10 @@ class Android {
   static Android get instance => _instance!;
   static Android? _instance;
 
-  /// Delete messages and conversations.
-  late AndroidDestructiveAction destructiveAction;
-
-  /// Mark messages as read, send notifications, launch contacts.
-  late AndroidAction action;
-
   /// Send and receive SMS/MMS messages.
   late AndroidMessaging messaging;
 
   Android._internal() {
-    destructiveAction = AndroidDestructiveAction();
-    action = AndroidAction();
     messaging = AndroidMessaging.instance;
   }
 
