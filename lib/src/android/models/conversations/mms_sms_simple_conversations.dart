@@ -42,13 +42,19 @@ class AndroidSimpleConversation {
   final String? snippet;
   final List<String>? displayRecipientIds;
   final String? translateMode;
-  final dynamic snippetType;
+  /// Samsung `snippet_type` column — int classifier for the snippet's
+  /// content (0 = plain text; Samsung reserves higher values for its
+  /// rich-messaging variants). Nothing in the monorepo reads this; kept
+  /// as pass-through for round-trip fidelity.
+  final int? snippetType;
   final int? binStatus;
   final int? hasAttachment;
   final int? paThread;
   final int? error;
   final int? alertExpired;
-  final dynamic snippetCs;
+  /// Samsung `snippet_cs` column — charset id (CharSet table) for the
+  /// snippet's text encoding. Nullable int pass-through.
+  final int? snippetCs;
   final int? archived;
   final int? unreadCount;
   final int? isMute;
