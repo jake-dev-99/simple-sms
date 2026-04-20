@@ -21,7 +21,6 @@ export 'src/android/models/people/contactables.dart';
 export 'src/android/models/people/mms_participant.dart';
 
 // Models - Conversations
-export 'src/android/models/conversations/mms_sms_conversations.dart';
 export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 
 // Models - Device
