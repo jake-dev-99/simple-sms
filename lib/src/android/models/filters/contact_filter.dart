@@ -12,6 +12,7 @@ class ContactFilter {
     this.hasPhoneNumber,
     this.hasEmail,
     this.inVisibleGroup,
+    this.idAfter,
   });
 
   /// Match any of these database ids (`_id IN (...)`).
@@ -29,18 +30,25 @@ class ContactFilter {
   /// Match only contacts in the visible-contacts group (`in_visible_group = 1`).
   final bool? inVisibleGroup;
 
+  /// Match only rows where `_id > idAfter` — cursor-based pagination
+  /// anchor. See [SmsFilter.idAfter] for rationale. Pair with
+  /// [ContactSortField.id] so "after this id" is well-defined.
+  final int? idAfter;
+
   ContactFilter copyWith({
     List<int>? ids,
     String? displayNameContains,
     bool? hasPhoneNumber,
     bool? hasEmail,
     bool? inVisibleGroup,
+    int? idAfter,
   }) => ContactFilter(
     ids: ids ?? this.ids,
     displayNameContains: displayNameContains ?? this.displayNameContains,
     hasPhoneNumber: hasPhoneNumber ?? this.hasPhoneNumber,
     hasEmail: hasEmail ?? this.hasEmail,
     inVisibleGroup: inVisibleGroup ?? this.inVisibleGroup,
+    idAfter: idAfter ?? this.idAfter,
   );
 
   @override
@@ -48,7 +56,7 @@ class ContactFilter {
       'ContactFilter('
       'ids: $ids, displayNameContains: $displayNameContains, '
       'hasPhoneNumber: $hasPhoneNumber, hasEmail: $hasEmail, '
-      'inVisibleGroup: $inVisibleGroup)';
+      'inVisibleGroup: $inVisibleGroup, idAfter: $idAfter)';
 }
 
 /// Sort column for contact listings.

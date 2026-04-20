@@ -15,6 +15,7 @@ import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
+import '../models/people/mms_participant.dart';
 
 /// Centralized service for resolving contacts, messages, and addresses
 /// from the Android ContentProvider database.
@@ -123,6 +124,95 @@ class LookupService {
       );
     } catch (e, s) {
       debugPrint('simple_sms: Failed to lookup MMS $messageId: $e');
+      debugPrint(s.toString());
+      return null;
+    }
+  }
+
+  /// Lists every address row (sender + recipients) for a single MMS message.
+  ///
+  /// Queries `content://mms/{mmsId}/addr` — the per-message addresses table,
+  /// which is keyed on `msg_id`. Each row maps to an [MmsParticipant] and
+  /// carries a `type` column (`0x89` = sender, `0x97` = to-recipient,
+  /// `0x82` = cc-recipient, `0x81` = bcc-recipient per the WAP-MMS spec).
+  ///
+  /// Use this for per-message attribution in group MMS. `listMms` returns
+  /// MMS rows with empty `recipients` lists by design (they're not in the
+  /// `mms` table); enrich with this call when the caller needs to know
+  /// which participant in a multi-party thread sent an individual message.
+  ///
+  /// Returns an empty list on any query failure — errors are logged but
+  /// not thrown so a single bad lookup doesn't abort a page sync.
+  Future<List<MmsParticipant>> listMmsAddressesByMessage(int mmsId) async {
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': 'content://mms/$mmsId/addr'},
+        ),
+      );
+      return response.records
+          .map(
+            (row) => MmsParticipant.fromRaw(Map<String, dynamic>.from(row)),
+          )
+          .toList(growable: false);
+    } catch (e, s) {
+      debugPrint(
+        'simple_sms: Failed to list MMS addresses for $mmsId: $e',
+      );
+      debugPrint(s.toString());
+      return const [];
+    }
+  }
+
+  /// Resolves (or lazily creates) the thread id for a given recipient set.
+  ///
+  /// Queries `content://mms-sms/threadID` with one `recipient=<addr>` query
+  /// parameter per address. Android's Telephony provider will return the
+  /// existing thread id that matches the recipient set, or allocate a new
+  /// thread id and return it — the same contract
+  /// `Telephony.Threads.getOrCreateThreadId(Context, Set<String>)` gives on
+  /// the Java side.
+  ///
+  /// Needed when composing a brand-new conversation from the app side:
+  /// before inserting into `content://sms` you must know the thread id so
+  /// the Messages app + provider UI group the new message correctly.
+  /// Without this, first-message-to-new-recipient flows break thread
+  /// grouping.
+  ///
+  /// Returns null on any query failure or empty addresses input.
+  Future<int?> resolveThreadIdByAddresses(Iterable<String> addresses) async {
+    final cleaned =
+        addresses
+            .map((a) => a.trim())
+            .where((a) => a.isNotEmpty)
+            .toList(growable: false);
+    if (cleaned.isEmpty) return null;
+    try {
+      // Android's Telephony.Threads builds this URI by appending one
+      // `recipient` query param per address. The provider joins them
+      // internally to look up or create a single thread. We URL-encode
+      // each address (phone numbers with `+` need it) so pluses don't
+      // become spaces on the native side.
+      final params = cleaned
+          .map((a) => 'recipient=${Uri.encodeQueryComponent(a)}')
+          .join('&');
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          platformData: {'contentUri': 'content://mms-sms/threadID?$params'},
+        ),
+      );
+      if (response.records.isEmpty) return null;
+      final row = response.records.first;
+      final rawId = row['_id'] ?? row['id'];
+      if (rawId is int) return rawId;
+      if (rawId is String) return int.tryParse(rawId.trim());
+      return null;
+    } catch (e, s) {
+      debugPrint(
+        'simple_sms: Failed to resolve threadId for $cleaned: $e',
+      );
       debugPrint(s.toString());
       return null;
     }
@@ -251,8 +341,16 @@ class LookupService {
   /// by [limit] / [offset].
   ///
   /// Returned [Mms] instances have empty `recipients` and `parts` — fetch them
-  /// separately with [listMmsParts] or by re-materializing via [lookupMmsById]
-  /// when nested data is required.
+  /// separately with:
+  ///   - [listMmsParts] for body + attachment parts,
+  ///   - [listMmsAddressesByMessage] for the per-message sender/recipient set
+  ///     (the right call for group-MMS attribution; don't conflate with the
+  ///     thread-level [resolveCanonicalAddress]),
+  ///   - or re-materialize everything in one shot via [lookupMmsById].
+  ///
+  /// Splitting the enrichment keeps a bulk `listMms` call cheap on large
+  /// histories; per-row attachment + address fetches are O(N) queries
+  /// otherwise.
   Future<List<Mms>> listMms({
     MmsFilter? filter,
     MmsSort? sort,
@@ -688,6 +786,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -773,6 +880,15 @@ class LookupService {
         ),
       );
     }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -839,6 +955,15 @@ class LookupService {
           field: 'in_visible_group',
           operator: QueryFilterOperator.equals,
           value: filter.inVisibleGroup! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }
@@ -909,6 +1034,15 @@ class LookupService {
           field: 'has_attachment',
           operator: QueryFilterOperator.equals,
           value: filter.hasAttachment! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.idAfter != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.greaterThan,
+          value: filter.idAfter!.toString(),
         ),
       );
     }

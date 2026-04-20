@@ -15,6 +15,7 @@ class ConversationFilter {
     this.dateFrom,
     this.dateTo,
     this.hasAttachment,
+    this.idAfter,
   });
 
   /// Match any of these thread ids (`_id IN (...)`).
@@ -35,6 +36,11 @@ class ConversationFilter {
   /// Match only threads whose most recent message has an attachment.
   final bool? hasAttachment;
 
+  /// Match only rows where `_id > idAfter` — cursor-based pagination
+  /// anchor. See [SmsFilter.idAfter] for rationale. Pair with
+  /// [ConversationSortField.id] so "after this id" is well-defined.
+  final int? idAfter;
+
   ConversationFilter copyWith({
     List<int>? ids,
     bool? isArchived,
@@ -42,6 +48,7 @@ class ConversationFilter {
     DateTime? dateFrom,
     DateTime? dateTo,
     bool? hasAttachment,
+    int? idAfter,
   }) => ConversationFilter(
     ids: ids ?? this.ids,
     isArchived: isArchived ?? this.isArchived,
@@ -49,13 +56,15 @@ class ConversationFilter {
     dateFrom: dateFrom ?? this.dateFrom,
     dateTo: dateTo ?? this.dateTo,
     hasAttachment: hasAttachment ?? this.hasAttachment,
+    idAfter: idAfter ?? this.idAfter,
   );
 
   @override
   String toString() =>
       'ConversationFilter('
       'ids: $ids, isArchived: $isArchived, hasUnread: $hasUnread, '
-      'dateFrom: $dateFrom, dateTo: $dateTo, hasAttachment: $hasAttachment)';
+      'dateFrom: $dateFrom, dateTo: $dateTo, hasAttachment: $hasAttachment, '
+      'idAfter: $idAfter)';
 }
 
 /// Sort column for conversation listings.

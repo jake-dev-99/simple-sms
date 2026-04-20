@@ -44,6 +44,26 @@ class MmsPart implements ModelInterface {
   final int? sefType;
   final int? sequence;
 
+  // --- Samsung OEM extensions (present on Samsung Android 16; absent on
+  //     stock AOSP). Pass-through fields preserved for round-trip fidelity.
+
+  /// Samsung column `sub_id` — subscription / SIM slot id. `-1` = unknown.
+  final int? subId;
+
+  /// Samsung column `coupon_data` — JSON blob of Samsung-Messages coupon
+  /// metadata; empty on messages without a coupon.
+  final String? couponData;
+
+  /// Samsung column `coupon_status` — int flag for coupon state.
+  final int? couponStatus;
+
+  /// Samsung column `decorate_bubble_value` — chat-bubble styling payload.
+  final String? decorateBubbleValue;
+
+  /// Samsung column `smart_suggestion_classification` — ML classification
+  /// flag used by Samsung's suggested-reply feature.
+  final int? smartSuggestionClassification;
+
   bool get isText => contentType.value.contains("text");
   bool get isSmil => contentType.value.contains("smil");
 
@@ -66,6 +86,12 @@ class MmsPart implements ModelInterface {
     this.sequence,
     this.sourceLabel,
     this.text,
+    // Samsung extensions.
+    this.subId,
+    this.couponData,
+    this.couponStatus,
+    this.decorateBubbleValue,
+    this.smartSuggestionClassification,
   });
 
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
@@ -78,14 +104,24 @@ class MmsPart implements ModelInterface {
     contentType: json["contentType"],
     contentTypeSub: json["contentTypeSub"],
     contentTypeTransferEncoding: json["contentTypeTransferEncoding"],
-    dataLocation: Uri.tryParse(json["dataLocation"]),
+    // `Uri.tryParse` used to throw here when the key was absent (its first
+    // parameter is non-nullable String); route through `_parseUri` so
+    // `null` / empty round-trips cleanly.
+    dataLocation: _parseUri(json["dataLocation"]),
     fileName: json["fileName"],
-    messageId: json["messageId"],
+    messageId: FieldHelper.asInt(json["messageId"]),
     name: json["name"],
-    sefType: json["sefType"],
-    sequence: json["sequence"],
+    sefType: FieldHelper.asInt(json["sefType"]),
+    sequence: FieldHelper.asInt(json["sequence"]),
     sourceLabel: json["sourceLabel"],
     text: json["text"],
+    // Samsung extensions.
+    subId: FieldHelper.asInt(json["subId"]),
+    couponData: json["couponData"],
+    couponStatus: FieldHelper.asInt(json["couponStatus"]),
+    decorateBubbleValue: json["decorateBubbleValue"]?.toString(),
+    smartSuggestionClassification:
+        FieldHelper.asInt(json["smartSuggestionClassification"]),
   );
 
   Map<String, dynamic> toJson() => {
@@ -96,7 +132,7 @@ class MmsPart implements ModelInterface {
     "contentType": contentType,
     "contentTypeSub": contentTypeSub,
     "contentTypeTransferEncoding": contentTypeTransferEncoding,
-    "dataLocation": dataLocation,
+    "dataLocation": dataLocation?.toString(),
     "fileName": fileName,
     "id": id,
     "messageId": messageId,
@@ -105,13 +141,26 @@ class MmsPart implements ModelInterface {
     "sequence": sequence,
     "sourceLabel": sourceLabel,
     "text": text,
+    // Samsung extensions.
+    "subId": subId,
+    "couponData": couponData,
+    "couponStatus": couponStatus,
+    "decorateBubbleValue": decorateBubbleValue,
+    "smartSuggestionClassification": smartSuggestionClassification,
   };
 
   factory MmsPart.fromRaw(Map<String, dynamic> raw) {
+    // `Telephony.Mms.Part` primary key is `_id` (BaseColumns). There is no
+    // `id` column; the old fallback `?? raw['id']!` was dead code that would
+    // throw on any row where the `_id` coercion returned null. A 0 default
+    // matches the other "unparseable row" behaviours elsewhere in the parser.
     MmsPart part = MmsPart(
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+      id: FieldHelper.asInt(raw['_id']) ?? 0,
       sourceMap: raw,
-      charset: FieldHelper.enumFromValue(CharSet.values, raw["chset"]),
+      charset: FieldHelper.enumFromValue(
+        CharSet.values,
+        FieldHelper.asInt(raw["chset"]),
+      ),
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',
@@ -120,21 +169,33 @@ class MmsPart implements ModelInterface {
           ContentType.textPlain,
       contentTypeSub: raw["ctt_s"],
       contentTypeTransferEncoding: raw["ctt_t"],
-      dataLocation: _parseUri(raw["dataLocation"]),
+      // Real column on `content://mms/part` is `_data` (the file path to the
+      // part blob). The previous `raw["dataLocation"]` key never matches any
+      // provider row, so the URI was silently null and attachment extraction
+      // fell through to the `partId`-based plugin fallback. Prospector dump
+      // confirms `_data` is the authoritative column.
+      dataLocation: _parseUri(raw["_data"]),
       fileName: raw["fn"],
-      messageId: raw["mid"],
+      messageId: FieldHelper.asInt(raw["mid"]),
       name: raw["name"],
-      sefType: raw["sef_type"],
-      sequence: raw["seq"],
+      sefType: FieldHelper.asInt(raw["sef_type"]),
+      sequence: FieldHelper.asInt(raw["seq"]),
       sourceLabel: raw["sourceLabel"],
       text: raw["text"],
+      // Samsung extensions, pass-through for round-trip fidelity.
+      subId: FieldHelper.asInt(raw["sub_id"]),
+      couponData: raw["coupon_data"],
+      couponStatus: FieldHelper.asInt(raw["coupon_status"]),
+      decorateBubbleValue: raw["decorate_bubble_value"]?.toString(),
+      smartSuggestionClassification:
+          FieldHelper.asInt(raw["smart_suggestion_classification"]),
     );
 
     return part;
   }
 
   Map<String, dynamic> toRaw() => {
-    "dataLocation": dataLocation?.toString(),
+    "_data": dataLocation?.toString(),
     "_id": id,
     "cd": contentDisposition,
     "chset": charset?.value,
@@ -150,6 +211,12 @@ class MmsPart implements ModelInterface {
     "seq": sequence,
     "sourceLabel": sourceLabel,
     "text": text,
+    // Samsung extensions.
+    "sub_id": subId,
+    "coupon_data": couponData,
+    "coupon_status": couponStatus,
+    "decorate_bubble_value": decorateBubbleValue,
+    "smart_suggestion_classification": smartSuggestionClassification,
   };
 
   /// Parse a Uri from various input types (Uri, String, or null)
