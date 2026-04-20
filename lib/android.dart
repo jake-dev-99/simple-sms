@@ -31,9 +31,7 @@ export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 // models). Consumers should import from that plugin instead.
 
 // Models - Enums
-export 'src/android/models/enums/attachment_enums.dart';
 export 'src/android/models/enums/contact_enums.dart';
-export 'src/android/models/enums/device_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
 
 // Models - Filters (typed list-API inputs)
