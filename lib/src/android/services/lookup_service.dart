@@ -391,9 +391,9 @@ class LookupService {
   /// Lists the parts (text body + attachments) that belong to an MMS message.
   ///
   /// Queries `content://mms/part` filtered by `mid = mmsId`. If
-  /// [MmsPartFilter.contentTypePrefix] is set, only parts whose `ct` column
-  /// starts with that prefix are returned (e.g. `image/` for all image
-  /// attachments).
+  /// [MmsPartFilter.contentTypeContains] is set, only parts whose `ct`
+  /// column contains that substring are returned (e.g. `image/` for all
+  /// image attachments).
   Future<List<MmsPart>> listMmsParts({
     required int mmsId,
     MmsPartFilter? filter,
@@ -406,13 +406,13 @@ class LookupService {
           value: mmsId.toString(),
         ),
       ];
-      final prefix = filter?.contentTypePrefix;
-      if (prefix != null && prefix.isNotEmpty) {
+      final contentType = filter?.contentTypeContains;
+      if (contentType != null && contentType.isNotEmpty) {
         conditions.add(
           QueryFilterCondition(
             field: 'ct',
             operator: QueryFilterOperator.contains,
-            value: prefix,
+            value: contentType,
           ),
         );
       }
