@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
 /// A lightweight contact record from the Android contacts database.
@@ -15,10 +14,8 @@ import '../enums/contact_enums.dart';
 /// final service = LookupService();
 /// final contact = await service.lookupContactById(contactable.contactId);
 /// ```
-class Contactable implements ModelInterface {
-  @override
+class Contactable {
   final int id;
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String parentId;

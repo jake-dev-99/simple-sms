@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
 import '../messages/sms.dart';
@@ -15,10 +14,8 @@ import '../people/contactables.dart';
 /// final smsList = await service.getSmsByThread(conversation.id);
 /// final mmsList = await service.getMmsByThread(conversation.id);
 /// ```
-class AndroidSimpleConversation implements ModelInterface {
-  @override
+class AndroidSimpleConversation {
   final Map<String, dynamic>? sourceMap;
-  @override
   final int id;
   final int threadId;
   final String parentId;

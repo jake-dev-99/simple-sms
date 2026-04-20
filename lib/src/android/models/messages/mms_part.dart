@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
 /// A single part of a multipart MMS message — text body, image, video,
@@ -19,11 +18,9 @@ import '../enums/sms_mms_enums.dart';
 /// shortcuts when present. Raw provider metadata (transfer-encoding,
 /// carrier reserved flags, etc.) flows through unchanged for round-trip
 /// fidelity.
-class MmsPart implements ModelInterface {
-  @override
+class MmsPart {
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String parentId;

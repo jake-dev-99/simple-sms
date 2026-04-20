@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
 /// A contact row read from Android's Contacts content provider
@@ -18,10 +17,8 @@ import '../enums/contact_enums.dart';
 /// remaining fields (presence, chat capability, custom-ringtone URI,
 /// carrier status metadata, etc.) flow through for round-trip fidelity
 /// with the provider.
-class AndroidContact implements ModelInterface {
-  @override
+class AndroidContact {
   final int id;
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final DisplayNameSource? displayNameSource;

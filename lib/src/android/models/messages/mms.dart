@@ -1,4 +1,3 @@
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
 import '../model_helpers.dart';
@@ -9,17 +8,15 @@ import '../people/mms_participant.dart';
 ///
 /// This class maps to MMS messages in Android's messaging database
 /// and provides methods to convert between different data formats.
-class Mms implements ModelInterface {
+class Mms {
   /// Returns the body text of the MMS by combining all text parts
   ///
   /// Extracts text content from MMS parts, joining them with newlines
   /// and cleaning up whitespace.
 
   // Core fields (naming unified where overlap exists with Sms)
-  @override
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String parentId;

@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 
 /// Android contact name model (StructuredName)
 ///
@@ -12,11 +11,9 @@ import '../../../interfaces/models_interface.dart';
 /// - PHONETIC_GIVEN_NAME (data7)
 /// - PHONETIC_MIDDLE_NAME (data8)
 /// - PHONETIC_FAMILY_NAME (data9)
-class AndroidContactName implements ModelInterface {
-  @override
+class AndroidContactName {
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   // App-style (camelCase)
