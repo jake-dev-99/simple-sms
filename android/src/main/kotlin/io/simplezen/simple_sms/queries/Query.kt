@@ -1,253 +1,38 @@
 package io.simplezen.simple_sms.queries
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.provider.ContactsContract
-import android.provider.MediaStore
-import android.telephony.SubscriptionManager
-import android.telephony.SubscriptionManager.DEFAULT_SUBSCRIPTION_ID
-import android.telephony.TelephonyManager
-import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.annotation.RequiresPermission
-import androidx.core.net.toUri
-import io.simplezen.simple_permissions_android.PermissionGuards
 import io.simplezen.simple_query.ContentQuery
-import androidx.core.telephony.TelephonyManagerCompat
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import io.simplezen.simple_sms.SimpleSmsPlugin
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStream
-import kotlin.math.absoluteValue
 
-data class QueryObj (
+/**
+ * Thin Kotlin-side wrapper around `simple_query`'s [ContentQuery] helper.
+ *
+ * Exists only so the four internal callers (MmsDatabaseWriter, InboundSmsHandler,
+ * OutboundMessagingHandler, and this file's legacy wrappers) can share a single
+ * `QueryObj`-to-cursor coercion. Delegates all actual provider reads to
+ * [ContentQuery] so Rule 1 ("content-provider queries route through
+ * simple-query") holds at the Kotlin layer just as it does on the Dart side.
+ *
+ * No MethodChannel handler is attached here — Dart never invokes this class
+ * directly; everything on the Dart side goes through the `simple_query`
+ * plugin's own channels. The previous `MethodCallHandler` implementation
+ * exposed `query` / `getDeviceInfo` / `getSimInfo` / `getFile` cases that
+ * were dead from Dart's perspective (device/SIM info moved to
+ * `simple_telephony_native`).
+ */
+data class QueryObj(
     val contentUri: String,
     val projection: List<String>? = null,
     val selection: String? = null,
     val selectionArgs: List<String>? = null,
-    val sortOrder: String? = null
+    val sortOrder: String? = null,
 )
 
-class Query(val context: Context ) : MethodChannel.MethodCallHandler {
+class Query(val context: Context) {
 
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        when (call.method) {
-            "query" -> {
-                val queryObj = QueryObj(
-                    call.argument<String>("contentUri") ?: "",
-                    call.argument<List<String>>("projection"),
-                    call.argument<String>("selection"),
-                    call.argument<List<String>>("selectionArgs"),
-                    call.argument<String>("sortOrder")
-                )
-                val data = query(queryObj)
-                result.success(data)
-            }
+    fun query(query: QueryObj): List<Map<String, Any?>> =
+        getCursorData(context, query).map { it.toSortedMap() }
 
-            "getDeviceInfo" -> {
-                // Delegate the check to simple_permissions_native so all
-                // access-state reads go through one plugin. Request flow
-                // still lives in Dart via SimplePermissionsNative.request(...).
-                if (!PermissionGuards.areAllPermissionsGranted(
-                        context,
-                        listOf(
-                            Manifest.permission.READ_PHONE_NUMBERS,
-                            Manifest.permission.READ_PHONE_STATE,
-                        )
-                    )
-                ) {
-                    result.error("PERMISSION_DENIED", "Permission denied", null)
-                    return
-                }
-
-                result.success(getDeviceInfo())
-            }
-
-            "getSimInfo" -> {
-                val simInfo = getSimInfo()
-                result.success(simInfo)
-            }
-
-            "getFile" -> {
-                val uri = call.argument<String>("uri")
-                if (uri.isNullOrBlank()) {
-                    result.error("INVALID_URI", "URI is required", null)
-                    return
-                }
-
-                try {
-                    val filePath = queryToFile(QueryObj(contentUri = uri))
-                    result.success(filePath)
-                } catch (e: Exception) {
-                    Log.e("Query", "Error creating MMS part temp file", e)
-                    result.error("FILE_READ_ERROR", e.message, null)
-                }
-            }
-            else ->  result.notImplemented()
-        }
-    }
-
-    private fun queryToFile(query: QueryObj): String? {
-        val resolver = context.contentResolver
-        val contentUri = query.contentUri.toUri()
-        var inputStream: InputStream? = null
-        var fos: FileOutputStream? = null
-        var tempFile: File? = null
-
-        // Content-type probe goes through simple_query so Rule 1
-        // ("content-provider queries route through simple-query")
-        // holds. The stream open below (openInputStream) isn't a
-        // query — it's a bytes-read — and stays on the primitive.
-        try {
-            val rows = ContentQuery.query(context, query.contentUri)
-            if (rows.isEmpty()) return null
-            val ct = rows.first()["ct"] as? String ?: ""
-            if (ct.isNotEmpty() && (ct.contains("smil") || ct.contains("text"))) {
-                return null
-            }
-        } catch (e: Exception) {
-            Log.e("Query", "Error checking content type for $contentUri", e)
-            return null
-        }
-
-        try {
-            // Create a unique temporary file in the cache directory
-            // Consider adding an extension based on mime type if available
-            tempFile = File.createTempFile("mms_part_", null, context.cacheDir)
-
-            inputStream = resolver.openInputStream(contentUri)
-            if (inputStream == null) {
-                Log.w("saveMmsPartToFile", "Could not open input stream for URI: $contentUri")
-                tempFile.delete() // Clean up empty file
-                return null
-            }
-
-            fos = FileOutputStream(tempFile)
-            inputStream.copyTo(fos) // Efficiently copy stream to file
-
-            return tempFile.absolutePath
-
-        } catch (e: Exception) {
-            Log.e("saveMmsPartToFile", "Error saving MMS part to file", e)
-            tempFile?.delete() // Attempt to clean up failed file
-            return null
-        } finally {
-            try {
-                inputStream?.close()
-                fos?.close()
-            } catch (ioe: Exception) {
-                Log.e("saveMmsPartToFile", "Error closing streams", ioe)
-            }
-        }
-    }
-
-
-    fun query(query : QueryObj): List<Map<String, Any?>> {
-        return getCursorData(context, query).map { it.toSortedMap() }
-    }
-
-    @RequiresPermission(allOf = [Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.READ_PHONE_STATE])
-    fun getDeviceInfo(): MutableMap<String, Any?> {
-        val results : MutableMap<String, Any?> = mutableMapOf()
-
-        try {
-            var brand: String = Build.MANUFACTURER
-            var model: String = Build.MODEL
-            val os: String = Build.VERSION.SDK_INT.toString()
-            val sims : List<Map<String, Any?>> = getSimInfo()
-
-            if (model.lowercase().startsWith(brand.lowercase())) {
-                model = model.replace(brand, "").trim()
-            }
-            results["brand"] = brand
-            results["model"] = model
-            results["os"] = os
-            results["sims"] = sims
-        } catch (e: Exception) {
-            Log.e("getAllProviders", " <<< Error: ${e.message}")
-            Log.e("Query", "Stack trace:", e)
-        }
-
-        return results.toSortedMap()
-    }
-
-    @RequiresPermission(allOf = [Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS])
-    fun getSimInfo(): List<Map<String, Any?>> {
-        val simCards = mutableListOf<Map<String, Any?>>()
-
-        try {
-            val telephonyManager : TelephonyManager =
-                context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-
-            val subscriptionManager : SubscriptionManager =
-                context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-
-            val subscriptions = subscriptionManager.activeSubscriptionInfoList ?:  emptyList()
-            for (subscription in subscriptions) {
-                Log.d("Query", "number " + subscription.number)
-                Log.d("Query", "network name : " + subscription.carrierName)
-                Log.d("Query", "country iso " + subscription.countryIso)
-
-                val phoneNumber =
-                    if(Build.VERSION .SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (!PermissionGuards.isPermissionGranted(
-                                context,
-                                Manifest.permission.READ_PHONE_NUMBERS,
-                            )
-                        ) {
-                            null
-                        } else {
-                            subscriptionManager.getPhoneNumber(DEFAULT_SUBSCRIPTION_ID)
-                        }
-                    } else {
-                        subscription.number
-                    }
-
-                val simCard =
-                    mapOf<String, Any?>(
-                        "slot" to subscription.simSlotIndex,
-                        "phoneNumber" to phoneNumber,
-                        "externalId" to -1,
-                        "state" to QueryHelper.simStateMap[telephonyManager.getSimState(subscription.simSlotIndex)]?.lowercase() ,
-                        "operatorName" to telephonyManager.simOperatorName,
-                        "countryIso" to telephonyManager.simCountryIso,
-                        "imei" to TelephonyManagerCompat.getImei(telephonyManager),
-                        "carrierName" to telephonyManager.simOperatorName,
-                        "isNetworkRoaming" to telephonyManager.isNetworkRoaming
-                    )
-                simCards.add(simCard)
-            }
-            Log.d("Query", "SIM cards: ${simCards.size}")
-            return simCards.map { it.toSortedMap() }
-
-        } catch (e: Exception) {
-            Log.e("Query", "Stack trace:", e)
-            val response =
-                mapOf<String, Any?>(
-                    "slot" to -1,
-                    "externalId" to "-1",
-                    "state" to "UNKNOWN",
-                    "operatorName" to "UNKNOWN",
-                    "countryIso" to "UNKNOWN",
-                    "serialNumber" to "UNKNOWN",
-                    "carrierName" to "UNKNOWN",
-                    "displayName" to "UNKNOWN",
-                    "error" to e.message.toString(),
-                    "isNetworkRoaming" to false
-                )
-            return listOf(response.toSortedMap())
-        }
-    }
-
-
-    fun getCursorData(context : Context, query : QueryObj): List<Map<String, Any?>> {
+    fun getCursorData(context: Context, query: QueryObj): List<Map<String, Any?>> {
         // Delegate to simple_query's ContentQuery helper so Rule 1
         // ("content-provider queries route through simple-query")
         // holds at the Kotlin layer too, not just at the Dart API.
@@ -270,23 +55,5 @@ class Query(val context: Context ) : MethodChannel.MethodCallHandler {
             selectionArgs = query.selectionArgs?.toTypedArray(),
             sortOrder = query.sortOrder,
         )
-    }
-}
-
-private class QueryHelper() {
-    companion object {
-        val simStateMap: HashMap<Int, String> =
-            hashMapOf(
-                TelephonyManager.SIM_STATE_UNKNOWN to "UNKNOWN",
-                TelephonyManager.SIM_STATE_ABSENT to "ABSENT",
-                TelephonyManager.SIM_STATE_PIN_REQUIRED to "PIN_REQUIRED",
-                TelephonyManager.SIM_STATE_PUK_REQUIRED to "PUK_REQUIRED",
-                TelephonyManager.SIM_STATE_NETWORK_LOCKED to "NETWORK_LOCKED",
-                TelephonyManager.SIM_STATE_READY to "READY",
-                TelephonyManager.SIM_STATE_NOT_READY to "NOT_READY",
-                TelephonyManager.SIM_STATE_PERM_DISABLED to "PERM_DISABLED",
-                TelephonyManager.SIM_STATE_CARD_IO_ERROR to "CARD_IO_ERROR",
-                TelephonyManager.SIM_STATE_CARD_RESTRICTED to "CARD_RESTRICTED"
-            )
     }
 }
