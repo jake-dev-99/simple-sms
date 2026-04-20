@@ -12,9 +12,9 @@ plugins {
 
 android {
     namespace = group.toString()
-    compileSdk = 35
+    compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "30.0.14904198"
 
 //     Flutter's CI installs the NDK at a non-standard path.
 //     This non-standard structure is initially created by

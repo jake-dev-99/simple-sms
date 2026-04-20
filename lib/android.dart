@@ -36,9 +36,6 @@ export 'src/android/models/enums/contact_enums.dart';
 export 'src/android/models/enums/device_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
 
-// Models - Queries
-export 'src/android/models/queries/query_obj.dart';
-
 // Models - Filters (typed list-API inputs)
 export 'src/android/models/filters/sort_direction.dart';
 export 'src/android/models/filters/sms_filter.dart';

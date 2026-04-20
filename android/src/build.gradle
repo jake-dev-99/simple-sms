@@ -22,7 +22,7 @@ apply plugin: "dev.flutter.flutter-gradle-plugin"
 
 android {
     namespace = "com.simplezen.simple_sms"
-    compileSdk = 35
+    compileSdk = 36
 
 
     compileOptions {
@@ -67,6 +67,6 @@ android {
             }
         }
     }
-    ndkVersion = "28.0.13004108"
-    buildToolsVersion = "35.0.0"
+    ndkVersion = "30.0.14904198"
+    buildToolsVersion = "36.0.0"
 }
