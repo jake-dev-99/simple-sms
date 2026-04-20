@@ -38,6 +38,11 @@ import '../models/people/mms_participant.dart';
 // easy to audit and stay consistent with `Query.kt` / `ContentQuery`
 // on the Kotlin side.
 const String _contactsUri = 'content://com.android.contacts/contacts';
+const String _contactsDataUri = 'content://com.android.contacts/data';
+const String _contactsPhoneFilterUri =
+    'content://com.android.contacts/data/phones/filter';
+const String _contactsEmailFilterUri =
+    'content://com.android.contacts/data/emails/filter';
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
 const String _mmsPartUri = 'content://mms/part';
@@ -85,10 +90,9 @@ class LookupService {
   Future<Contactable?> lookupContactableByAddress(String address) async {
     try {
       final isEmail = address.contains('@');
-      final uri =
-          isEmail
-              ? 'content://com.android.contacts/data/emails/filter/$address'
-              : 'content://com.android.contacts/data/phones/filter/$address';
+      final uri = isEmail
+          ? '$_contactsEmailFilterUri/$address'
+          : '$_contactsPhoneFilterUri/$address';
       final response = await SimpleQuery.instance.query(
         QueryRequest(
           domain: QueryDomain.platformSpecific,
@@ -591,7 +595,7 @@ class LookupService {
             ),
           ],
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
@@ -641,7 +645,7 @@ class LookupService {
           domain: QueryDomain.platformSpecific,
           filters: filters,
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
