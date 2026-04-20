@@ -44,6 +44,26 @@ class MmsPart implements ModelInterface {
   final int? sefType;
   final int? sequence;
 
+  // --- Samsung OEM extensions (present on Samsung Android 16; absent on
+  //     stock AOSP). Pass-through fields preserved for round-trip fidelity.
+
+  /// Samsung column `sub_id` — subscription / SIM slot id. `-1` = unknown.
+  final int? subId;
+
+  /// Samsung column `coupon_data` — JSON blob of Samsung-Messages coupon
+  /// metadata; empty on messages without a coupon.
+  final String? couponData;
+
+  /// Samsung column `coupon_status` — int flag for coupon state.
+  final int? couponStatus;
+
+  /// Samsung column `decorate_bubble_value` — chat-bubble styling payload.
+  final String? decorateBubbleValue;
+
+  /// Samsung column `smart_suggestion_classification` — ML classification
+  /// flag used by Samsung's suggested-reply feature.
+  final int? smartSuggestionClassification;
+
   bool get isText => contentType.value.contains("text");
   bool get isSmil => contentType.value.contains("smil");
 
@@ -66,6 +86,12 @@ class MmsPart implements ModelInterface {
     this.sequence,
     this.sourceLabel,
     this.text,
+    // Samsung extensions.
+    this.subId,
+    this.couponData,
+    this.couponStatus,
+    this.decorateBubbleValue,
+    this.smartSuggestionClassification,
   });
 
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
@@ -78,14 +104,24 @@ class MmsPart implements ModelInterface {
     contentType: json["contentType"],
     contentTypeSub: json["contentTypeSub"],
     contentTypeTransferEncoding: json["contentTypeTransferEncoding"],
-    dataLocation: Uri.tryParse(json["dataLocation"]),
+    // `Uri.tryParse` used to throw here when the key was absent (its first
+    // parameter is non-nullable String); route through `_parseUri` so
+    // `null` / empty round-trips cleanly.
+    dataLocation: _parseUri(json["dataLocation"]),
     fileName: json["fileName"],
-    messageId: json["messageId"],
+    messageId: FieldHelper.asInt(json["messageId"]),
     name: json["name"],
-    sefType: json["sefType"],
-    sequence: json["sequence"],
+    sefType: FieldHelper.asInt(json["sefType"]),
+    sequence: FieldHelper.asInt(json["sequence"]),
     sourceLabel: json["sourceLabel"],
     text: json["text"],
+    // Samsung extensions.
+    subId: FieldHelper.asInt(json["subId"]),
+    couponData: json["couponData"],
+    couponStatus: FieldHelper.asInt(json["couponStatus"]),
+    decorateBubbleValue: json["decorateBubbleValue"]?.toString(),
+    smartSuggestionClassification:
+        FieldHelper.asInt(json["smartSuggestionClassification"]),
   );
 
   Map<String, dynamic> toJson() => {
@@ -96,7 +132,7 @@ class MmsPart implements ModelInterface {
     "contentType": contentType,
     "contentTypeSub": contentTypeSub,
     "contentTypeTransferEncoding": contentTypeTransferEncoding,
-    "dataLocation": dataLocation,
+    "dataLocation": dataLocation?.toString(),
     "fileName": fileName,
     "id": id,
     "messageId": messageId,
@@ -105,6 +141,12 @@ class MmsPart implements ModelInterface {
     "sequence": sequence,
     "sourceLabel": sourceLabel,
     "text": text,
+    // Samsung extensions.
+    "subId": subId,
+    "couponData": couponData,
+    "couponStatus": couponStatus,
+    "decorateBubbleValue": decorateBubbleValue,
+    "smartSuggestionClassification": smartSuggestionClassification,
   };
 
   factory MmsPart.fromRaw(Map<String, dynamic> raw) {
@@ -140,6 +182,13 @@ class MmsPart implements ModelInterface {
       sequence: FieldHelper.asInt(raw["seq"]),
       sourceLabel: raw["sourceLabel"],
       text: raw["text"],
+      // Samsung extensions, pass-through for round-trip fidelity.
+      subId: FieldHelper.asInt(raw["sub_id"]),
+      couponData: raw["coupon_data"],
+      couponStatus: FieldHelper.asInt(raw["coupon_status"]),
+      decorateBubbleValue: raw["decorate_bubble_value"]?.toString(),
+      smartSuggestionClassification:
+          FieldHelper.asInt(raw["smart_suggestion_classification"]),
     );
 
     return part;
@@ -162,6 +211,12 @@ class MmsPart implements ModelInterface {
     "seq": sequence,
     "sourceLabel": sourceLabel,
     "text": text,
+    // Samsung extensions.
+    "sub_id": subId,
+    "coupon_data": couponData,
+    "coupon_status": couponStatus,
+    "decorate_bubble_value": decorateBubbleValue,
+    "smart_suggestion_classification": smartSuggestionClassification,
   };
 
   /// Parse a Uri from various input types (Uri, String, or null)

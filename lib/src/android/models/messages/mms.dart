@@ -233,6 +233,31 @@ class Mms implements ModelInterface {
   /// Report allowed flag
   final bool? reportAllowed;
 
+  // --- Samsung OEM extensions (present on Samsung Android 16 devices;
+  //     absent on stock AOSP). Pass-through fields preserved via
+  //     sourceMap for future features.
+
+  /// Samsung column `block_filtered_status` — spam-filter classification flag.
+  final int? blockFilteredStatus;
+
+  /// Samsung column `predefined_id` — internal Samsung message-template id.
+  /// Typically `-1` when not a template message.
+  final int? predefinedId;
+
+  /// Samsung column `spam_type` — spam-category flag.
+  final int? spamType;
+
+  /// Samsung column `sub_cs` — subject content charset on some Samsung builds.
+  final int? subCs;
+
+  /// Samsung column `re_count_info_custom_reaction` — JSON blob of RCS-style
+  /// emoji-reaction metadata.
+  final String? reCountInfoCustomReaction;
+
+  /// Samsung column `device_name` — the device name carried on outbound MMS
+  /// for Samsung's device-to-device chat attribution.
+  final String? deviceName;
+
   /// Creates an MMS message instance
   ///
   /// Required fields include id, parts, recipients, threadId, read status, and simSlot
@@ -311,6 +336,13 @@ class Mms implements ModelInterface {
     this.type,
     this.usingMode,
     this.version,
+    // Samsung extensions.
+    this.blockFilteredStatus,
+    this.predefinedId,
+    this.spamType,
+    this.subCs,
+    this.reCountInfoCustomReaction,
+    this.deviceName,
   });
 
   /// Creates an Mms instance from a Dart/app-style JSON object
@@ -425,6 +457,14 @@ class Mms implements ModelInterface {
     secretMode: FieldHelper.asBool(json['secretMode']),
     textOnly: FieldHelper.asBool(json['textOnly']),
     reportAllowed: FieldHelper.asBool(json['reportAllowed']),
+    // Samsung OEM extensions.
+    blockFilteredStatus: FieldHelper.asInt(json['blockFilteredStatus']),
+    predefinedId: FieldHelper.asInt(json['predefinedId']),
+    spamType: FieldHelper.asInt(json['spamType']),
+    subCs: FieldHelper.asInt(json['subCs']),
+    reCountInfoCustomReaction:
+        json['reCountInfoCustomReaction']?.toString(),
+    deviceName: json['deviceName'],
   );
 
   /// Converts this MMS instance to app/Dart-style JSON
@@ -502,6 +542,13 @@ class Mms implements ModelInterface {
     'secretMode': secretMode,
     'textOnly': textOnly,
     'reportAllowed': reportAllowed,
+    // Samsung OEM extensions.
+    'blockFilteredStatus': blockFilteredStatus,
+    'predefinedId': predefinedId,
+    'spamType': spamType,
+    'subCs': subCs,
+    'reCountInfoCustomReaction': reCountInfoCustomReaction,
+    'deviceName': deviceName,
   };
 
   /// Creates an MMS instance from Android/DB raw data
@@ -528,7 +575,11 @@ class Mms implements ModelInterface {
             : [];
 
     return Mms(
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+      // Telephony.Mms PK per BaseColumns is `_id`. `raw['id']` is preserved
+      // only as a fallback for unit-test rows; real provider rows always
+      // have `_id`. 0 as last-resort default matches "unparseable row"
+      // behaviour elsewhere.
+      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
       parts: parts,
       body: raw['body'] ?? '',
       recipients:
@@ -541,11 +592,20 @@ class Mms implements ModelInterface {
               .firstOrNull,
       sourceMap: raw,
       address: raw['address'],
-      threadId: raw['thread_id'],
+      threadId: FieldHelper.asInt(raw['thread_id']) ?? 0,
 
-      type: FieldHelper.enumFromValue(MmsMessageType.values, raw['m_type']),
-      status: FieldHelper.enumFromValue(AndroidMessageStatus.values, raw['st']),
-      priority: FieldHelper.enumFromValue(MessagePriority.values, raw['pri']),
+      type: FieldHelper.enumFromValue(
+        MmsMessageType.values,
+        FieldHelper.asInt(raw['m_type']),
+      ),
+      status: FieldHelper.enumFromValue(
+        AndroidMessageStatus.values,
+        FieldHelper.asInt(raw['st']),
+      ),
+      priority: FieldHelper.enumFromValue(
+        MessagePriority.values,
+        FieldHelper.asInt(raw['pri']),
+      ),
       subscriptionId: FieldHelper.asInt(raw['sub_id']),
       subject: raw['sub'],
       read: FieldHelper.asBool(raw['read']) ?? false,
@@ -562,11 +622,18 @@ class Mms implements ModelInterface {
       fromAddress: raw['from_address'],
       creator: raw['creator'],
       serviceCenter: raw['service_center'],
-      simSlot: raw['sim_slot'],
+      // sim_slot can be "" on Samsung rows where a SIM isn't attributed;
+      // coerce to 0 so the non-nullable contract still holds.
+      simSlot: FieldHelper.asInt(raw['sim_slot']) ?? 0,
       simImsi: raw['sim_imsi'],
+      // `address_charset` does not appear in Samsung Android 16 MMS dumps;
+      // preserved for backwards compat with any caller that reads it.
       addressCharset: raw['address_charset'],
-      appId: raw['app_id'],
-      binaryInfo: FieldHelper.enumFromValue(BinaryInfo.values, raw['bin_info']),
+      appId: FieldHelper.asInt(raw['app_id']),
+      binaryInfo: FieldHelper.enumFromValue(
+        BinaryInfo.values,
+        FieldHelper.asInt(raw['bin_info']),
+      ),
       cmcProp: raw['cmc_prop'],
       contentClass: FieldHelper.asInt(raw['ct_cls']),
       contentLocation: raw['ct_l'],
@@ -575,31 +642,43 @@ class Mms implements ModelInterface {
       deliveryDate: FieldHelper.asDateTime(raw['d_tm']),
       deliveryReport: FieldHelper.enumFromValue(
         DeliveryReport.values,
-        raw['d_rpt'],
+        FieldHelper.asInt(raw['d_rpt']),
       ),
       deliveryReportStatus: FieldHelper.enumFromValue(
         DeliveryReportStatus.values,
-        raw['d_rpt_st'],
+        FieldHelper.asInt(raw['d_rpt_st']),
       ),
       expiryDate: FieldHelper.asDateTime(raw['exp']),
-      messageBox: FieldHelper.enumFromValue(MessageBox.values, raw['msg_box']),
+      messageBox: FieldHelper.enumFromValue(
+        MessageBox.values,
+        FieldHelper.asInt(raw['msg_box']),
+      ),
+      // `m_cls` arrives as a plain String on Samsung Android 16 (e.g.
+      // "personal") despite the WAP-MMS spec defining it as an int byte
+      // code. `enumFromValue` compares `value == raw`, so the historical
+      // int-coercion made the enum resolution miss on Samsung entirely.
+      // Pass raw through unchanged and let `enumFromValue` try both.
+      // Known gap: MessageClass enum values are currently ints (0x80
+      // etc.); the Samsung String form won't match today. Follow-up
+      // branch to widen MessageClass values to accept name-strings.
       messageClass: FieldHelper.enumFromValue(
         MessageClass.values,
-        raw['m_cls'] is int ? raw['m_cls'] : int.tryParse(raw['m_cls'] ?? ''),
+        raw['m_cls'],
       ),
-      messageSize: raw['m_size'],
+      messageSize: FieldHelper.asInt(raw['m_size']),
       messageIdentifier: raw['m_id'],
       objectId: raw['object_id'],
-      readReport: FieldHelper.enumFromValue(DeliveryReport.values, raw['rr']),
+      readReport: FieldHelper.enumFromValue(
+        DeliveryReport.values,
+        FieldHelper.asInt(raw['rr']),
+      ),
       readReportStatus: FieldHelper.enumFromValue(
         AndroidMessageStatus.values,
-        raw['rr_st'],
+        FieldHelper.asInt(raw['rr_st']),
       ),
       readStatus: FieldHelper.enumFromValue(
         ReadStatus.values,
-        raw['read_status'] is int
-            ? raw['read_status']
-            : int.tryParse(raw['read_status'] ?? ''),
+        FieldHelper.asInt(raw['read_status']),
       ),
       replyBody: raw['re_body'],
       replyContentType: raw['re_content_type'],
@@ -609,29 +688,44 @@ class Mms implements ModelInterface {
       replyOriginalBody: raw['re_original_body'],
       replyOriginalKey: raw['re_original_key'],
       replyRecipientAddress: raw['re_recipient_address'],
-      replyType: FieldHelper.enumFromValue(ReplyType.values, raw['re_type']),
+      replyType: FieldHelper.enumFromValue(
+        ReplyType.values,
+        FieldHelper.asInt(raw['re_type']),
+      ),
       reserved: FieldHelper.asBool(raw['reserved']),
       callbackSet: FieldHelper.asBool(raw['callback_set']),
       reportAddress: raw['rpt_a'],
       responseText: raw['resp_txt'],
       responseStatus: FieldHelper.enumFromValue(
         AndroidMessageStatus.values,
-        raw['resp_st'],
+        FieldHelper.asInt(raw['resp_st']),
       ),
       retrieveStatus: FieldHelper.enumFromValue(
         AndroidMessageStatus.values,
-        raw['retr_st'],
+        FieldHelper.asInt(raw['retr_st']),
       ),
       retrievedText: raw['retr_txt'],
       retrievedTextCharset: raw['retr_txt_cs'],
       sourceLabel: raw['sourceLabel'],
       transactionId: raw['tr_id'],
-      usingMode: FieldHelper.enumFromValue(UsingMode.values, raw['using_mode']),
+      usingMode: FieldHelper.enumFromValue(
+        UsingMode.values,
+        FieldHelper.asInt(raw['using_mode']),
+      ),
       version: FieldHelper.asInt(raw['v']),
       safeMessage: FieldHelper.asBool(raw['safe_message']),
       secretMode: FieldHelper.asBool(raw['secret_mode']),
       textOnly: FieldHelper.asBool(raw['text_only']),
       reportAllowed: raw['report_allowed'],
+
+      // Samsung OEM extensions, preserved as nullable pass-through.
+      blockFilteredStatus: FieldHelper.asInt(raw['block_filtered_status']),
+      predefinedId: FieldHelper.asInt(raw['predefined_id']),
+      spamType: FieldHelper.asInt(raw['spam_type']),
+      subCs: FieldHelper.asInt(raw['sub_cs']),
+      reCountInfoCustomReaction:
+          raw['re_count_info_custom_reaction']?.toString(),
+      deviceName: raw['device_name'],
     );
   }
 
@@ -713,5 +807,12 @@ class Mms implements ModelInterface {
     'secret_mode': secretMode == true ? "1" : "0",
     'text_only': textOnly == true ? "1" : "0",
     'report_allowed': reportAllowed,
+    // Samsung OEM extensions.
+    'block_filtered_status': blockFilteredStatus,
+    'predefined_id': predefinedId,
+    'spam_type': spamType,
+    'sub_cs': subCs,
+    're_count_info_custom_reaction': reCountInfoCustomReaction,
+    'device_name': deviceName,
   };
 }
