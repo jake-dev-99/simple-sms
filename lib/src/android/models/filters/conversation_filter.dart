@@ -9,17 +9,24 @@ import 'sort_direction.dart';
 /// `bool` for readability.
 class ConversationFilter {
   const ConversationFilter({
-    this.ids,
+    this.threadIds,
     this.isArchived,
     this.hasUnread,
     this.dateFrom,
     this.dateTo,
     this.hasAttachment,
-    this.idAfter,
+    this.threadIdAfter,
   });
 
-  /// Match any of these thread ids (`_id IN (...)`).
-  final List<int>? ids;
+  /// Match any of these thread ids (`thread_id IN (...)`).
+  ///
+  /// On Samsung's `content://mms-sms/conversations?simple=true` view the
+  /// row primary key `_id` is the **latest-message id** in the thread,
+  /// not the thread id — so filtering on `_id` matches message ids and
+  /// is almost always wrong. Filter on `thread_id` instead; that's the
+  /// stable join key used everywhere else ([SmsFilter.threadId],
+  /// [MmsFilter.threadId], `AndroidSimpleConversation.threadId`).
+  final List<int>? threadIds;
 
   /// Match only archived (`true`) or un-archived (`false`) threads.
   final bool? isArchived;
@@ -36,35 +43,36 @@ class ConversationFilter {
   /// Match only threads whose most recent message has an attachment.
   final bool? hasAttachment;
 
-  /// Match only rows where `_id > idAfter` — cursor-based pagination
-  /// anchor. See [SmsFilter.idAfter] for rationale. Pair with
-  /// [ConversationSortField.id] so "after this id" is well-defined.
-  final int? idAfter;
+  /// Match only rows where `thread_id > threadIdAfter` — cursor-based
+  /// pagination anchor. See [SmsFilter.idAfter] for rationale. Pair with
+  /// [ConversationSortField.id] so "after this thread id" is
+  /// well-defined.
+  final int? threadIdAfter;
 
   ConversationFilter copyWith({
-    List<int>? ids,
+    List<int>? threadIds,
     bool? isArchived,
     bool? hasUnread,
     DateTime? dateFrom,
     DateTime? dateTo,
     bool? hasAttachment,
-    int? idAfter,
+    int? threadIdAfter,
   }) => ConversationFilter(
-    ids: ids ?? this.ids,
+    threadIds: threadIds ?? this.threadIds,
     isArchived: isArchived ?? this.isArchived,
     hasUnread: hasUnread ?? this.hasUnread,
     dateFrom: dateFrom ?? this.dateFrom,
     dateTo: dateTo ?? this.dateTo,
     hasAttachment: hasAttachment ?? this.hasAttachment,
-    idAfter: idAfter ?? this.idAfter,
+    threadIdAfter: threadIdAfter ?? this.threadIdAfter,
   );
 
   @override
   String toString() =>
       'ConversationFilter('
-      'ids: $ids, isArchived: $isArchived, hasUnread: $hasUnread, '
+      'threadIds: $threadIds, isArchived: $isArchived, hasUnread: $hasUnread, '
       'dateFrom: $dateFrom, dateTo: $dateTo, hasAttachment: $hasAttachment, '
-      'idAfter: $idAfter)';
+      'threadIdAfter: $threadIdAfter)';
 }
 
 /// Sort column for conversation listings.

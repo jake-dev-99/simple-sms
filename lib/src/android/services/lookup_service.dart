@@ -521,7 +521,7 @@ class LookupService {
     bool enrich = true,
   }) async {
     final results = await listConversations(
-      filter: ConversationFilter(ids: [threadId]),
+      filter: ConversationFilter(threadIds: [threadId]),
       enrich: enrich,
       limit: 1,
     );
@@ -979,21 +979,25 @@ class LookupService {
   /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
   ///
   /// The `content://mms-sms/conversations?simple=true` view exposes `_id`
-  /// as the thread id, `date` as the last-activity timestamp, `read` as an
-  /// int flag, and `has_attachment` as an int flag.
+  /// as the **latest-message id** in the thread (NOT the thread id, on
+  /// Samsung Android 16 and AOSP's Mms-Sms provider), `thread_id` as the
+  /// stable thread primary key, `date` as the last-activity timestamp,
+  /// `read` as an int flag, and `has_attachment` as an int flag. Thread
+  /// filtering goes through `thread_id` so joins with `SmsFilter.threadId`
+  /// / `MmsFilter.threadId` stay consistent.
   List<QueryFilterCondition> _buildConversationFilters(
     ConversationFilter? filter,
   ) {
     if (filter == null) return const [];
     final conditions = <QueryFilterCondition>[];
 
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
+    final threadIds = filter.threadIds;
+    if (threadIds != null && threadIds.isNotEmpty) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
+          value: threadIds.map((id) => id.toString()).toList(),
         ),
       );
     }
@@ -1043,12 +1047,12 @@ class LookupService {
         ),
       );
     }
-    if (filter.idAfter != null) {
+    if (filter.threadIdAfter != null) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
+          value: filter.threadIdAfter!.toString(),
         ),
       );
     }

@@ -267,4 +267,25 @@ void main() {
       expect(sms.priority, isNull);
     });
   });
+
+  group('ConversationFilter', () {
+    // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
+    // the latest-message id, not the thread id. Filtering threads must go
+    // through `thread_id` or every lookup silently mismatches.
+    test('threadIds + threadIdAfter round-trip through copyWith + toString', () {
+      const filter = ConversationFilter(
+        threadIds: [3, 9, 25],
+        threadIdAfter: 100,
+      );
+      expect(filter.threadIds, [3, 9, 25]);
+      expect(filter.threadIdAfter, 100);
+
+      final copy = filter.copyWith(threadIds: [7]);
+      expect(copy.threadIds, [7]);
+      expect(copy.threadIdAfter, 100);
+
+      expect(filter.toString(), contains('threadIds: [3, 9, 25]'));
+      expect(filter.toString(), contains('threadIdAfter: 100'));
+    });
+  });
 }
