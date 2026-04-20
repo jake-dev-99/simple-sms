@@ -564,23 +564,25 @@ class Mms {
   /// callers that previously looped `results.add(await Mms.fromRaw(...))`
   /// one row at a time.
   static Mms fromRaw(Map<String, dynamic> raw) {
-    List<MmsParticipant> recipients =
-        raw['recipients'] != null
-            ? raw['recipients'] is List<MmsParticipant>
-                ? raw['recipients']
-                : List<Map<String, dynamic>>.from(
-                  raw['recipients'],
-                ).map((e) => MmsParticipant.fromRaw(e)).toList()
-            : [];
+    // Provider rows always carry recipients / parts as `List<Map>` when
+    // present; previously we also handled an already-typed
+    // `List<MmsParticipant>` / `List<MmsPart>` shape, but no caller ever
+    // built such a map (re-hydration goes through `fromJson`). Drop the
+    // dead branch — any typed list would miss the snake_case key mapping
+    // in `fromRaw` on children anyway.
+    final rawRecipients = raw['recipients'];
+    final recipients = rawRecipients == null
+        ? const <MmsParticipant>[]
+        : List<Map<String, dynamic>>.from(rawRecipients as List)
+            .map(MmsParticipant.fromRaw)
+            .toList(growable: false);
 
-    List<MmsPart> parts =
-        raw['parts'] != null
-            ? raw['parts'] is List<MmsPart>
-                ? raw['parts']
-                : List<Map<String, dynamic>>.from(
-                  raw['parts'],
-                ).map((e) => MmsPart.fromRaw(e)).toList()
-            : [];
+    final rawParts = raw['parts'];
+    final parts = rawParts == null
+        ? const <MmsPart>[]
+        : List<Map<String, dynamic>>.from(rawParts as List)
+            .map(MmsPart.fromRaw)
+            .toList(growable: false);
 
     return Mms(
       // Telephony.Mms PK per BaseColumns is `_id`. `raw['id']` is preserved
@@ -713,15 +715,10 @@ class Mms {
         FieldHelper.asInt(raw['retr_st']),
       ),
       retrievedText: raw['retr_txt'],
-      // Samsung rows surface `retr_txt_cs` as "" when unset; coerce to
-      // null so the field reads as absent rather than an empty-string
-      // marker. Matches the treatment of other empty-string sentinels
-      // (st, d_tm, read_status, sub_cs) across this parser.
-      retrievedTextCharset: (() {
-        final v = raw['retr_txt_cs'];
-        if (v is String && v.isEmpty) return null;
-        return v as String?;
-      })(),
+      // Samsung rows surface `retr_txt_cs` as "" when unset; the shared
+      // `FieldHelper.emptyToNull` helper collapses it so the field reads
+      // as absent rather than an empty-string marker.
+      retrievedTextCharset: FieldHelper.emptyToNull(raw['retr_txt_cs']),
       sourceLabel: raw['sourceLabel'],
       transactionId: raw['tr_id'],
       usingMode: FieldHelper.enumFromValue(
