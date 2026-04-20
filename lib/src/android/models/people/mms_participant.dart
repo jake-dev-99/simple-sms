@@ -22,6 +22,10 @@ class MmsParticipant implements ModelInterface {
   final String? sourceLabel;
   final int? msgId;
 
+  /// Samsung column `sub_id` — subscription / SIM slot id. `-1` = unknown.
+  /// Surfaces on every mms_addr row on Samsung Android 16.
+  final int? subId;
+
   MmsParticipant({
     required this.id,
     this.sourceMap,
@@ -32,36 +36,46 @@ class MmsParticipant implements ModelInterface {
     this.charset,
     this.address,
     this.contactId,
+    this.subId,
   });
 
   static MmsParticipant fromJson(Map<String, dynamic> json) => MmsParticipant(
     address: json["address"],
-    charset: json["charset"],
-    contactId: json["contact_id"],
-    id: json["_id"],
-    msgId: json["msg_id"],
+    charset: FieldHelper.enumFromValue(
+      CharSet.values,
+      FieldHelper.asInt(json["charset"]),
+    ),
+    contactId: FieldHelper.asInt(json["contact_id"]),
+    id: FieldHelper.asInt(json["_id"]) ?? 0,
+    msgId: FieldHelper.asInt(json["msg_id"]),
     sourceLabel: json["sourceLabel"],
     participantType: FieldHelper.enumFromValue(
       AndroidParticipantType.values,
-      json["type"],
+      FieldHelper.asInt(json["type"]),
     ),
+    subId: FieldHelper.asInt(json["sub_id"]),
   );
 
   Map<String, dynamic> toJson() => {
     "_id": id,
     "address": address,
-    "charset": charset,
+    "charset": charset?.value,
     "contact_id": contactId,
     "msg_id": msgId,
     "sourceLabel": sourceLabel,
     "type": participantType?.value,
+    "sub_id": subId,
   };
 
   factory MmsParticipant.fromRaw(Map<String, dynamic> raw) {
     final participant = MmsParticipant(
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+      // `_id` is the BaseColumns PK on mms_addr; `id` is a legacy test shim.
+      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
       address: raw["address"]?.toString(),
-      charset: FieldHelper.enumFromValue(CharSet.values, raw["charset"]),
+      charset: FieldHelper.enumFromValue(
+        CharSet.values,
+        FieldHelper.asInt(raw["charset"]),
+      ),
       contactId: FieldHelper.asInt(raw["contact_id"]),
       msgId: FieldHelper.asInt(raw["msg_id"]),
       sourceLabel: raw["sourceLabel"],
@@ -70,8 +84,9 @@ class MmsParticipant implements ModelInterface {
               ? raw['type']
               : FieldHelper.enumFromValue(
                 AndroidParticipantType.values,
-                raw["type"],
+                FieldHelper.asInt(raw["type"]),
               ),
+      subId: FieldHelper.asInt(raw["sub_id"]),
     );
 
     return participant;
@@ -80,10 +95,11 @@ class MmsParticipant implements ModelInterface {
   Map<String, dynamic> toRaw() => {
     "_id": id,
     "address": address,
-    "charset": charset,
+    "charset": charset?.value,
     "contact_id": contactId,
     "msg_id": msgId,
     "sourceLabel": sourceLabel,
     "type": participantType?.value,
+    "sub_id": subId,
   };
 }
