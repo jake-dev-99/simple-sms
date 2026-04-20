@@ -321,8 +321,11 @@ class Contactable implements ModelInterface {
     phonebookLabelAlt: json['phonebookLabelAlt'] ?? '',
     phoneticName: json['phoneticName'] ?? '',
     phoneticNameStyle: json['phoneticNameStyle'] ?? '',
-    photoFileId: json['photoFileId'] ?? '',
-    photoId: json['photoId'] ?? '',
+    // Field is `int photoFileId` / `int photoId`; defaulting to an empty
+    // String was a latent TypeError for any JSON payload without the key
+    // (every cached row). Route through asInt like the raw path below.
+    photoFileId: FieldHelper.asInt(json['photoFileId']) ?? 0,
+    photoId: FieldHelper.asInt(json['photoId']) ?? 0,
     photoThumbUri: json['photoThumbUri'] ?? '',
     photoUri: json['photoUri'] ?? '',
     pinned: json['pinned'] == 1,
