@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.google.i18n.phonenumbers"
-    compileSdk = 36  // Updated to 35
+    compileSdk = 35  // Updated to 35
 
     defaultConfig {
         minSdk = 30 // Default minimum SDK

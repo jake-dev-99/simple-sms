@@ -60,9 +60,9 @@ android {
 //        getByName("androidTest").java.srcDirs("src/androidTest/kotlin")
 //        getByName("test").java.srcDirs("src/test/kotlin")
     }
-    compileSdk = 36
+    compileSdk = 35
     buildToolsVersion = "36.0.0"
-    ndkVersion = "30.0.14904198"
+    ndkVersion = "28.0.13004108"
 }
 
 dependencies {

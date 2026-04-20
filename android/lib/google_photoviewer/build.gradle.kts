@@ -23,7 +23,7 @@ plugins {
 
 android {
     namespace = "com.android.ex.photo"
-    compileSdk = 36  // Updated to 35
+    compileSdk = 35  // Updated to 35
 
     defaultConfig {
         minSdk = 30

@@ -23,7 +23,7 @@ plugins {
 
 android {
     namespace = "com.android.ex"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 30
