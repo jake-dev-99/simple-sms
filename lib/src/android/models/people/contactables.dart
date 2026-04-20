@@ -586,8 +586,11 @@ class Contactable implements ModelInterface {
     'data2': type,
     'data3': label,
     'data4': normalized,
-    'data5': isPrimary,
-    'data6': isSuperPrimary,
+    // fromRaw reads `data5` / `data6` with `== 1`; emit as ints so a
+    // toRaw → fromRaw round-trip preserves the primary / super-primary
+    // flags. The provider stores these as ints on-disk regardless.
+    'data5': isPrimary ? 1 : 0,
+    'data6': isSuperPrimary ? 1 : 0,
     'data7': auxData,
     'data8': metaData,
     'data9': extraData,
@@ -615,7 +618,6 @@ class Contactable implements ModelInterface {
     'in_visible_group': inVisibleGroup ? 1 : 0,
     'is_private': isPrivate ? 1 : 0,
     'is_sim': isSim ? 1 : 0,
-    'is_super_primary': isSuperPrimary ? 1 : 0,
     'last_time_contacted': lastTimeContacted,
     'last_time_used': lastTimeUsed,
     'lookup': lookup,
