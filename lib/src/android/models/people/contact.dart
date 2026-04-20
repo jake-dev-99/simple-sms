@@ -132,7 +132,7 @@ class AndroidContact implements ModelInterface {
 
   // == App-style JSON (camelCase) ==
   factory AndroidContact.fromJson(Map<String, dynamic> json) => AndroidContact(
-    id: FieldHelper.asInt(json['id'])!,
+    id: FieldHelper.asInt(json['id']) ?? 0,
     sourceMap: json,
     displayName: json['displayName'] ?? '',
     displayNameAlt: json['displayNameAlt'] ?? '',
@@ -247,7 +247,9 @@ class AndroidContact implements ModelInterface {
 
   // == Android/DB-style (raw, snake_case) ==
   factory AndroidContact.fromRaw(Map<String, dynamic> raw) => AndroidContact(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    // Telephony contacts PK is `_id` (BaseColumns). `raw['id']` is a test-only
+    // legacy shim; 0 is the last-resort default.
+    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
     sourceMap: raw,
     displayName: raw['display_name'] ?? '',
     displayNameAlt: raw['display_name_alt'] ?? '',
