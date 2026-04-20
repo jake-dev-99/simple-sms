@@ -246,7 +246,7 @@ class AndroidContact {
   factory AndroidContact.fromRaw(Map<String, dynamic> raw) => AndroidContact(
     // Telephony contacts PK is `_id` (BaseColumns). `raw['id']` is a test-only
     // legacy shim; 0 is the last-resort default.
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+    id: FieldHelper.primaryKey(raw),
     sourceMap: raw,
     displayName: raw['display_name']?.toString() ?? '',
     displayNameAlt: raw['display_name_alt']?.toString() ?? '',

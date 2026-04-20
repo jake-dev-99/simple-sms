@@ -455,7 +455,7 @@ class Contactable {
 
   // ==== ANDROID/DB RAW ====
   factory Contactable.fromRaw(Map<String, dynamic> raw) => Contactable(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+    id: FieldHelper.primaryKey(raw),
     sourceMap: raw,
     parentId: raw['parent_id'] ?? '',
     accountName: raw['account_name'] ?? '',

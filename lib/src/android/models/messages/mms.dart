@@ -582,7 +582,7 @@ class Mms {
       // only as a fallback for unit-test rows; real provider rows always
       // have `_id`. 0 as last-resort default matches "unparseable row"
       // behaviour elsewhere.
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       parts: parts,
       body: raw['body'] ?? '',
       recipients:

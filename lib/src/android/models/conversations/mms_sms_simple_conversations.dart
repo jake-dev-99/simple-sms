@@ -214,7 +214,7 @@ class AndroidSimpleConversation {
     // matched. The fallback to `_id` stays only for the degenerate
     // case where a provider row legitimately lacks `thread_id` (not
     // expected on real Android, but safer than a null).
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+    id: FieldHelper.primaryKey(raw),
     threadId: FieldHelper.asInt(raw['thread_id']) ??
         FieldHelper.asInt(raw['_id']) ??
         FieldHelper.asInt(raw['id']) ??

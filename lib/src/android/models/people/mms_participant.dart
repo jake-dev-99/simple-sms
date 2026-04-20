@@ -67,7 +67,7 @@ class MmsParticipant {
   factory MmsParticipant.fromRaw(Map<String, dynamic> raw) {
     final participant = MmsParticipant(
       // `_id` is the BaseColumns PK on mms_addr; `id` is a legacy test shim.
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       address: raw["address"]?.toString(),
       charset: FieldHelper.enumFromValue(
         CharSet.values,

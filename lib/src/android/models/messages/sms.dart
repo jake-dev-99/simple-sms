@@ -349,7 +349,7 @@ class Sms {
     // legacy shim preserved only for unit tests that mock rows without `_id`;
     // real provider rows always have `_id`. Zero is a last-resort default
     // that matches the "unparseable row" behaviour used elsewhere.
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+    id: FieldHelper.primaryKey(raw),
     address: raw["address"],
     announcementsScenarioId: raw["announcements_scenario_id"],
     announcementsSubtype: FieldHelper.asInt(raw["announcements_subtype"]),
