@@ -268,6 +268,58 @@ void main() {
     });
   });
 
+  group('AndroidSimpleConversation.fromRaw', () {
+    // Regression for Tier 0 #5: Samsung's mms-sms/conversations?simple=true
+    // returns several int flag columns as Strings. Before this fix those
+    // landed in typed nullable slots via raw dynamic assignment and threw
+    // TypeError inside the outer try/catch — dropping whole pages of
+    // conversations on device. The fixture below mirrors the shapes
+    // observed in the Prospector dump (prospector_export_2026_4_19_20_20_17/
+    // mms-sms_conversations.json): int-as-String for the flag columns
+    // and a space-separated `recipient_ids` payload.
+    test('coerces Samsung string-form int flags without throwing', () {
+      final raw = <String, dynamic>{
+        '_id': 6244, // latest-message id on this view
+        'thread_id': 3, // stable thread pk
+        'archived': '0',
+        'has_attachment': '1',
+        'read': '1',
+        'message_count': '70',
+        'unread_count': '0',
+        'reply_all': '0',
+        'pin_to_top': '0',
+        'secret_mode': '0',
+        'snippet_cs': '106',
+        'recipient_ids': '5 9 12',
+        'display_recipient_ids': '5 9',
+        'snippet': 'Thank you',
+        'date': 1776546259000,
+      };
+
+      final conv = AndroidSimpleConversation.fromRaw(raw);
+      expect(conv.id, 6244);
+      expect(conv.threadId, 3);
+      expect(conv.archived, 0);
+      expect(conv.hasAttachment, 1);
+      expect(conv.read, 1);
+      expect(conv.messageCount, 70);
+      expect(conv.unreadCount, 0);
+      expect(conv.snippetCs, 106);
+      expect(conv.recipientIds, ['5', '9', '12']);
+      expect(conv.displayRecipientIds, ['5', '9']);
+      expect(conv.snippet, 'Thank you');
+    });
+
+    test('tolerates null / empty recipient_ids', () {
+      final conv = AndroidSimpleConversation.fromRaw({
+        '_id': 1,
+        'thread_id': 1,
+      });
+      expect(conv.recipientIds, isEmpty);
+      expect(conv.displayRecipientIds, isEmpty);
+    });
+  });
+
   group('ConversationFilter', () {
     // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
     // the latest-message id, not the thread id. Filtering threads must go

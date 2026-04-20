@@ -218,40 +218,55 @@ class AndroidSimpleConversation implements ModelInterface {
         FieldHelper.asInt(raw['_id']) ??
         FieldHelper.asInt(raw['id']) ??
         0,
-    alertExpired: raw["alert_expired"],
-    archived: raw["archived"],
-    binStatus: raw["bin_status"],
+    // Every raw field goes through FieldHelper coercion: Samsung's
+    // mms-sms/conversations?simple=true returns Strings for several int
+    // columns (e.g. "archived", "has_attachment", "read") and a single
+    // stringified-int for `recipient_ids`. A direct `raw[x]` assignment
+    // to a typed nullable slot would throw TypeError and sink the whole
+    // page inside LookupService's outer try/catch.
+    alertExpired: FieldHelper.asInt(raw["alert_expired"]),
+    archived: FieldHelper.asInt(raw["archived"]),
+    binStatus: FieldHelper.asInt(raw["bin_status"]),
     chatType: FieldHelper.enumFromValue(ChatType.values, raw["chat_type"]),
-    classification: raw["classification"],
+    classification: FieldHelper.asInt(raw["classification"]),
     date: FieldHelper.asDateTime(raw["date"]),
-    displayRecipientIds: raw["display_recipient_ids"]?.split(' ') ?? <String>[],
-    error: raw["error"],
-    fromAddress: raw["from_address"],
-    groupSnippet: raw["group_snippet"],
-    hasAttachment: raw["has_attachment"],
-    isMute: raw["is_mute"],
-    menustring: raw["menustring"],
-    messageCount: raw["message_count"],
-    messageDate: raw["message_date"],
+    displayRecipientIds: _splitIds(raw["display_recipient_ids"]),
+    error: FieldHelper.asInt(raw["error"]),
+    fromAddress: raw["from_address"]?.toString(),
+    groupSnippet: raw["group_snippet"]?.toString(),
+    hasAttachment: FieldHelper.asInt(raw["has_attachment"]),
+    isMute: FieldHelper.asInt(raw["is_mute"]),
+    menustring: raw["menustring"]?.toString(),
+    messageCount: FieldHelper.asInt(raw["message_count"]),
+    messageDate: raw["message_date"]?.toString(),
     smsMmsType: FieldHelper.enumFromValue(SmsMmsType.values, raw["smsMmsType"]),
-    paOwnnumber: raw["pa_ownnumber"],
-    paThread: raw["pa_thread"],
-    paUuid: raw["pa_uuid"],
-    pinToTop: raw["pin_to_top"],
-    read: raw["read"],
-    recipientIds: raw["recipient_ids"]?.split(' ') ?? <String>[],
-    replyAll: raw["reply_all"],
+    paOwnnumber: raw["pa_ownnumber"]?.toString(),
+    paThread: FieldHelper.asInt(raw["pa_thread"]),
+    paUuid: raw["pa_uuid"]?.toString(),
+    pinToTop: FieldHelper.asInt(raw["pin_to_top"]),
+    read: FieldHelper.asInt(raw["read"]),
+    recipientIds: _splitIds(raw["recipient_ids"]),
+    replyAll: FieldHelper.asInt(raw["reply_all"]),
     safeMessage: FieldHelper.asBool(raw["safe_message"]),
-    secretMode: raw["secret_mode"],
-    snippet: raw["snippet"],
-    snippetCs: raw["snippet_cs"],
-    snippetType: raw["snippet_type"],
-    sourceLabel: raw["sourceLabel"],
-    translateMode: raw["translate_mode"],
+    secretMode: FieldHelper.asInt(raw["secret_mode"]),
+    snippet: raw["snippet"]?.toString(),
+    snippetCs: FieldHelper.asInt(raw["snippet_cs"]),
+    snippetType: FieldHelper.asInt(raw["snippet_type"]),
+    sourceLabel: raw["sourceLabel"]?.toString(),
+    translateMode: raw["translate_mode"]?.toString(),
     type: FieldHelper.enumFromValue(MessageBox.values, raw["type"]),
-    unreadCount: raw["unread_count"],
+    unreadCount: FieldHelper.asInt(raw["unread_count"]),
     usingMode: FieldHelper.enumFromValue(UsingMode.values, raw["using_mode"]),
   );
+
+  /// Parses a space-separated id column (e.g. `recipient_ids` = "1 2 3") into
+  /// a list of non-empty id strings, tolerating ints or null.
+  static List<String> _splitIds(dynamic raw) {
+    if (raw == null) return const <String>[];
+    final s = raw.toString().trim();
+    if (s.isEmpty) return const <String>[];
+    return s.split(' ').where((p) => p.isNotEmpty).toList(growable: false);
+  }
 
   Map<String, dynamic> toRaw() => {
     "sourceLabel": sourceLabel,
