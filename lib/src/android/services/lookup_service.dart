@@ -1,9 +1,13 @@
-import 'dart:io';
+// `dart:io` also exports a `ContentType` type — hide it so our local
+// MIME enum (declared in `enums/sms_mms_enums.dart`) resolves
+// unambiguously inside this file.
+import 'dart:io' hide ContentType;
 
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
@@ -686,28 +690,20 @@ class LookupService {
   }
 
   String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
-    final ext = _extensionForMime(handle.mimeType);
-    return 'mms_part_$partId$ext';
+    return 'mms_part_$partId${_extensionForMime(handle.mimeType)}';
   }
 
-  String _extensionForMime(String? mime) {
+  /// Maps a MIME string to a dotted extension (e.g. `image/jpeg` → `.jpg`).
+  /// Returns `''` when the MIME is null or unrecognised — callers attach
+  /// the result directly to the filename stem and expect no suffix for
+  /// unknown types. Delegates to the canonical [ContentType] table rather
+  /// than maintaining a parallel switch.
+  static String _extensionForMime(String? mime) {
     if (mime == null) return '';
-    switch (mime) {
-      case 'image/jpeg':
-        return '.jpg';
-      case 'image/png':
-        return '.png';
-      case 'image/gif':
-        return '.gif';
-      case 'video/mp4':
-        return '.mp4';
-      case 'audio/amr':
-        return '.amr';
-      case 'text/plain':
-        return '.txt';
-      default:
-        return '';
+    for (final ct in ContentType.values) {
+      if (ct.value.isNotEmpty && ct.value == mime) return '.${ct.extension}';
     }
+    return '';
   }
 
   // --- Private filter / sort translation -----------------------------------
