@@ -36,18 +36,38 @@ class OutboundMessage {
   });
 
   /// Creates an [OutboundMessage] from a JSON map.
+  ///
+  /// Tolerates `attachmentPaths` / `recipients` arriving as either a List
+  /// (the canonical on-wire shape emitted by [toJson] and the interop
+  /// layer) or a Set (a stale in-memory copy). `body` is required;
+  /// recipients defaults to empty rather than throwing.
   static OutboundMessage fromJson(Map<String, dynamic> json) => OutboundMessage(
-    body: json['body'] as String,
-    attachmentPaths: json['attachmentPaths'],
-    addresses: Set<String>.from(json['recipients']),
-    conversationId: json['conversationId'],
+    body: json['body']?.toString() ?? '',
+    attachmentPaths: _asStringSet(json['attachmentPaths']),
+    addresses: _asStringSet(json['recipients']) ?? const <String>{},
+    conversationId: json['conversationId']?.toString(),
   );
 
   /// Converts this message to a JSON map for platform channel transport.
+  ///
+  /// Emits `addresses` / `attachmentPaths` as Lists so the map is directly
+  /// encodable over MethodChannel / jsonEncode without any downstream
+  /// patching; the interop layer used to swap the Set for a List after
+  /// this call — now unnecessary.
   Map<String, dynamic> toJson() => {
     'body': body,
-    'attachmentPaths': attachmentPaths,
+    'attachmentPaths': attachmentPaths?.toList(),
     'recipients': addresses.toList(),
     'conversationId': conversationId,
   };
+
+  /// Coerces an on-wire collection into a `Set<String>`, tolerating nulls,
+  /// Lists, and Sets. Returns null only when [raw] itself is null.
+  static Set<String>? _asStringSet(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Iterable) {
+      return raw.map((e) => e.toString()).toSet();
+    }
+    return {raw.toString()};
+  }
 }

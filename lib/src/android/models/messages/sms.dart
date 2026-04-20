@@ -1,7 +1,6 @@
 import 'dart:core';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
 /// An SMS message record read from the Android telephony content provider.
@@ -25,12 +24,10 @@ import '../enums/sms_mms_enums.dart';
 /// Use [Sms.fromJson] / [toJson] for app-layer round-trips (e.g. cached
 /// records) and [Sms.fromRaw] / [toRaw] when interacting with the raw
 /// platform-channel payload.
-class Sms implements ModelInterface {
-  @override
+class Sms {
   final int id;
   final int threadId;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String? address;

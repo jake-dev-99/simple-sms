@@ -1,9 +1,13 @@
-import 'dart:io';
+// `dart:io` also exports a `ContentType` type — hide it so our local
+// MIME enum (declared in `enums/sms_mms_enums.dart`) resolves
+// unambiguously inside this file.
+import 'dart:io' hide ContentType;
 
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
@@ -391,9 +395,9 @@ class LookupService {
   /// Lists the parts (text body + attachments) that belong to an MMS message.
   ///
   /// Queries `content://mms/part` filtered by `mid = mmsId`. If
-  /// [MmsPartFilter.contentTypePrefix] is set, only parts whose `ct` column
-  /// starts with that prefix are returned (e.g. `image/` for all image
-  /// attachments).
+  /// [MmsPartFilter.contentTypeContains] is set, only parts whose `ct`
+  /// column contains that substring are returned (e.g. `image/` for all
+  /// image attachments).
   Future<List<MmsPart>> listMmsParts({
     required int mmsId,
     MmsPartFilter? filter,
@@ -406,13 +410,13 @@ class LookupService {
           value: mmsId.toString(),
         ),
       ];
-      final prefix = filter?.contentTypePrefix;
-      if (prefix != null && prefix.isNotEmpty) {
+      final contentType = filter?.contentTypeContains;
+      if (contentType != null && contentType.isNotEmpty) {
         conditions.add(
           QueryFilterCondition(
             field: 'ct',
             operator: QueryFilterOperator.contains,
-            value: prefix,
+            value: contentType,
           ),
         );
       }
@@ -521,7 +525,7 @@ class LookupService {
     bool enrich = true,
   }) async {
     final results = await listConversations(
-      filter: ConversationFilter(ids: [threadId]),
+      filter: ConversationFilter(threadIds: [threadId]),
       enrich: enrich,
       limit: 1,
     );
@@ -686,28 +690,20 @@ class LookupService {
   }
 
   String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
-    final ext = _extensionForMime(handle.mimeType);
-    return 'mms_part_$partId$ext';
+    return 'mms_part_$partId${_extensionForMime(handle.mimeType)}';
   }
 
-  String _extensionForMime(String? mime) {
+  /// Maps a MIME string to a dotted extension (e.g. `image/jpeg` → `.jpg`).
+  /// Returns `''` when the MIME is null or unrecognised — callers attach
+  /// the result directly to the filename stem and expect no suffix for
+  /// unknown types. Delegates to the canonical [ContentType] table rather
+  /// than maintaining a parallel switch.
+  static String _extensionForMime(String? mime) {
     if (mime == null) return '';
-    switch (mime) {
-      case 'image/jpeg':
-        return '.jpg';
-      case 'image/png':
-        return '.png';
-      case 'image/gif':
-        return '.gif';
-      case 'video/mp4':
-        return '.mp4';
-      case 'audio/amr':
-        return '.amr';
-      case 'text/plain':
-        return '.txt';
-      default:
-        return '';
+    for (final ct in ContentType.values) {
+      if (ct.value.isNotEmpty && ct.value == mime) return '.${ct.extension}';
     }
+    return '';
   }
 
   // --- Private filter / sort translation -----------------------------------
@@ -979,21 +975,25 @@ class LookupService {
   /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
   ///
   /// The `content://mms-sms/conversations?simple=true` view exposes `_id`
-  /// as the thread id, `date` as the last-activity timestamp, `read` as an
-  /// int flag, and `has_attachment` as an int flag.
+  /// as the **latest-message id** in the thread (NOT the thread id, on
+  /// Samsung Android 16 and AOSP's Mms-Sms provider), `thread_id` as the
+  /// stable thread primary key, `date` as the last-activity timestamp,
+  /// `read` as an int flag, and `has_attachment` as an int flag. Thread
+  /// filtering goes through `thread_id` so joins with `SmsFilter.threadId`
+  /// / `MmsFilter.threadId` stay consistent.
   List<QueryFilterCondition> _buildConversationFilters(
     ConversationFilter? filter,
   ) {
     if (filter == null) return const [];
     final conditions = <QueryFilterCondition>[];
 
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
+    final threadIds = filter.threadIds;
+    if (threadIds != null && threadIds.isNotEmpty) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
+          value: threadIds.map((id) => id.toString()).toList(),
         ),
       );
     }
@@ -1043,12 +1043,12 @@ class LookupService {
         ),
       );
     }
-    if (filter.idAfter != null) {
+    if (filter.threadIdAfter != null) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
+          value: filter.threadIdAfter!.toString(),
         ),
       );
     }

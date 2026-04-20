@@ -197,6 +197,22 @@ void main() {
       expect(part.sefType, 0);
     });
 
+    test('parentId mirrors `mid` so downstream consumers can link to MMS',
+        () {
+      // `mid` on content://mms/part rows is the owning MMS `_id`.
+      // `parentId` is the generic String foreign-key the cross-model
+      // shape exposes (Contactable / Conversation use the same field).
+      // simple-messages' android_converters reads `parentId` on parts
+      // during the MMS → Unified attachments flow; an empty parentId
+      // meant attachments detached from their MMS in cached syncs.
+      final part = MmsPart.fromRaw(textPartRow);
+      expect(part.parentId, '764');
+      // Round-trip: parentId → toRaw["mid"] → fromRaw parses back.
+      final roundTripped = MmsPart.fromRaw(part.toRaw());
+      expect(roundTripped.parentId, '764');
+      expect(roundTripped.messageId, 764);
+    });
+
     test('Samsung pass-through fields populate', () {
       final part = MmsPart.fromRaw(textPartRow);
       expect(part.subId, -1);

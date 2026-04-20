@@ -104,16 +104,24 @@ class MmsSort {
 
 /// Filter for listing parts (attachments + body) of an MMS message.
 class MmsPartFilter {
-  const MmsPartFilter({this.contentTypePrefix});
+  const MmsPartFilter({this.contentTypeContains});
 
-  /// Match only parts whose `ct` column starts with this prefix
+  /// Match only parts whose `ct` column contains this substring
   /// (e.g. `image/` for all image attachments).
-  final String? contentTypePrefix;
+  ///
+  /// The underlying query operator is `CONTAINS`, not `LIKE 'x%'` — Samsung
+  /// ContentProvider MIME values are well-formed (`image/jpeg`,
+  /// `application/smil`, `text/plain`, …) so in practice the two coincide,
+  /// but callers passing a substring that could appear mid-value (e.g.
+  /// `'text'` will match both `text/plain` AND `text/x-vCard`) should know
+  /// the match is anchored anywhere in the string.
+  final String? contentTypeContains;
 
-  MmsPartFilter copyWith({String? contentTypePrefix}) => MmsPartFilter(
-    contentTypePrefix: contentTypePrefix ?? this.contentTypePrefix,
+  MmsPartFilter copyWith({String? contentTypeContains}) => MmsPartFilter(
+    contentTypeContains: contentTypeContains ?? this.contentTypeContains,
   );
 
   @override
-  String toString() => 'MmsPartFilter(contentTypePrefix: $contentTypePrefix)';
+  String toString() =>
+      'MmsPartFilter(contentTypeContains: $contentTypeContains)';
 }

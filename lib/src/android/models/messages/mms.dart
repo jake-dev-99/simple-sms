@@ -1,4 +1,3 @@
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
 import '../model_helpers.dart';
@@ -9,17 +8,15 @@ import '../people/mms_participant.dart';
 ///
 /// This class maps to MMS messages in Android's messaging database
 /// and provides methods to convert between different data formats.
-class Mms implements ModelInterface {
+class Mms {
   /// Returns the body text of the MMS by combining all text parts
   ///
   /// Extracts text content from MMS parts, joining them with newlines
   /// and cleaning up whitespace.
 
   // Core fields (naming unified where overlap exists with Sms)
-  @override
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String parentId;
@@ -400,7 +397,10 @@ class Mms implements ModelInterface {
     contentType: json['contentType'],
     correlationTag: json['correlationTag'],
     deliveryDate: FieldHelper.asDateTime(json['deliveryDate']),
-    deliveryReport: json['deliveryReport'],
+    deliveryReport: FieldHelper.enumFromValue(
+      DeliveryReport.values,
+      FieldHelper.asInt(json['deliveryReport']),
+    ),
     deliveryReportStatus: FieldHelper.enumFromValue(
       DeliveryReportStatus.values,
       json['deliveryReportStatus'],
@@ -417,7 +417,10 @@ class Mms implements ModelInterface {
     messageSize: json['messageSize'],
     messageIdentifier: json['messageIdentifier'],
     objectId: json['objectId'],
-    readReport: json['readReport'],
+    readReport: FieldHelper.enumFromValue(
+      DeliveryReport.values,
+      FieldHelper.asInt(json['readReport']),
+    ),
     readReportStatus: FieldHelper.enumFromValue(
       AndroidMessageStatus.values,
       json['readReportStatus'],
@@ -506,7 +509,7 @@ class Mms implements ModelInterface {
     'contentType': contentType,
     'correlationTag': correlationTag,
     'deliveryDate': deliveryDate?.toIso8601String(),
-    'deliveryReport': deliveryReport,
+    'deliveryReport': deliveryReport?.value,
     'deliveryReportStatus': deliveryReportStatus?.value,
     'expiryDate': expiryDate?.toIso8601String(),
     'messageBox': messageBox?.value,
@@ -514,7 +517,7 @@ class Mms implements ModelInterface {
     'messageSize': messageSize,
     'messageIdentifier': messageIdentifier,
     'objectId': objectId,
-    'readReport': readReport,
+    'readReport': readReport?.value,
     'readReportStatus': readReportStatus?.value,
     'readStatus': readStatus?.value,
     'reBody': replyBody,
@@ -779,7 +782,10 @@ class Mms implements ModelInterface {
     'ct_t': contentType,
     'correlation_tag': correlationTag,
     'd_tm': deliveryDate?.toIso8601String(),
-    'd_rpt': deliveryReport,
+    // Emit the enum's underlying int value — the platform channel can't
+    // encode raw enum instances, and the MMS column expects an int code
+    // (OMA MMS 7.3.17 for d_rpt, 7.3.47 for rr / read_status).
+    'd_rpt': deliveryReport?.value,
     'd_rpt_st': deliveryReportStatus?.value,
     'exp': expiryDate?.toIso8601String(),
     'msg_box': messageBox?.value,
@@ -787,7 +793,7 @@ class Mms implements ModelInterface {
     'm_size': messageSize,
     'm_id': messageIdentifier,
     'object_id': objectId,
-    'rr': readReport,
+    'rr': readReport?.value,
     'rr_st': readReportStatus?.value,
     'read_status': readStatus?.value,
     're_body': replyBody,
@@ -803,7 +809,7 @@ class Mms implements ModelInterface {
     'callback_set': callbackSet == true ? "1" : "0",
     'rpt_a': reportAddress,
     'resp_txt': responseText,
-    'resp_st': responseStatus,
+    'resp_st': responseStatus?.value,
     'retr_st': retrieveStatus?.value,
     'retr_txt': retrievedText,
     'retr_txt_cs': retrievedTextCharset,

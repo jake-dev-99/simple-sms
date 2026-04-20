@@ -4,15 +4,12 @@
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
 
-class MmsParticipant implements ModelInterface {
-  @override
+class MmsParticipant {
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final CharSet? charset;

@@ -296,42 +296,6 @@ enum ContentType {
   final String extension;
 }
 
-/// App-specific spam report flag for marking messages as spam or not spam.
-enum SpamReport {
-  /// Message is not spam.
-  notSpam(value: 0x0),
-
-  /// Message is considered spam.
-  spam(value: 0x1);
-
-  const SpamReport({required this.value});
-  final int value;
-}
-
-/// App-specific secret mode flag for message privacy.
-enum SecretMode {
-  /// Message is not secret.
-  notSecret(value: 0x0),
-
-  /// Message is marked as secret.
-  secret(value: 0x1);
-
-  const SecretMode({required this.value});
-  final int value;
-}
-
-/// Read/unread status for SMS/MMS messages. Mirrors Android's read/unread.
-enum MessageReadStatus {
-  /// Message has not been read.
-  unread(value: 0x0),
-
-  /// Message has been read.
-  read(value: 0x1);
-
-  const MessageReadStatus({required this.value});
-  final int value;
-}
-
 /// Character set used for MMS message encoding (common charsets only).
 enum CharSet {
   /// US-ASCII (ID: 3)
