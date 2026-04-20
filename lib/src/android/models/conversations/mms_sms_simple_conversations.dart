@@ -1,6 +1,5 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../../../interfaces/models_interface.dart';
-import '../enums/conversation_enums.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
 import '../messages/sms.dart';
@@ -31,7 +30,12 @@ class AndroidSimpleConversation implements ModelInterface {
   final bool? isPinned;
   final bool? isRead;
   final bool? isSafeMessage;
-  final ChatType? chatType;
+  /// Thread-level chat-type flag the Samsung provider surfaces on
+  /// `simple=true` rows (`chat_type` column). Values are provider-defined
+  /// and carrier-specific, so this is exposed as a raw `int?` rather
+  /// than a closed enum; consumers that need to branch on it should
+  /// compare against the real device values they observe.
+  final int? chatType;
   final SmsMmsType? smsMmsType;
   final List<String> recipientIds;
   final MessageBox? type;
@@ -227,7 +231,7 @@ class AndroidSimpleConversation implements ModelInterface {
     alertExpired: FieldHelper.asInt(raw["alert_expired"]),
     archived: FieldHelper.asInt(raw["archived"]),
     binStatus: FieldHelper.asInt(raw["bin_status"]),
-    chatType: FieldHelper.enumFromValue(ChatType.values, raw["chat_type"]),
+    chatType: FieldHelper.asInt(raw["chat_type"]),
     classification: FieldHelper.asInt(raw["classification"]),
     date: FieldHelper.asDateTime(raw["date"]),
     displayRecipientIds: _splitIds(raw["display_recipient_ids"]),
@@ -288,7 +292,7 @@ class AndroidSimpleConversation implements ModelInterface {
     "error": error,
     "alert_expired": alertExpired,
     "snippet_cs": snippetCs,
-    "chat_type": chatType?.value,
+    "chat_type": chatType,
     "archived": archived,
     "unread_count": unreadCount,
     "is_mute": isMute,

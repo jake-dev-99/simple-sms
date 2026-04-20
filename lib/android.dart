@@ -33,7 +33,6 @@ export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 // Models - Enums
 export 'src/android/models/enums/attachment_enums.dart';
 export 'src/android/models/enums/contact_enums.dart';
-export 'src/android/models/enums/conversation_enums.dart';
 export 'src/android/models/enums/device_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
 
