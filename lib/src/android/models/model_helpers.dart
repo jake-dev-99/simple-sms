@@ -87,6 +87,24 @@ class FieldHelper {
     return null;
   }
 
+  /// Coerces an empty String to null, preserving any other String value.
+  /// Useful for Samsung provider columns (`retr_txt_cs`, `st`, `d_tm`, …)
+  /// that surface `""` as a "unset" sentinel rather than a real absence,
+  /// and would otherwise leak through typed String? fields as
+  /// empty-string markers.
+  static String? emptyToNull(dynamic value) {
+    if (value is String && value.isEmpty) return null;
+    return value as String?;
+  }
+
+  /// Reads a primary-key int from a raw provider row, trying `_id` first
+  /// (the BaseColumns PK every Android provider uses) and falling back to
+  /// `id` for the legacy test-fixture shape. Defaults to 0 when both keys
+  /// are missing or unparseable, matching the "unparseable row" semantics
+  /// used elsewhere in these parsers rather than throwing at construction.
+  static int primaryKey(Map<String, dynamic> raw) =>
+      asInt(raw['_id']) ?? asInt(raw['id']) ?? 0;
+
   static T? enumFromValue<T>(Iterable<T> values, dynamic raw) =>
       raw == null
           ? null

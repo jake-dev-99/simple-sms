@@ -554,35 +554,42 @@ class Mms {
     'deviceName': deviceName,
   };
 
-  /// Creates an MMS instance from Android/DB raw data
+  /// Creates an MMS instance from Android/DB raw data.
   ///
-  /// Handles the Android-style field naming conventions (snake_case and abbreviations)
-  /// and data type peculiarities from the Android database
-  static Future<Mms> fromRaw(Map<String, dynamic> raw) async {
-    List<MmsParticipant> recipients =
-        raw['recipients'] != null
-            ? raw['recipients'] is List<MmsParticipant>
-                ? raw['recipients']
-                : List<Map<String, dynamic>>.from(
-                  raw['recipients'],
-                ).map((e) => MmsParticipant.fromRaw(e)).toList()
-            : [];
+  /// Handles the Android-style field naming conventions (snake_case and
+  /// abbreviations) and the data-type peculiarities of the Android database.
+  /// Pure CPU work — no IO — so this factory is synchronous. Callers that
+  /// `await` the result still compile (await-on-non-Future is a passthrough)
+  /// but should drop the `await` to unlock bulk `.map(...).toList()` in
+  /// callers that previously looped `results.add(await Mms.fromRaw(...))`
+  /// one row at a time.
+  static Mms fromRaw(Map<String, dynamic> raw) {
+    // Provider rows always carry recipients / parts as `List<Map>` when
+    // present; previously we also handled an already-typed
+    // `List<MmsParticipant>` / `List<MmsPart>` shape, but no caller ever
+    // built such a map (re-hydration goes through `fromJson`). Drop the
+    // dead branch — any typed list would miss the snake_case key mapping
+    // in `fromRaw` on children anyway.
+    final rawRecipients = raw['recipients'];
+    final recipients = rawRecipients == null
+        ? const <MmsParticipant>[]
+        : List<Map<String, dynamic>>.from(rawRecipients as List)
+            .map(MmsParticipant.fromRaw)
+            .toList(growable: false);
 
-    List<MmsPart> parts =
-        raw['parts'] != null
-            ? raw['parts'] is List<MmsPart>
-                ? raw['parts']
-                : List<Map<String, dynamic>>.from(
-                  raw['parts'],
-                ).map((e) => MmsPart.fromRaw(e)).toList()
-            : [];
+    final rawParts = raw['parts'];
+    final parts = rawParts == null
+        ? const <MmsPart>[]
+        : List<Map<String, dynamic>>.from(rawParts as List)
+            .map(MmsPart.fromRaw)
+            .toList(growable: false);
 
     return Mms(
       // Telephony.Mms PK per BaseColumns is `_id`. `raw['id']` is preserved
       // only as a fallback for unit-test rows; real provider rows always
       // have `_id`. 0 as last-resort default matches "unparseable row"
       // behaviour elsewhere.
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       parts: parts,
       body: raw['body'] ?? '',
       recipients:
@@ -708,15 +715,10 @@ class Mms {
         FieldHelper.asInt(raw['retr_st']),
       ),
       retrievedText: raw['retr_txt'],
-      // Samsung rows surface `retr_txt_cs` as "" when unset; coerce to
-      // null so the field reads as absent rather than an empty-string
-      // marker. Matches the treatment of other empty-string sentinels
-      // (st, d_tm, read_status, sub_cs) across this parser.
-      retrievedTextCharset: (() {
-        final v = raw['retr_txt_cs'];
-        if (v is String && v.isEmpty) return null;
-        return v as String?;
-      })(),
+      // Samsung rows surface `retr_txt_cs` as "" when unset; the shared
+      // `FieldHelper.emptyToNull` helper collapses it so the field reads
+      // as absent rather than an empty-string marker.
+      retrievedTextCharset: FieldHelper.emptyToNull(raw['retr_txt_cs']),
       sourceLabel: raw['sourceLabel'],
       transactionId: raw['tr_id'],
       usingMode: FieldHelper.enumFromValue(
@@ -727,7 +729,7 @@ class Mms {
       safeMessage: FieldHelper.asBool(raw['safe_message']),
       secretMode: FieldHelper.asBool(raw['secret_mode']),
       textOnly: FieldHelper.asBool(raw['text_only']),
-      reportAllowed: raw['report_allowed'],
+      reportAllowed: FieldHelper.asBool(raw['report_allowed']),
 
       // Samsung OEM extensions, preserved as nullable pass-through.
       blockFilteredStatus: FieldHelper.asInt(raw['block_filtered_status']),
@@ -758,13 +760,13 @@ class Mms {
     'pri': priority?.value,
     'sub_id': subscriptionId,
     'sub': subject,
-    'read': read == true ? "1" : "0",
-    'seen': seen == true ? "1" : "0",
-    'deletable': deletable == true ? "1" : "0",
-    'locked': locked == true ? "1" : "0",
-    'favorite': favorite == true ? "1" : "0",
-    'hidden': hidden == true ? "1" : "0",
-    'spam_report': spamReport == true ? "1" : "0",
+    'read': FieldHelper.boolToInt(read),
+    'seen': FieldHelper.boolToInt(seen),
+    'deletable': FieldHelper.boolToInt(deletable),
+    'locked': FieldHelper.boolToInt(locked),
+    'favorite': FieldHelper.boolToInt(favorite),
+    'hidden': FieldHelper.boolToInt(hidden),
+    'spam_report': FieldHelper.boolToInt(spamReport),
     'date': date?.toIso8601String(),
     'date_sent': dateSent?.toIso8601String(),
     'body': body,
@@ -805,8 +807,8 @@ class Mms {
     're_original_key': replyOriginalKey,
     're_recipient_address': replyRecipientAddress,
     're_type': replyType?.value,
-    'reserved': reserved == true ? "1" : "0",
-    'callback_set': callbackSet == true ? "1" : "0",
+    'reserved': FieldHelper.boolToInt(reserved),
+    'callback_set': FieldHelper.boolToInt(callbackSet),
     'rpt_a': reportAddress,
     'resp_txt': responseText,
     'resp_st': responseStatus?.value,
@@ -817,10 +819,10 @@ class Mms {
     'tr_id': transactionId,
     'using_mode': usingMode?.value,
     'v': version,
-    'safe_message': safeMessage == true ? "1" : "0",
-    'secret_mode': secretMode == true ? "1" : "0",
-    'text_only': textOnly == true ? "1" : "0",
-    'report_allowed': reportAllowed,
+    'safe_message': FieldHelper.boolToInt(safeMessage),
+    'secret_mode': FieldHelper.boolToInt(secretMode),
+    'text_only': FieldHelper.boolToInt(textOnly),
+    'report_allowed': FieldHelper.boolToInt(reportAllowed),
     // Samsung OEM extensions.
     'block_filtered_status': blockFilteredStatus,
     'predefined_id': predefinedId,

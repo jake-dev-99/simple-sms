@@ -38,6 +38,11 @@ import '../models/people/mms_participant.dart';
 // easy to audit and stay consistent with `Query.kt` / `ContentQuery`
 // on the Kotlin side.
 const String _contactsUri = 'content://com.android.contacts/contacts';
+const String _contactsDataUri = 'content://com.android.contacts/data';
+const String _contactsPhoneFilterUri =
+    'content://com.android.contacts/data/phones/filter';
+const String _contactsEmailFilterUri =
+    'content://com.android.contacts/data/emails/filter';
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
 const String _mmsPartUri = 'content://mms/part';
@@ -85,10 +90,9 @@ class LookupService {
   Future<Contactable?> lookupContactableByAddress(String address) async {
     try {
       final isEmail = address.contains('@');
-      final uri =
-          isEmail
-              ? 'content://com.android.contacts/data/emails/filter/$address'
-              : 'content://com.android.contacts/data/phones/filter/$address';
+      final uri = isEmail
+          ? '$_contactsEmailFilterUri/$address'
+          : '$_contactsPhoneFilterUri/$address';
       final response = await SimpleQuery.instance.query(
         QueryRequest(
           domain: QueryDomain.platformSpecific,
@@ -123,7 +127,7 @@ class LookupService {
         ),
       );
       if (response.records.isEmpty) return null;
-      return await Mms.fromRaw(
+      return Mms.fromRaw(
         Map<String, dynamic>.from(response.records.first),
       );
     } catch (e, s) {
@@ -335,11 +339,9 @@ class LookupService {
           ],
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to get MMS for thread $threadId: $e');
       debugPrint(s.toString());
@@ -380,11 +382,9 @@ class LookupService {
                   : null,
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to list MMS ($filter): $e');
       debugPrint(s.toString());
@@ -533,42 +533,60 @@ class LookupService {
   }
 
   /// Resolves participants + latestSms / latestMms for a bare conversation.
+  ///
+  /// Runs recipient resolution and latest-message lookups in parallel — each
+  /// query is an independent content-provider roundtrip, and on a populous
+  /// inbox (200 threads × 3 participants) the old serial version paid ~800
+  /// sequential provider calls. `Future.wait` drops that to three
+  /// concurrent batches per thread.
   Future<AndroidSimpleConversation> _enrichConversation(
     AndroidSimpleConversation base,
   ) async {
-    // Resolve each recipientId → Contactable.
-    final participants = <Contactable>[];
-    for (final rid in base.recipientIds) {
-      if (rid.isEmpty) continue;
-      final address = await resolveCanonicalAddress(rid);
-      if (address == null) continue;
-      final contactable = await lookupContactableByAddress(address);
-      if (contactable != null) {
-        participants.add(contactable);
-      } else {
-        // Fall back to a minimal Contactable keyed by the address only, so the
-        // caller always has something to show.
-        participants.add(Contactable(id: -1, value: address));
-      }
-    }
+    // Resolve every recipientId → Contactable concurrently.
+    final participantsFuture = Future.wait(
+      base.recipientIds.where((rid) => rid.isNotEmpty).map(_resolveParticipant),
+    );
 
-    // Latest SMS + MMS for the thread (each capped at 1 row).
-    final latestSmsList = await listSms(
+    // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
+    final latestSmsFuture = listSms(
       filter: SmsFilter(threadId: base.threadId),
       sort: SmsSort.newestFirst,
       limit: 1,
     );
-    final latestMmsList = await listMms(
+    final latestMmsFuture = listMms(
       filter: MmsFilter(threadId: base.threadId),
       sort: MmsSort.newestFirst,
       limit: 1,
     );
+
+    final results = await Future.wait<Object>([
+      participantsFuture,
+      latestSmsFuture,
+      latestMmsFuture,
+    ]);
+    final participants =
+        (results[0] as List<Contactable?>).whereType<Contactable>().toList(
+              growable: false,
+            );
+    final latestSmsList = results[1] as List<Sms>;
+    final latestMmsList = results[2] as List<Mms>;
 
     return base.enrich(
       participants: participants,
       latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
       latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
     );
+  }
+
+  /// Resolves a single recipient id to a [Contactable]: canonical-address
+  /// lookup → contactable-by-address lookup, with a minimal fallback so
+  /// the UI always has *something* to render. Returns null only when the
+  /// recipient id doesn't resolve to any canonical address.
+  Future<Contactable?> _resolveParticipant(String recipientId) async {
+    final address = await resolveCanonicalAddress(recipientId);
+    if (address == null) return null;
+    final contactable = await lookupContactableByAddress(address);
+    return contactable ?? Contactable(id: -1, value: address);
   }
 
   /// Lists every `data` row belonging to a single contact — phone numbers,
@@ -591,7 +609,7 @@ class LookupService {
             ),
           ],
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
@@ -641,7 +659,7 @@ class LookupService {
           domain: QueryDomain.platformSpecific,
           filters: filters,
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
@@ -1016,12 +1034,19 @@ class LookupService {
         ),
       );
     }
+    // The `mms-sms/conversations?simple=true` view surfaces `date` in
+    // **seconds** on Samsung Android 16 (Prospector dump confirms:
+    // 1776546259, not 1776546259000). Matches the MMS `date` column the
+    // row originates from — the simple conversations view is effectively
+    // the newest SMS/MMS row per thread, and MMS stores `date` in
+    // seconds per OMA MMS. SMS stores `date` in millis. So this builder
+    // mirrors `_buildMmsFilters` (÷1000), not `_buildSmsFilters`.
     if (filter.dateFrom != null) {
       conditions.add(
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.greaterThanOrEqual,
-          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }
@@ -1030,7 +1055,7 @@ class LookupService {
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.lessThanOrEqual,
-          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }

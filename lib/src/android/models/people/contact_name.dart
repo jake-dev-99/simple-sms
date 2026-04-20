@@ -72,7 +72,7 @@ class AndroidContactName {
   // == Android/DB-style (raw, snake_case) ==
   factory AndroidContactName.fromRaw(Map<String, dynamic> raw) =>
       AndroidContactName(
-        id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+        id: FieldHelper.primaryKey(raw),
         sourceMap: raw,
         displayName: raw['data1'],
         givenName: raw['data2'],
