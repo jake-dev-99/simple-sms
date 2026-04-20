@@ -363,6 +363,41 @@ void main() {
       expect(conv.recipientIds, isEmpty);
       expect(conv.displayRecipientIds, isEmpty);
     });
+
+    test('toRaw → fromRaw round-trip preserves core fields', () {
+      // Regression for Tier 0 #10: toRaw previously emitted raw enum
+      // instances (chatType, type, usingMode), raw DateTime (date), and
+      // List<String> for recipient_ids — none encodable over the platform
+      // channel, and asymmetric with fromRaw which splits on spaces.
+      final raw = <String, dynamic>{
+        '_id': 6244,
+        'thread_id': 3,
+        'date': 1776546259000,
+        'read': 1,
+        'has_attachment': 1,
+        'message_count': 70,
+        'type': 0x01, // MessageBox.inbox
+        'recipient_ids': '5 9 12',
+        'display_recipient_ids': '5 9',
+        'snippet': 'Thank you',
+      };
+      final original = AndroidSimpleConversation.fromRaw(raw);
+      final rawOut = original.toRaw();
+
+      expect(rawOut['_id'], 6244);
+      expect(rawOut['thread_id'], 3);
+      expect(rawOut['date'], 1776546259000);
+      expect(rawOut['type'], 0x01); // enum serialised as int
+      expect(rawOut['recipient_ids'], '5 9 12'); // list → space-joined
+      expect(rawOut['display_recipient_ids'], '5 9');
+
+      // Re-parse the emitted raw; core joining columns survive intact.
+      final restored = AndroidSimpleConversation.fromRaw(rawOut);
+      expect(restored.id, 6244);
+      expect(restored.threadId, 3);
+      expect(restored.recipientIds, ['5', '9', '12']);
+      expect(restored.type, MessageBox.inbox);
+    });
   });
 
   group('ConversationFilter', () {

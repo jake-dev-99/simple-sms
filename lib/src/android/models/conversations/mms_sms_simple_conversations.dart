@@ -269,20 +269,26 @@ class AndroidSimpleConversation implements ModelInterface {
   }
 
   Map<String, dynamic> toRaw() => {
+    // Platform-channel payload: enums emit as their int `.value`,
+    // DateTime emits as millis-since-epoch (matching how the provider
+    // surfaces `date`), and id-list columns emit as space-separated
+    // Strings — symmetric with `_splitIds` in fromRaw.
+    "_id": id,
+    "thread_id": threadId,
     "sourceLabel": sourceLabel,
-    "date": date,
+    "date": date?.millisecondsSinceEpoch,
     "snippet": snippet,
-    "display_recipient_ids": displayRecipientIds,
+    "display_recipient_ids": displayRecipientIds?.join(' '),
     "translate_mode": translateMode,
     "snippet_type": snippetType,
     "bin_status": binStatus,
     "has_attachment": hasAttachment,
     "pa_thread": paThread,
-    "type": type,
+    "type": type?.value,
     "error": error,
     "alert_expired": alertExpired,
     "snippet_cs": snippetCs,
-    "chat_type": chatType,
+    "chat_type": chatType?.value,
     "archived": archived,
     "unread_count": unreadCount,
     "is_mute": isMute,
@@ -291,17 +297,16 @@ class AndroidSimpleConversation implements ModelInterface {
     "menustring": menustring,
     "pin_to_top": pinToTop,
     "reply_all": replyAll,
-    "safe_message": safeMessage,
-    "smsMmsType": smsMmsType,
+    "safe_message": FieldHelper.boolToInt(safeMessage),
+    "smsMmsType": smsMmsType?.index,
     "classification": classification,
     "message_count": messageCount,
     "group_snippet": groupSnippet,
-    "using_mode": usingMode,
+    "using_mode": usingMode?.value,
     "message_date": messageDate,
-    "recipient_ids": recipientIds,
+    "recipient_ids": recipientIds.join(' '),
     "pa_uuid": paUuid,
     "secret_mode": secretMode,
-    "_id": id,
     "pa_ownnumber": paOwnnumber,
   };
 }
