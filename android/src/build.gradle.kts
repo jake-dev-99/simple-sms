@@ -12,7 +12,7 @@ plugins {
 
 android {
     namespace = group.toString()
-    compileSdk = 35
+    compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "30.0.14904198"
 
@@ -25,8 +25,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     defaultConfig {
@@ -35,7 +35,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     sourceSets {

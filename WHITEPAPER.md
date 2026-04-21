@@ -178,7 +178,7 @@ simple_sms/
 | Setting | Value | Rationale |
 |--------- ||------ | |--------- |- |
 | minSdk | 30 (Android 11) | Required for modern SMS APIs and scoped storage |
-| compileSdk | 35 (Android 15) | Latest API access |
+| compileSdk | 36 (Android 15) | Latest API access |
 | targetSdk | 35 | Current Android recommendations |
 | Java Version | 17 | Kotlin/Android compatibility |
 
@@ -1333,19 +1333,19 @@ flutter:
 ```kotlin
 android {
     namespace = "io.simplezen.simple_sms"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 30
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 }
 
