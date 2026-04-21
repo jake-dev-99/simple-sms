@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.google.i18n.phonenumbers"
-    compileSdk = 35  // Updated to 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 30 // Default minimum SDK
@@ -40,11 +40,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = "21"
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     publishing {
