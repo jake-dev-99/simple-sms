@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import '../../interop/messaging.dart';
+import '../../interop/channels.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/outbound_message.dart';
 import '../models/messages/sms.dart';
@@ -43,17 +43,24 @@ class AndroidMessaging {
   /// Initializes the messaging singleton with callbacks for incoming messages.
   ///
   /// Must be called before [instance] is accessed. Safe to call multiple
-  /// times — subsequent calls return the existing instance.
+  /// times — subsequent calls update the callbacks on the existing
+  /// singleton so the last caller always wins (matching what a developer
+  /// naturally expects when they re-invoke `Android.initialize` from a
+  /// hot-reload path or a background-engine entrypoint).
   factory AndroidMessaging.initialize({
     required Function(Sms) inboundSmsCallback,
     required Function(Mms) inboundMmsCallback,
   }) {
-    _instance ??= AndroidMessaging._internal(
+    final existing = _instance;
+    if (existing != null) {
+      existing.smsCallback = inboundSmsCallback;
+      existing.mmsCallback = inboundMmsCallback;
+      return existing;
+    }
+    return _instance = AndroidMessaging._internal(
       smsCallback: inboundSmsCallback,
       mmsCallback: inboundMmsCallback,
     );
-
-    return _instance!;
   }
 
   /// Sends an SMS or MMS message.
@@ -114,27 +121,34 @@ class AndroidMessaging {
     }
 
     try {
-      if (methodCall.method == 'receiveInboundSmsMessage') {
-        final Sms smsMessage = Sms.fromRaw(messageData);
-        return await smsCallback(smsMessage);
-      } else if (methodCall.method == 'receiveInboundMmsMessage') {
-        final Mms mmsMessage = await Mms.fromRaw(messageData);
-        return await mmsCallback(mmsMessage);
-      } else {
-        throw PlatformException(
-          code: 'UNKNOWN_METHOD',
-          message:
-              "simple_sms: Unknown method '${methodCall.method}' on inbound_messaging channel",
-          details: {'method': methodCall.method},
-        );
+      switch (methodCall.method) {
+        case 'receiveInboundSmsMessage':
+          return await smsCallback(Sms.fromRaw(messageData));
+        case 'receiveInboundMmsMessage':
+          return await mmsCallback(Mms.fromRaw(messageData));
+        default:
+          throw PlatformException(
+            code: 'UNKNOWN_METHOD',
+            message:
+                "simple_sms: Unknown method '${methodCall.method}' on inbound_messaging channel",
+            details: {'method': methodCall.method},
+          );
       }
     } catch (e, s) {
       if (e is PlatformException) rethrow;
       debugPrint('simple_sms: Error processing ${methodCall.method}: $e');
       throw PlatformException(
-        code: '${methodCall.method.toUpperCase()}_PROCESSING_ERROR',
+        // Stable, readable error codes — the previous scheme produced
+        // `RECEIVEINBOUNDSMSMESSAGE_PROCESSING_ERROR` via `toUpperCase()`
+        // on the method name, which is hard to grep and harder to
+        // dashboard against.
+        code: 'INBOUND_MESSAGE_PROCESSING_ERROR',
         message: 'Error processing ${methodCall.method}: $e',
-        details: {'error': e.toString(), 'stackTrace': s.toString()},
+        details: {
+          'method': methodCall.method,
+          'error': e.toString(),
+          'stackTrace': s.toString(),
+        },
       );
     }
   }

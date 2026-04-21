@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
 /// A lightweight contact record from the Android contacts database.
@@ -15,10 +14,8 @@ import '../enums/contact_enums.dart';
 /// final service = LookupService();
 /// final contact = await service.lookupContactById(contactable.contactId);
 /// ```
-class Contactable implements ModelInterface {
-  @override
+class Contactable {
   final int id;
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String parentId;
@@ -246,7 +243,10 @@ class Contactable implements ModelInterface {
 
   // ==== APP JSON ====
   factory Contactable.fromJson(Map<String, dynamic> json) => Contactable(
-    id: FieldHelper.asInt(json['id'])!,
+    // Default to 0 on missing/unparseable id, matching the other `fromJson`
+    // paths in this package — throwing at deserialization on a legacy cache
+    // row was the original bug this pattern replaces.
+    id: FieldHelper.asInt(json['id']) ?? 0,
     sourceMap: json,
     parentId: json['parentId'] ?? '',
     accountName: json['accountName'] ?? '',
@@ -318,8 +318,11 @@ class Contactable implements ModelInterface {
     phonebookLabelAlt: json['phonebookLabelAlt'] ?? '',
     phoneticName: json['phoneticName'] ?? '',
     phoneticNameStyle: json['phoneticNameStyle'] ?? '',
-    photoFileId: json['photoFileId'] ?? '',
-    photoId: json['photoId'] ?? '',
+    // Field is `int photoFileId` / `int photoId`; defaulting to an empty
+    // String was a latent TypeError for any JSON payload without the key
+    // (every cached row). Route through asInt like the raw path below.
+    photoFileId: FieldHelper.asInt(json['photoFileId']) ?? 0,
+    photoId: FieldHelper.asInt(json['photoId']) ?? 0,
     photoThumbUri: json['photoThumbUri'] ?? '',
     photoUri: json['photoUri'] ?? '',
     pinned: json['pinned'] == 1,
@@ -452,7 +455,7 @@ class Contactable implements ModelInterface {
 
   // ==== ANDROID/DB RAW ====
   factory Contactable.fromRaw(Map<String, dynamic> raw) => Contactable(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    id: FieldHelper.primaryKey(raw),
     sourceMap: raw,
     parentId: raw['parent_id'] ?? '',
     accountName: raw['account_name'] ?? '',
@@ -580,8 +583,11 @@ class Contactable implements ModelInterface {
     'data2': type,
     'data3': label,
     'data4': normalized,
-    'data5': isPrimary,
-    'data6': isSuperPrimary,
+    // fromRaw reads `data5` / `data6` with `== 1`; emit as ints so a
+    // toRaw → fromRaw round-trip preserves the primary / super-primary
+    // flags. The provider stores these as ints on-disk regardless.
+    'data5': isPrimary ? 1 : 0,
+    'data6': isSuperPrimary ? 1 : 0,
     'data7': auxData,
     'data8': metaData,
     'data9': extraData,
@@ -609,7 +615,6 @@ class Contactable implements ModelInterface {
     'in_visible_group': inVisibleGroup ? 1 : 0,
     'is_private': isPrivate ? 1 : 0,
     'is_sim': isSim ? 1 : 0,
-    'is_super_primary': isSuperPrimary ? 1 : 0,
     'last_time_contacted': lastTimeContacted,
     'last_time_used': lastTimeUsed,
     'lookup': lookup,

@@ -178,7 +178,7 @@ simple_sms/
 | Setting | Value | Rationale |
 |--------- ||------ | |--------- |- |
 | minSdk | 30 (Android 11) | Required for modern SMS APIs and scoped storage |
-| compileSdk | 35 (Android 15) | Latest API access |
+| compileSdk | 36 (Android 15) | Latest API access |
 | targetSdk | 35 | Current Android recommendations |
 | Java Version | 17 | Kotlin/Android compatibility |
 
@@ -709,40 +709,28 @@ class OutboundMessage {
 ### 7.2 Conversation Models
 
 ```dart
-class AndroidFullConversation implements ModelInterface {
-  final int id;
+class AndroidSimpleConversation {
+  final int id;                       // latest-message id on simple view
+  final int threadId;                 // stable thread primary key — join here
   final List<String> recipientIds;
-
-  // Latest Message Info
-  final String address;
-  final String body;
-  final int date;
-  final int dateSent;
-  final SmsMmsType? smsMmsType;
-
-  // State
-  final bool? isRead;
-  final bool? isArchived;
-  final bool? isBlocked;
-  final bool? isPinned;
-  final bool? isMuted;
-
-  // Counts
-  final int messageCount;
-  final int unreadCount;
-}
-
-class AndroidSimpleConversation implements ModelInterface {
-  final int id;
-  final String? recipientIds;
   final int? messageCount;
-  final String? snippet;              // Preview text
-  final int? snippetCharset;
-  final bool? read;
-  final bool? archived;
-  final int? date;
+  final String? snippet;              // preview text
+  final int? snippetCs;
+  final int? read;
+  final int? archived;
+  final DateTime? date;
+
+  // Enrichment (populated by LookupService.listConversations):
+  final List<Contactable>? participants;
+  final Sms? latestSms;
+  final Mms? latestMms;
 }
 ```
+
+> Only `AndroidSimpleConversation` is exposed as of v0.5. The historical
+> `AndroidFullConversation` shape — a flat mirror of every message column
+> on a thread — was removed because nothing in the monorepo consumed it
+> and its parser carried latent type-coercion bugs.
 
 ### 7.3 People Models
 
@@ -1345,19 +1333,19 @@ flutter:
 ```kotlin
 android {
     namespace = "io.simplezen.simple_sms"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 30
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 }
 

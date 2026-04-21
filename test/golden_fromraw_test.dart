@@ -112,7 +112,7 @@ void main() {
 
     test('parses core fields without throwing on Samsung OEM shape',
         () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
 
       expect(mms.id, 6244);
       expect(mms.threadId, 3);
@@ -127,7 +127,7 @@ void main() {
     });
 
     test('empty-string sentinels coerce to null, not throw', () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
       // `d_tm`, `retr_st`, `retr_txt_cs`, `st`, `read_status`, `sub_cs`
       // all arrive as "" on Samsung. Previously these either threw or
       // silently became a malformed value; now they should read as null.
@@ -141,7 +141,7 @@ void main() {
 
     test('Samsung pass-through fields land in their nullable slots',
         () async {
-      final mms = await Mms.fromRaw(samsungOutboundRow);
+      final mms = Mms.fromRaw(samsungOutboundRow);
       expect(mms.predefinedId, -1);
       expect(mms.spamType, 0);
       expect(mms.blockFilteredStatus, isNull); // "" → null
@@ -195,6 +195,22 @@ void main() {
       expect(part.messageId, 764);
       expect(part.sequence, 0);
       expect(part.sefType, 0);
+    });
+
+    test('parentId mirrors `mid` so downstream consumers can link to MMS',
+        () {
+      // `mid` on content://mms/part rows is the owning MMS `_id`.
+      // `parentId` is the generic String foreign-key the cross-model
+      // shape exposes (Contactable / Conversation use the same field).
+      // simple-messages' android_converters reads `parentId` on parts
+      // during the MMS → Unified attachments flow; an empty parentId
+      // meant attachments detached from their MMS in cached syncs.
+      final part = MmsPart.fromRaw(textPartRow);
+      expect(part.parentId, '764');
+      // Round-trip: parentId → toRaw["mid"] → fromRaw parses back.
+      final roundTripped = MmsPart.fromRaw(part.toRaw());
+      expect(roundTripped.parentId, '764');
+      expect(roundTripped.messageId, 764);
     });
 
     test('Samsung pass-through fields populate', () {

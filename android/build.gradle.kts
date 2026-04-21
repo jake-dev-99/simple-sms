@@ -37,12 +37,12 @@ android {
     namespace = "io.simplezen.simple_sms"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     defaultConfig {
@@ -60,9 +60,9 @@ android {
 //        getByName("androidTest").java.srcDirs("src/androidTest/kotlin")
 //        getByName("test").java.srcDirs("src/test/kotlin")
     }
-    compileSdk = 35
+    compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "30.0.14904198"
 }
 
 dependencies {

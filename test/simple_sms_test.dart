@@ -130,7 +130,7 @@ void main() {
         ],
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
 
       expect(mms.id, 10);
       expect(mms.threadId, 5);
@@ -152,12 +152,57 @@ void main() {
         'body': '',
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
       expect(mms.id, 20);
       expect(mms.recipients, isEmpty);
       expect(mms.parts, isEmpty);
       expect(mms.sender, isNull);
     });
+
+    test(
+      'deliveryReport / readReport / responseStatus round-trip through '
+      'toRaw + toJson as int values, not enum instances',
+      () async {
+        // Regression for Tier 0 #9: toRaw used to emit enum *instances*
+        // for d_rpt, rr, and resp_st — unencodable over the platform
+        // channel and unreadable back through fromRaw's int-coerced
+        // enumFromValue. The round-trip now survives a full toRaw →
+        // fromRaw cycle without losing the enum values.
+        final raw = <String, dynamic>{
+          '_id': 42,
+          'thread_id': 5,
+          'read': 1,
+          'sim_slot': 0,
+          'body': 'roundtrip',
+          'd_rpt': 0x81, // DeliveryReport.requested
+          'rr': 0x80, // DeliveryReport.notRequested
+          'resp_st': 0x81, // AndroidMessageStatus.retrieved
+          'recipients': <Map<String, dynamic>>[],
+          'parts': <Map<String, dynamic>>[],
+        };
+
+        final original = Mms.fromRaw(raw);
+        expect(original.deliveryReport, DeliveryReport.requested);
+        expect(original.readReport, DeliveryReport.notRequested);
+        expect(original.responseStatus, AndroidMessageStatus.retrieved);
+
+        final rawOut = original.toRaw();
+        expect(rawOut['d_rpt'], 0x81);
+        expect(rawOut['rr'], 0x80);
+        expect(rawOut['resp_st'], 0x81);
+
+        final jsonOut = original.toJson();
+        expect(jsonOut['deliveryReport'], 0x81);
+        expect(jsonOut['readReport'], 0x80);
+
+        // Round-trip: parse the emitted raw back into an Mms and
+        // confirm the enums land on the same values.
+        final restored = Mms.fromRaw(rawOut);
+        expect(restored.deliveryReport, DeliveryReport.requested);
+        expect(restored.readReport, DeliveryReport.notRequested);
+        expect(restored.responseStatus, AndroidMessageStatus.retrieved);
+      },
+    );
 
     test('toJson produces correct camelCase keys', () async {
       final raw = <String, dynamic>{
@@ -173,7 +218,7 @@ void main() {
         'parts': <Map<String, dynamic>>[],
       };
 
-      final mms = await Mms.fromRaw(raw);
+      final mms = Mms.fromRaw(raw);
       final json = mms.toJson();
 
       expect(json['id'], 30);
@@ -216,6 +261,39 @@ void main() {
 
       final json = message.toJson();
       expect(json['attachmentPaths'], isNull);
+    });
+
+    test('toJson emits Lists (not Sets) for channel-safe encoding', () {
+      // Regression for Tier 0 #12: toJson used to emit raw `Set<String>`
+      // for attachmentPaths, which isn't encodable through jsonEncode.
+      // The interop layer patched it post-hoc — that patch is gone now.
+      final message = OutboundMessage(
+        body: 'MMS',
+        addresses: {'+15551111111', '+15552222222'},
+        attachmentPaths: {'/a.jpg', '/b.png'},
+      );
+      final json = message.toJson();
+      expect(json['recipients'], isA<List>());
+      expect(json['attachmentPaths'], isA<List>());
+    });
+
+    test('fromJson tolerates wire payloads with either List or null', () {
+      // After jsonEncode/jsonDecode, Sets surface as Lists. fromJson has
+      // to accept both without throwing a TypeError.
+      final fromList = OutboundMessage.fromJson({
+        'body': 'test',
+        'recipients': ['+15551234567'],
+        'attachmentPaths': ['/image.jpg'],
+      });
+      expect(fromList.addresses, {'+15551234567'});
+      expect(fromList.attachmentPaths, {'/image.jpg'});
+
+      final missingAttachments = OutboundMessage.fromJson({
+        'body': 'noatt',
+        'recipients': ['+15559999999'],
+      });
+      expect(missingAttachments.attachmentPaths, isNull);
+      expect(missingAttachments.addresses, {'+15559999999'});
     });
   });
 
@@ -265,6 +343,114 @@ void main() {
         'pri': 0xFF, // Not a valid MessagePriority
       });
       expect(sms.priority, isNull);
+    });
+  });
+
+  group('AndroidSimpleConversation.fromRaw', () {
+    // Regression for Tier 0 #5: Samsung's mms-sms/conversations?simple=true
+    // returns several int flag columns as Strings. Before this fix those
+    // landed in typed nullable slots via raw dynamic assignment and threw
+    // TypeError inside the outer try/catch — dropping whole pages of
+    // conversations on device. The fixture below mirrors the shapes
+    // observed in the Prospector dump (prospector_export_2026_4_19_20_20_17/
+    // mms-sms_conversations.json): int-as-String for the flag columns
+    // and a space-separated `recipient_ids` payload.
+    test('coerces Samsung string-form int flags without throwing', () {
+      final raw = <String, dynamic>{
+        '_id': 6244, // latest-message id on this view
+        'thread_id': 3, // stable thread pk
+        'archived': '0',
+        'has_attachment': '1',
+        'read': '1',
+        'message_count': '70',
+        'unread_count': '0',
+        'reply_all': '0',
+        'pin_to_top': '0',
+        'secret_mode': '0',
+        'snippet_cs': '106',
+        'recipient_ids': '5 9 12',
+        'display_recipient_ids': '5 9',
+        'snippet': 'Thank you',
+        'date': 1776546259000,
+      };
+
+      final conv = AndroidSimpleConversation.fromRaw(raw);
+      expect(conv.id, 6244);
+      expect(conv.threadId, 3);
+      expect(conv.archived, 0);
+      expect(conv.hasAttachment, 1);
+      expect(conv.read, 1);
+      expect(conv.messageCount, 70);
+      expect(conv.unreadCount, 0);
+      expect(conv.snippetCs, 106);
+      expect(conv.recipientIds, ['5', '9', '12']);
+      expect(conv.displayRecipientIds, ['5', '9']);
+      expect(conv.snippet, 'Thank you');
+    });
+
+    test('tolerates null / empty recipient_ids', () {
+      final conv = AndroidSimpleConversation.fromRaw({
+        '_id': 1,
+        'thread_id': 1,
+      });
+      expect(conv.recipientIds, isEmpty);
+      expect(conv.displayRecipientIds, isEmpty);
+    });
+
+    test('toRaw → fromRaw round-trip preserves core fields', () {
+      // Regression for Tier 0 #10: toRaw previously emitted raw enum
+      // instances (chatType, type, usingMode), raw DateTime (date), and
+      // List<String> for recipient_ids — none encodable over the platform
+      // channel, and asymmetric with fromRaw which splits on spaces.
+      final raw = <String, dynamic>{
+        '_id': 6244,
+        'thread_id': 3,
+        'date': 1776546259000,
+        'read': 1,
+        'has_attachment': 1,
+        'message_count': 70,
+        'type': 0x01, // MessageBox.inbox
+        'recipient_ids': '5 9 12',
+        'display_recipient_ids': '5 9',
+        'snippet': 'Thank you',
+      };
+      final original = AndroidSimpleConversation.fromRaw(raw);
+      final rawOut = original.toRaw();
+
+      expect(rawOut['_id'], 6244);
+      expect(rawOut['thread_id'], 3);
+      expect(rawOut['date'], 1776546259000);
+      expect(rawOut['type'], 0x01); // enum serialised as int
+      expect(rawOut['recipient_ids'], '5 9 12'); // list → space-joined
+      expect(rawOut['display_recipient_ids'], '5 9');
+
+      // Re-parse the emitted raw; core joining columns survive intact.
+      final restored = AndroidSimpleConversation.fromRaw(rawOut);
+      expect(restored.id, 6244);
+      expect(restored.threadId, 3);
+      expect(restored.recipientIds, ['5', '9', '12']);
+      expect(restored.type, MessageBox.inbox);
+    });
+  });
+
+  group('ConversationFilter', () {
+    // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
+    // the latest-message id, not the thread id. Filtering threads must go
+    // through `thread_id` or every lookup silently mismatches.
+    test('threadIds + threadIdAfter round-trip through copyWith + toString', () {
+      const filter = ConversationFilter(
+        threadIds: [3, 9, 25],
+        threadIdAfter: 100,
+      );
+      expect(filter.threadIds, [3, 9, 25]);
+      expect(filter.threadIdAfter, 100);
+
+      final copy = filter.copyWith(threadIds: [7]);
+      expect(copy.threadIds, [7]);
+      expect(copy.threadIdAfter, 100);
+
+      expect(filter.toString(), contains('threadIds: [3, 9, 25]'));
+      expect(filter.toString(), contains('threadIdAfter: 100'));
     });
   });
 }

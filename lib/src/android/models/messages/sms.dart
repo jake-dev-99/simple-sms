@@ -1,7 +1,6 @@
 import 'dart:core';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
 /// An SMS message record read from the Android telephony content provider.
@@ -25,12 +24,10 @@ import '../enums/sms_mms_enums.dart';
 /// Use [Sms.fromJson] / [toJson] for app-layer round-trips (e.g. cached
 /// records) and [Sms.fromRaw] / [toRaw] when interacting with the raw
 /// platform-channel payload.
-class Sms implements ModelInterface {
-  @override
+class Sms {
   final int id;
   final int threadId;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String? address;
@@ -68,7 +65,15 @@ class Sms implements ModelInterface {
   final String? reCountInfoCustomReaction;
   /// Samsung OEM column `spam_type` — spam-classification flag.
   final int? spamType;
-  final String? rawSender;
+  /// Carrier-reported originating address on this row (SMS `from_address`
+  /// column). Usually redundant with [address] for inbound SMS; on
+  /// outbound rows it's the sender's MSISDN as the SMSC saw it.
+  final String? fromAddress;
+
+  /// Deprecated alias for [fromAddress]. Removed in a future major.
+  @Deprecated('Renamed to fromAddress in v0.5; maps to `from_address` column.')
+  String? get rawSender => fromAddress;
+
   final String? groupId;
   final String? groupType;
   final bool? hidden;
@@ -138,7 +143,7 @@ class Sms implements ModelInterface {
     this.isSatellite,
     this.reCountInfoCustomReaction,
     this.spamType,
-    this.rawSender,
+    this.fromAddress,
     this.groupId,
     this.groupType,
     this.hidden,
@@ -214,7 +219,7 @@ class Sms implements ModelInterface {
     isSatellite: FieldHelper.asBool(json["isSatellite"]),
     reCountInfoCustomReaction: json["reCountInfoCustomReaction"]?.toString(),
     spamType: FieldHelper.asInt(json["spamType"]),
-    rawSender: json["fromAddress"],
+    fromAddress: json["fromAddress"],
     groupId: json["groupId"],
     groupType: json["groupType"],
     hidden: FieldHelper.asBool(json["hidden"]),
@@ -303,7 +308,7 @@ class Sms implements ModelInterface {
     "isSatellite": isSatellite,
     "reCountInfoCustomReaction": reCountInfoCustomReaction,
     "spamType": spamType,
-    "fromAddress": rawSender,
+    "fromAddress": fromAddress,
     "groupId": groupId,
     "groupType": groupType,
     "hidden": hidden,
@@ -352,7 +357,7 @@ class Sms implements ModelInterface {
     // legacy shim preserved only for unit tests that mock rows without `_id`;
     // real provider rows always have `_id`. Zero is a last-resort default
     // that matches the "unparseable row" behaviour used elsewhere.
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+    id: FieldHelper.primaryKey(raw),
     address: raw["address"],
     announcementsScenarioId: raw["announcements_scenario_id"],
     announcementsSubtype: FieldHelper.asInt(raw["announcements_subtype"]),
@@ -381,7 +386,7 @@ class Sms implements ModelInterface {
     isSatellite: FieldHelper.asBool(raw["is_satellite"]),
     reCountInfoCustomReaction: raw["re_count_info_custom_reaction"]?.toString(),
     spamType: FieldHelper.asInt(raw["spam_type"]),
-    rawSender: raw["from_address"],
+    fromAddress: raw["from_address"],
     groupId: raw["group_id"],
     groupType: raw["group_type"],
     hidden: FieldHelper.asBool(raw["hidden"]),
@@ -472,7 +477,7 @@ class Sms implements ModelInterface {
     "is_satellite": FieldHelper.boolToInt(isSatellite),
     "re_count_info_custom_reaction": reCountInfoCustomReaction,
     "spam_type": spamType,
-    "from_address": rawSender,
+    "from_address": fromAddress,
     "group_id": groupId,
     "group_type": groupType,
     "hidden": FieldHelper.boolToInt(hidden),

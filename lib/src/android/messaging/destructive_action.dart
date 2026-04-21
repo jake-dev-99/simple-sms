@@ -1,4 +1,4 @@
-import '../../interop/destructive_actions_interop.dart';
+import '../../interop/channels.dart';
 
 /// Destructive operations for messages and conversations.
 ///

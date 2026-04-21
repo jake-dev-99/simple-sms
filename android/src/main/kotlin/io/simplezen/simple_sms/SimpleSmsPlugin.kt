@@ -14,7 +14,6 @@ import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler
-import io.simplezen.simple_sms.queries.Query
 
 /** SimpleSmsPlugin */
 class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener,
@@ -25,7 +24,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   // Method Channels
   private lateinit var messageChannel: MethodChannel
-  private lateinit var queryChannel: MethodChannel
   private lateinit var actionsChannel: MethodChannel
   private lateinit var destructiveActionsChannel: MethodChannel
 
@@ -47,9 +45,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
       MethodChannel(binaryMessenger, "io.simplezen.simple_sms/messaging")
         .setMethodCallHandler(OutboundMessagingHandler(appContext))
-
-      MethodChannel(binaryMessenger, "io.simplezen.simple_sms/query")
-        .setMethodCallHandler(Query(appContext))
 
       MethodChannel(binaryMessenger, "io.simplezen.simple_sms/actions")
         .setMethodCallHandler(DeviceActions(appContext))
@@ -76,7 +71,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // channels may legitimately be unset here. Guard each access instead of
     // crashing with UninitializedPropertyAccessException on engine teardown.
     if (::messageChannel.isInitialized) messageChannel.setMethodCallHandler(null)
-    if (::queryChannel.isInitialized) queryChannel.setMethodCallHandler(null)
     if (::actionsChannel.isInitialized) actionsChannel.setMethodCallHandler(null)
     if (::destructiveActionsChannel.isInitialized) destructiveActionsChannel.setMethodCallHandler(null)
     flutterBinding = null
@@ -139,7 +133,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     applicationContext = context
 
     messageChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/messaging")
-    queryChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/query")
     actionsChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/actions")
     destructiveActionsChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/destructive_actions")
 

@@ -1,9 +1,13 @@
-import 'dart:io';
+// `dart:io` also exports a `ContentType` type — hide it so our local
+// MIME enum (declared in `enums/sms_mms_enums.dart`) resolves
+// unambiguously inside this file.
+import 'dart:io' hide ContentType;
 
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
@@ -34,6 +38,11 @@ import '../models/people/mms_participant.dart';
 // easy to audit and stay consistent with `Query.kt` / `ContentQuery`
 // on the Kotlin side.
 const String _contactsUri = 'content://com.android.contacts/contacts';
+const String _contactsDataUri = 'content://com.android.contacts/data';
+const String _contactsPhoneFilterUri =
+    'content://com.android.contacts/data/phones/filter';
+const String _contactsEmailFilterUri =
+    'content://com.android.contacts/data/emails/filter';
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
 const String _mmsPartUri = 'content://mms/part';
@@ -81,10 +90,9 @@ class LookupService {
   Future<Contactable?> lookupContactableByAddress(String address) async {
     try {
       final isEmail = address.contains('@');
-      final uri =
-          isEmail
-              ? 'content://com.android.contacts/data/emails/filter/$address'
-              : 'content://com.android.contacts/data/phones/filter/$address';
+      final uri = isEmail
+          ? '$_contactsEmailFilterUri/$address'
+          : '$_contactsPhoneFilterUri/$address';
       final response = await SimpleQuery.instance.query(
         QueryRequest(
           domain: QueryDomain.platformSpecific,
@@ -119,7 +127,7 @@ class LookupService {
         ),
       );
       if (response.records.isEmpty) return null;
-      return await Mms.fromRaw(
+      return Mms.fromRaw(
         Map<String, dynamic>.from(response.records.first),
       );
     } catch (e, s) {
@@ -331,11 +339,9 @@ class LookupService {
           ],
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to get MMS for thread $threadId: $e');
       debugPrint(s.toString());
@@ -376,11 +382,9 @@ class LookupService {
                   : null,
         ),
       );
-      final results = <Mms>[];
-      for (final row in response.records) {
-        results.add(await Mms.fromRaw(Map<String, dynamic>.from(row)));
-      }
-      return results;
+      return response.records
+          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (e, s) {
       debugPrint('simple_sms: Failed to list MMS ($filter): $e');
       debugPrint(s.toString());
@@ -391,9 +395,9 @@ class LookupService {
   /// Lists the parts (text body + attachments) that belong to an MMS message.
   ///
   /// Queries `content://mms/part` filtered by `mid = mmsId`. If
-  /// [MmsPartFilter.contentTypePrefix] is set, only parts whose `ct` column
-  /// starts with that prefix are returned (e.g. `image/` for all image
-  /// attachments).
+  /// [MmsPartFilter.contentTypeContains] is set, only parts whose `ct`
+  /// column contains that substring are returned (e.g. `image/` for all
+  /// image attachments).
   Future<List<MmsPart>> listMmsParts({
     required int mmsId,
     MmsPartFilter? filter,
@@ -406,13 +410,13 @@ class LookupService {
           value: mmsId.toString(),
         ),
       ];
-      final prefix = filter?.contentTypePrefix;
-      if (prefix != null && prefix.isNotEmpty) {
+      final contentType = filter?.contentTypeContains;
+      if (contentType != null && contentType.isNotEmpty) {
         conditions.add(
           QueryFilterCondition(
             field: 'ct',
             operator: QueryFilterOperator.contains,
-            value: prefix,
+            value: contentType,
           ),
         );
       }
@@ -521,7 +525,7 @@ class LookupService {
     bool enrich = true,
   }) async {
     final results = await listConversations(
-      filter: ConversationFilter(ids: [threadId]),
+      filter: ConversationFilter(threadIds: [threadId]),
       enrich: enrich,
       limit: 1,
     );
@@ -529,42 +533,60 @@ class LookupService {
   }
 
   /// Resolves participants + latestSms / latestMms for a bare conversation.
+  ///
+  /// Runs recipient resolution and latest-message lookups in parallel — each
+  /// query is an independent content-provider roundtrip, and on a populous
+  /// inbox (200 threads × 3 participants) the old serial version paid ~800
+  /// sequential provider calls. `Future.wait` drops that to three
+  /// concurrent batches per thread.
   Future<AndroidSimpleConversation> _enrichConversation(
     AndroidSimpleConversation base,
   ) async {
-    // Resolve each recipientId → Contactable.
-    final participants = <Contactable>[];
-    for (final rid in base.recipientIds) {
-      if (rid.isEmpty) continue;
-      final address = await resolveCanonicalAddress(rid);
-      if (address == null) continue;
-      final contactable = await lookupContactableByAddress(address);
-      if (contactable != null) {
-        participants.add(contactable);
-      } else {
-        // Fall back to a minimal Contactable keyed by the address only, so the
-        // caller always has something to show.
-        participants.add(Contactable(id: -1, value: address));
-      }
-    }
+    // Resolve every recipientId → Contactable concurrently.
+    final participantsFuture = Future.wait(
+      base.recipientIds.where((rid) => rid.isNotEmpty).map(_resolveParticipant),
+    );
 
-    // Latest SMS + MMS for the thread (each capped at 1 row).
-    final latestSmsList = await listSms(
+    // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
+    final latestSmsFuture = listSms(
       filter: SmsFilter(threadId: base.threadId),
       sort: SmsSort.newestFirst,
       limit: 1,
     );
-    final latestMmsList = await listMms(
+    final latestMmsFuture = listMms(
       filter: MmsFilter(threadId: base.threadId),
       sort: MmsSort.newestFirst,
       limit: 1,
     );
+
+    final results = await Future.wait<Object>([
+      participantsFuture,
+      latestSmsFuture,
+      latestMmsFuture,
+    ]);
+    final participants =
+        (results[0] as List<Contactable?>).whereType<Contactable>().toList(
+              growable: false,
+            );
+    final latestSmsList = results[1] as List<Sms>;
+    final latestMmsList = results[2] as List<Mms>;
 
     return base.enrich(
       participants: participants,
       latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
       latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
     );
+  }
+
+  /// Resolves a single recipient id to a [Contactable]: canonical-address
+  /// lookup → contactable-by-address lookup, with a minimal fallback so
+  /// the UI always has *something* to render. Returns null only when the
+  /// recipient id doesn't resolve to any canonical address.
+  Future<Contactable?> _resolveParticipant(String recipientId) async {
+    final address = await resolveCanonicalAddress(recipientId);
+    if (address == null) return null;
+    final contactable = await lookupContactableByAddress(address);
+    return contactable ?? Contactable(id: -1, value: address);
   }
 
   /// Lists every `data` row belonging to a single contact — phone numbers,
@@ -587,7 +609,7 @@ class LookupService {
             ),
           ],
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
@@ -637,7 +659,7 @@ class LookupService {
           domain: QueryDomain.platformSpecific,
           filters: filters,
           platformData: const {
-            'contentUri': 'content://com.android.contacts/data',
+            'contentUri': _contactsDataUri,
           },
         ),
       );
@@ -686,28 +708,20 @@ class LookupService {
   }
 
   String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
-    final ext = _extensionForMime(handle.mimeType);
-    return 'mms_part_$partId$ext';
+    return 'mms_part_$partId${_extensionForMime(handle.mimeType)}';
   }
 
-  String _extensionForMime(String? mime) {
+  /// Maps a MIME string to a dotted extension (e.g. `image/jpeg` → `.jpg`).
+  /// Returns `''` when the MIME is null or unrecognised — callers attach
+  /// the result directly to the filename stem and expect no suffix for
+  /// unknown types. Delegates to the canonical [ContentType] table rather
+  /// than maintaining a parallel switch.
+  static String _extensionForMime(String? mime) {
     if (mime == null) return '';
-    switch (mime) {
-      case 'image/jpeg':
-        return '.jpg';
-      case 'image/png':
-        return '.png';
-      case 'image/gif':
-        return '.gif';
-      case 'video/mp4':
-        return '.mp4';
-      case 'audio/amr':
-        return '.amr';
-      case 'text/plain':
-        return '.txt';
-      default:
-        return '';
+    for (final ct in ContentType.values) {
+      if (ct.value.isNotEmpty && ct.value == mime) return '.${ct.extension}';
     }
+    return '';
   }
 
   // --- Private filter / sort translation -----------------------------------
@@ -979,21 +993,25 @@ class LookupService {
   /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
   ///
   /// The `content://mms-sms/conversations?simple=true` view exposes `_id`
-  /// as the thread id, `date` as the last-activity timestamp, `read` as an
-  /// int flag, and `has_attachment` as an int flag.
+  /// as the **latest-message id** in the thread (NOT the thread id, on
+  /// Samsung Android 16 and AOSP's Mms-Sms provider), `thread_id` as the
+  /// stable thread primary key, `date` as the last-activity timestamp,
+  /// `read` as an int flag, and `has_attachment` as an int flag. Thread
+  /// filtering goes through `thread_id` so joins with `SmsFilter.threadId`
+  /// / `MmsFilter.threadId` stay consistent.
   List<QueryFilterCondition> _buildConversationFilters(
     ConversationFilter? filter,
   ) {
     if (filter == null) return const [];
     final conditions = <QueryFilterCondition>[];
 
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
+    final threadIds = filter.threadIds;
+    if (threadIds != null && threadIds.isNotEmpty) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
+          value: threadIds.map((id) => id.toString()).toList(),
         ),
       );
     }
@@ -1016,12 +1034,19 @@ class LookupService {
         ),
       );
     }
+    // The `mms-sms/conversations?simple=true` view surfaces `date` in
+    // **seconds** on Samsung Android 16 (Prospector dump confirms:
+    // 1776546259, not 1776546259000). Matches the MMS `date` column the
+    // row originates from — the simple conversations view is effectively
+    // the newest SMS/MMS row per thread, and MMS stores `date` in
+    // seconds per OMA MMS. SMS stores `date` in millis. So this builder
+    // mirrors `_buildMmsFilters` (÷1000), not `_buildSmsFilters`.
     if (filter.dateFrom != null) {
       conditions.add(
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.greaterThanOrEqual,
-          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }
@@ -1030,7 +1055,7 @@ class LookupService {
         QueryFilterCondition(
           field: 'date',
           operator: QueryFilterOperator.lessThanOrEqual,
-          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
+          value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
         ),
       );
     }
@@ -1043,12 +1068,12 @@ class LookupService {
         ),
       );
     }
-    if (filter.idAfter != null) {
+    if (filter.threadIdAfter != null) {
       conditions.add(
         QueryFilterCondition(
-          field: '_id',
+          field: 'thread_id',
           operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
+          value: filter.threadIdAfter!.toString(),
         ),
       );
     }

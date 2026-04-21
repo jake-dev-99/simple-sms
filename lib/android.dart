@@ -21,7 +21,6 @@ export 'src/android/models/people/contactables.dart';
 export 'src/android/models/people/mms_participant.dart';
 
 // Models - Conversations
-export 'src/android/models/conversations/mms_sms_conversations.dart';
 export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 
 // Models - Device
@@ -32,14 +31,8 @@ export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 // models). Consumers should import from that plugin instead.
 
 // Models - Enums
-export 'src/android/models/enums/attachment_enums.dart';
 export 'src/android/models/enums/contact_enums.dart';
-export 'src/android/models/enums/conversation_enums.dart';
-export 'src/android/models/enums/device_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
-
-// Models - Queries
-export 'src/android/models/queries/query_obj.dart';
 
 // Models - Filters (typed list-API inputs)
 export 'src/android/models/filters/sort_direction.dart';

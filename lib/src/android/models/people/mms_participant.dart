@@ -4,15 +4,12 @@
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
 
-class MmsParticipant implements ModelInterface {
-  @override
+class MmsParticipant {
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final CharSet? charset;
@@ -70,7 +67,7 @@ class MmsParticipant implements ModelInterface {
   factory MmsParticipant.fromRaw(Map<String, dynamic> raw) {
     final participant = MmsParticipant(
       // `_id` is the BaseColumns PK on mms_addr; `id` is a legacy test shim.
-      id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       address: raw["address"]?.toString(),
       charset: FieldHelper.enumFromValue(
         CharSet.values,

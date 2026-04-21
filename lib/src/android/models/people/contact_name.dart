@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 
 /// Android contact name model (StructuredName)
 ///
@@ -12,11 +11,9 @@ import '../../../interfaces/models_interface.dart';
 /// - PHONETIC_GIVEN_NAME (data7)
 /// - PHONETIC_MIDDLE_NAME (data8)
 /// - PHONETIC_FAMILY_NAME (data9)
-class AndroidContactName implements ModelInterface {
-  @override
+class AndroidContactName {
   final int id;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   // App-style (camelCase)
@@ -46,7 +43,7 @@ class AndroidContactName implements ModelInterface {
 
   factory AndroidContactName.fromJson(Map<String, dynamic> json) =>
       AndroidContactName(
-        id: FieldHelper.asInt(json['id'])!,
+        id: FieldHelper.asInt(json['id']) ?? 0,
         sourceMap: json,
         displayName: json['displayName'],
         givenName: json['givenName'],
@@ -75,7 +72,7 @@ class AndroidContactName implements ModelInterface {
   // == Android/DB-style (raw, snake_case) ==
   factory AndroidContactName.fromRaw(Map<String, dynamic> raw) =>
       AndroidContactName(
-        id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+        id: FieldHelper.primaryKey(raw),
         sourceMap: raw,
         displayName: raw['data1'],
         givenName: raw['data2'],
