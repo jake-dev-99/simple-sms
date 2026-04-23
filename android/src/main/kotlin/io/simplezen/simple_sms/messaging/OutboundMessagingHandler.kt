@@ -364,18 +364,27 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val attachments = requestDetails.attachmentPaths ?: emptyList<String>()
             for (attachment in attachments) {
                 val mimeType = getMimeType(attachment)
+                val file = File(attachment)
+                val bytes = try {
+                    file.readBytes()
+                } catch (e: Exception) {
+                    Log.e("OutboundMessagingHandler", "Failed to read attachment $attachment: ${e.message}", e)
+                    byteArrayOf()
+                }
+                val name = file.name
                 parts.add(
                         MmsPart(
                                 seq = i,
-                                mimeType = mimeType ?: "text/plain",
-                                filename = "$i.txt",
-                                contentLocation = "$i.txt",
+                                mimeType = mimeType ?: "application/octet-stream",
+                                filename = name,
+                                contentLocation = name,
                                 text = "",
+                                size = bytes.size.toLong(),
                                 contentId = "",
                                 contentDisposition = "",
-                                name = "",
+                                name = name,
                                 charset = 106,
-                                data = byteArrayOf()
+                                data = bytes
                         )
                 )
                 i++
@@ -440,30 +449,28 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
 
             for (attachment in requestDetails.attachmentPaths ?: emptyList<String>()) {
                 try {
+                    val file = File(attachment)
+                    val mimeType = getMimeType(attachment) ?: "application/octet-stream"
 
-                    // Convert URI string to Uri object
-                    val uri = Uri.fromFile(File(attachment))
-
-                    // Get content resolver
-                    val contentResolver = context.contentResolver
-
-                    // Load bitmap from URI
-                    val bitmap =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                // For API 28 and above
-                                val source = ImageDecoder.createSource(contentResolver, uri)
-                                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                                    decoder.isMutableRequired = true
+                    if (mimeType.startsWith("image/")) {
+                        val uri = Uri.fromFile(file)
+                        val contentResolver = context.contentResolver
+                        val bitmap =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                    val source = ImageDecoder.createSource(contentResolver, uri)
+                                    ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                                        decoder.isMutableRequired = true
+                                    }
+                                } else {
+                                    MediaStore.Images.Media.getBitmap(contentResolver, uri)
                                 }
-                            } else {
-                                // For older versions
-                                MediaStore.Images.Media.getBitmap(contentResolver, uri)
-                            }
-
-                    message.addImage(bitmap)
+                        message.addImage(bitmap)
+                    } else {
+                        message.addMedia(file.readBytes(), mimeType, file.name)
+                    }
                 } catch (e: Exception) {
-                    Log.e("OutboundMessagingHandler", "Failed to load image: ${e.message}", e)
+                    Log.e("OutboundMessagingHandler", "Failed to load attachment $attachment: ${e.message}", e)
                 }
             }
 
