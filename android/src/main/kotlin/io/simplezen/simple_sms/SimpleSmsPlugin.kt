@@ -37,20 +37,66 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       private set
 
     /**
+     * Per-messenger cache of the OutboundMessagingHandler instance so
+     * repeat calls to [initializeMethodChannelsStatic] don't construct a
+     * fresh handler each time.
+     *
+     * The handler's secondary constructor calls `setupSmsReceiver()`,
+     * which registers an Android `BroadcastReceiver`. Before this cache
+     * existed, every inbound SMS delivery (which ran through
+     * `BackgroundEngineManager.ensureMethodChannels` → here) spawned a
+     * new handler + a new receiver, all of them leaking because the
+     * Service lifecycle that normally calls `unregisterSmsReceiver`
+     * never fires on constructor-created instances.
+     *
+     * Identity-hash keyed: BinaryMessengers are compared by reference,
+     * not content. The foreground engine's messenger and each
+     * background engine's messenger are distinct instances, which is
+     * the correct grouping.
+     */
+    private val handlersByMessenger =
+      java.util.IdentityHashMap<BinaryMessenger, OutboundMessagingHandler>()
+
+    /**
      * Initialize method channels on a given BinaryMessenger. Used by both the
      * foreground plugin lifecycle and BackgroundEngineManager for background delivery.
+     *
+     * Idempotent per-messenger: the `OutboundMessagingHandler` instance
+     * is cached so repeat invocations for the same messenger don't
+     * register additional `OutboundMessagingReceiver`s.
      */
     fun initializeMethodChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
       val appContext = context.applicationContext
 
+      val outboundHandler = synchronized(handlersByMessenger) {
+        handlersByMessenger[binaryMessenger] ?: OutboundMessagingHandler(appContext).also {
+          handlersByMessenger[binaryMessenger] = it
+        }
+      }
+
       MethodChannel(binaryMessenger, "io.simplezen.simple_sms/messaging")
-        .setMethodCallHandler(OutboundMessagingHandler(appContext))
+        .setMethodCallHandler(outboundHandler)
 
       MethodChannel(binaryMessenger, "io.simplezen.simple_sms/actions")
         .setMethodCallHandler(DeviceActions(appContext))
 
       MethodChannel(binaryMessenger, "io.simplezen.simple_sms/destructive_actions")
         .setMethodCallHandler(DestructiveActions(appContext))
+    }
+
+    /**
+     * Release the cached [OutboundMessagingHandler] for [binaryMessenger]
+     * (if one is cached), calling its `release()` so the underlying
+     * BroadcastReceiver is unregistered. Called from
+     * [onDetachedFromEngine] and from
+     * [BackgroundEngineManager.onForegroundDetached] when engines tear
+     * down.
+     */
+    internal fun releaseHandler(binaryMessenger: BinaryMessenger) {
+      val handler = synchronized(handlersByMessenger) {
+        handlersByMessenger.remove(binaryMessenger)
+      }
+      handler?.release()
     }
 
   }
@@ -64,6 +110,10 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     Log.d(TAG, "onDetachedFromEngine")
+    // Release the cached OutboundMessagingHandler for this messenger so
+    // its BroadcastReceiver is unregistered. Without this, every engine
+    // teardown would leave a live receiver in the Android registry.
+    releaseHandler(binding.binaryMessenger)
     // The channel `lateinit var`s are only populated in onAttachedToActivity
     // (via initializeMethodChannels). A background FlutterEngine — e.g. the
     // one Workmanager spins up for a headless sync task — attaches and
