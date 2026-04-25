@@ -160,6 +160,21 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
         channelResultMap.clear()
     }
 
+    /**
+     * Explicit teardown for handlers constructed via the secondary
+     * [constructor(Context)] rather than spun up as a Service. Android
+     * never fires [onDestroy] on those, so the receiver we register in
+     * [setupSmsReceiver] would otherwise leak forever.
+     *
+     * Called from `SimpleSmsPlugin.releaseHandler` when the messenger
+     * this handler was registered on goes away (plugin detach,
+     * background engine teardown).
+     */
+    fun release() {
+        unregisterSmsReceiver()
+        channelResultMap.clear()
+    }
+
     private fun setupSmsReceiver() {
         if (messageStatusReceiver == null) {
             Log.d("OutboundMessagingHandler", "Setting up OutboundMessagingReceiver.")

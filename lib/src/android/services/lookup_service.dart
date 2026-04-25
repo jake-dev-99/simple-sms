@@ -642,7 +642,7 @@ class LookupService {
           operator: QueryFilterOperator.equals,
           value: contactId.toString(),
         ),
-        const QueryFilterCondition(
+        QueryFilterCondition(
           field: 'mimetype',
           operator: QueryFilterOperator.equals,
           value: 'vnd.android.cursor.item/name',
