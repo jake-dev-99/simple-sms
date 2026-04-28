@@ -182,12 +182,33 @@ class InboundMmsHandler() : BroadcastReceiver() {
         subId: Int,
         expirySeconds: Long,
     ) {
-        val tempMmsFile = createTempMmsFile(context)
-        val contentFileUri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            tempMmsFile
-        )
+        // Resolve to the canonical path before handing to FileProvider — its
+        // configured roots are stored canonically, so a non-canonical input
+        // (e.g. /data/data/<pkg>/... when the resolved root is
+        // /data/user/0/<pkg>/...) walks past every configured entry and
+        // throws IllegalArgumentException.
+        val tempMmsFile = createTempMmsFile(context).canonicalFile
+        // Defensive: even with file_paths.xml covering every storage type,
+        // any future provider misconfiguration should degrade to "no inbound
+        // MMS" rather than crashing the receiver process. ART marks the
+        // process "crashed too many times" after a few rapid receiver crashes
+        // and Android then suppresses subsequent WAP_PUSH deliveries until
+        // reinstall.
+        val contentFileUri: Uri = try {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                tempMmsFile
+            )
+        } catch (e: IllegalArgumentException) {
+            Log.e(
+                TAG,
+                "FileProvider.getUriForFile failed for ${tempMmsFile.absolutePath}; " +
+                    "MMS download aborted. Check file_paths.xml cache-path coverage.",
+                e
+            )
+            return
+        }
         Log.d(
             TAG,
             "Starting MMS download from: $contentUri " +

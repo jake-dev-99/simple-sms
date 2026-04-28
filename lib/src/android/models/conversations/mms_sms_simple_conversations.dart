@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
@@ -206,20 +207,51 @@ class AndroidSimpleConversation {
 
   factory AndroidSimpleConversation.fromRaw(
     Map<String, dynamic> raw,
+  ) {
+    final result = _fromRawImpl(raw);
+    // One log line per parsed row. `simple=true` exposes `_id` as the
+    // thread id (AOSP, no `thread_id` column on the cursor), so this
+    // line is the canonical spot to catch column-mapping drift after an
+    // OEM/Android update.
+    //
+    // Also surfaces the raw `recipient_ids` cell (escaped for whitespace
+    // visibility) right alongside the post-split list so misrouting that
+    // traces to the splitter — wrong delimiter, embedded quotes, leading
+    // junk — is unambiguous in the log.
+    final rawRecipientIds = raw['recipient_ids'];
+    final rawRecipientIdsEscaped = rawRecipientIds?.toString().replaceAllMapped(
+          RegExp(r'\s'),
+          (m) => m[0] == ' ' ? '·' : '⎵',
+        );
+    debugPrint(
+      '[diag][simple-sms] AndroidSimpleConversation.fromRaw '
+      'simpleId=${result.id} threadId=${result.threadId} '
+      'rawRecipientIds="$rawRecipientIdsEscaped" '
+      'parsedRecipientIds=${result.recipientIds.join("|")} '
+      'parsedCount=${result.recipientIds.length} '
+      'rawHasThreadIdCol=${raw.containsKey("thread_id")} '
+      'rawHasIdCol=${raw.containsKey("_id")}',
+    );
+    return result;
+  }
+
+  static AndroidSimpleConversation _fromRawImpl(
+    Map<String, dynamic> raw,
   ) => AndroidSimpleConversation(
-    // `_id` on a `content://mms-sms/conversations?simple=true` row is
-    // the most-recent MESSAGE id for the thread the row represents —
-    // NOT the thread id. The actual thread primary key is the
-    // `thread_id` column. Earlier revisions of this parser mapped
-    // `threadId = raw['_id']`, which meant every downstream
-    // Conversation model's `threadId` was actually a message id.
-    // Consumers that join messages on `thread_id` (simple-messages
-    // does this to attach SMS/MMS to conversations) had their joins
-    // silently fail — the conversation's stored id was a message id,
-    // the messages' stored parent id was a thread id, and they never
-    // matched. The fallback to `_id` stays only for the degenerate
-    // case where a provider row legitimately lacks `thread_id` (not
-    // expected on real Android, but safer than a null).
+    // The `content://mms-sms/conversations?simple=true` view is a
+    // stripped projection in AOSP: it exposes one row per thread keyed
+    // on `_id`, with no `thread_id` column. So `_id` IS the thread id
+    // here. Confirmed from the Prospector dump header
+    //   `…,"recipient_ids","pa_uuid","secret_mode","_id","pa_ownnumber"`
+    // and from row content (numerically dense small ints, sequential
+    // with the thread sequence — message ids would be in the
+    // thousands).
+    //
+    // The fallback chain stays in this order so the parser also
+    // works for callers that build an `AndroidSimpleConversation`
+    // from a non-simple `mms-sms/conversations` row (joined view,
+    // one-per-message), where `thread_id` exists and `_id` is a
+    // message id. Real `simple=true` rows take the second arm.
     id: FieldHelper.primaryKey(raw),
     threadId: FieldHelper.asInt(raw['thread_id']) ??
         FieldHelper.asInt(raw['_id']) ??
@@ -279,13 +311,34 @@ class AndroidSimpleConversation {
     ),
   );
 
-  /// Parses a space-separated id column (e.g. `recipient_ids` = "1 2 3") into
-  /// a list of non-empty id strings, tolerating ints or null.
+  /// Parses a whitespace-separated id column (e.g. `recipient_ids` = "1 2 3")
+  /// into a list of non-empty id strings, tolerating ints or null.
+  ///
+  /// Splits on `\s+` rather than a single ' ' so the parser tolerates
+  /// double-spaces, tab, and non-breaking-space (some OEM cursors and
+  /// platform-channel serializers normalize whitespace differently). AOSP
+  /// canonically writes single ASCII spaces; the regex is purely defensive.
+  ///
+  /// Also drops any token that isn't all decimal digits — e.g. a stray
+  /// quote, comma, or empty-after-split — so a malformed cell never feeds
+  /// `resolveCanonicalAddress` an invalid recipient id and silently
+  /// poisons participant resolution.
   static List<String> _splitIds(dynamic raw) {
     if (raw == null) return const <String>[];
     final s = raw.toString().trim();
     if (s.isEmpty) return const <String>[];
-    return s.split(' ').where((p) => p.isNotEmpty).toList(growable: false);
+    final tokens = s.split(RegExp(r'\s+'));
+    final cleaned = tokens
+        .where((p) => p.isNotEmpty && RegExp(r'^\d+$').hasMatch(p))
+        .toList(growable: false);
+    final dropped = tokens.length - cleaned.length;
+    if (dropped > 0) {
+      debugPrint(
+        '[diag][simple-sms] _splitIds dropped $dropped non-numeric token(s) '
+        'from "$s" — kept=${cleaned.join("|")}',
+      );
+    }
+    return cleaned;
   }
 
   Map<String, dynamic> toRaw() => {
