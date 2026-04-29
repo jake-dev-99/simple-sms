@@ -8,7 +8,11 @@ import android.net.Uri
 import android.provider.BaseColumns
 import android.provider.Telephony
 import android.provider.Telephony.Mms
-import android.support.mms.pdu.PduHeaders
+// Was: `android.support.mms.pdu.PduHeaders`, which lived inside the
+// vendored `google_apps_messaging_core` Bugle module. That module has
+// been removed; switch to the equivalent constants in our own vendored
+// AOSP MMS PDU library at `com.google.android.mms.pdu_alt`.
+import com.google.android.mms.pdu_alt.PduHeaders
 import android.util.Log
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler.MessageRequestDetails
 import io.simplezen.simple_sms.models.MmsAddr

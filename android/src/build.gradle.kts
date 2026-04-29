@@ -47,7 +47,9 @@ android {
     }
 
     dependencies {
-        implementation(project(":google_apps_messaging_core"))
+        // google_apps_messaging_core removed; its only call into our
+        // tree was the canonical MmsUtils.insertReceivedMmsMessage
+        // reference, now ported to InboundMmsPersister.kt.
         implementation(libs.androidx.exifinterface)
         implementation(libs.androidx.annotation)
         implementation(libs.guava)

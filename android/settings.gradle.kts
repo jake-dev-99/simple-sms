@@ -33,7 +33,10 @@ plugins {
 }
 
 //include(":simple-sms")
-include(":google_apps_messaging_core")
+// `:google_apps_messaging_core` removed in the inbound-MMS port —
+// the canonical `MmsUtils.insertReceivedMmsMessage` was its only
+// caller in our tree, and it's been ported to
+// `InboundMmsPersister.kt`. See android/build.gradle.kts for context.
 include(":google_i18n_libphonenumber")
 include(":google_ex")
 include(":google_chips")
@@ -41,7 +44,6 @@ include(":google_photoviewer")
 include(":google_vcard")
 
 // project(":simple-sms").projectDir = file("/Users/jake/Development/simple-sms/android")
-project(":google_apps_messaging_core").projectDir = file("lib/google_apps_messaging_core")
 project(":google_i18n_libphonenumber").projectDir = file("lib/google_i18n_libphonenumber")
 project(":google_ex").projectDir = file("lib/google_ex")
 project(":google_chips").projectDir = file("lib/google_chips")
