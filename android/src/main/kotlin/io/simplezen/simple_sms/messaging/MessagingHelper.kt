@@ -37,35 +37,65 @@ internal fun getDirFromMimeType(context : Context, mime: String): String {
 
 internal fun getSelfNumbers(context: Context): Set<String> {
     val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-    val subscriptionManager  = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+    val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
     // Bail if NONE of these three are granted — each is a distinct
     // path to the self-number across SDKs, so if the caller has any
     // one we try. Request flow belongs to simple_permissions_native.
     val anyGranted = PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_SMS) ||
         PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_PHONE_NUMBERS) ||
         PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
-    val phoneNums = if (!anyGranted) {
-        return emptySet()
-    } else {
+    if (!anyGranted) return emptySet()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            listOfNotNull(subscriptionManager.getPhoneNumber(SubscriptionManager.getDefaultSmsSubscriptionId()))
-                .map { formatNumber(context, it) }
-                .toSet()
-        } else {
-            @SuppressLint("HardwareIds")
-            listOfNotNull(telephonyManager.line1Number)
-                .map { formatNumber(context, it) }
-                .toSet()
+    // S2 #18: enumerate ALL active subscriptions, not just the default
+    // SMS subscription. Dual-SIM users where the non-default SIM
+    // received an MMS-to-self otherwise won't have their own number
+    // stripped during thread-id derivation, leading to mis-grouping.
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val activeSubs: List<android.telephony.SubscriptionInfo> = try {
+            subscriptionManager.activeSubscriptionInfoList ?: emptyList()
+        } catch (e: SecurityException) {
+            // PHONE_STATE alone isn't always sufficient on some OEMs.
+            emptyList()
         }
+        activeSubs
+            .mapNotNull { subInfo ->
+                runCatching { subscriptionManager.getPhoneNumber(subInfo.subscriptionId) }
+                    .getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .mapNotNull { formatNumber(context, it) }
+            .toSet()
+    } else {
+        @SuppressLint("HardwareIds")
+        listOfNotNull(telephonyManager.line1Number)
+            .mapNotNull { formatNumber(context, it) }
+            .toSet()
     }
-    return phoneNums
 }
 
-internal fun formatNumber(context : Context, number: String): String {
-    // You may want to use Google's libphonenumber, or at minimum:
+/**
+ * Normalize a phone-number-like string to E.164.
+ *
+ * Returns `null` for inputs that aren't parseable as a phone number
+ * (5-digit shortcodes, alphanumeric senders like "VERIZON", emails).
+ * The previous non-null contract masked the underlying nullability of
+ * `PhoneNumberUtils.formatNumberToE164` and crashed the inbound
+ * receiver on every shortcode MMS — banks, 2FA codes, business
+ * senders all silently dropped.
+ *
+ * Callers should preserve the original string when this returns null
+ * (`formatNumber(ctx, raw) ?: raw`); the un-normalised form is still a
+ * valid display value, and downstream comparisons should use
+ * [compareNumbers] which handles both forms.
+ */
+internal fun formatNumber(context: Context, number: String): String? {
+    if (number.isBlank()) return null
     val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-    return PhoneNumberUtils.formatNumberToE164(number, telephonyManager.networkCountryIso.uppercase())
+    val region = telephonyManager.networkCountryIso?.takeIf { it.isNotBlank() }?.uppercase()
+        ?: return null
+    return runCatching {
+        PhoneNumberUtils.formatNumberToE164(number, region)
+    }.getOrNull()
 }
 
 internal fun compareNumbers(context : Context, numVals : Set<String>, searchNum : String): Boolean {

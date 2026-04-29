@@ -332,8 +332,14 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             PendingIntent.FLAG_IMMUTABLE
                     )
 
+            val rawDest = requestDetails.addresses.first()
+            // formatNumber may return null for non-E.164-parseable
+            // inputs (shortcodes, alphanumeric). Fall back to the raw
+            // input — SmsManager.sendTextMessage accepts shortcodes
+            // and other carrier-specific destinations directly.
+            val destAddress = formatNumber(context, rawDest) ?: rawDest
             smsManager.sendTextMessage(
-                    formatNumber(context, requestDetails.addresses.first()),
+                    destAddress,
                     null, // originating address
                     requestDetails.body,
                     outboundPendingIntent,
@@ -439,7 +445,10 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val newParts: List<Map<String, Any?>> =
                     MmsDatabaseWriter.insertMmsParts(context, msgId.toLong(), parts)
 
-            val cleanedRecipients = requestDetails.addresses.map { formatNumber(context, it) }
+            // Preserve raw values when formatNumber can't normalize
+            // (shortcodes, alphanumeric senders). Downstream comparisons
+            // tolerate both forms via PhoneNumberUtils.areSamePhoneNumber.
+            val cleanedRecipients = requestDetails.addresses.map { formatNumber(context, it) ?: it }
 
             newMms["parts"] = newParts
             newMms["addrs"] = newAddrs
