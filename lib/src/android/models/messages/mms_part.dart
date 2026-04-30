@@ -102,13 +102,14 @@ class MmsPart {
     contentDisposition: json["contentDisposition"],
     contentId: json["contentId"],
     contentLocation: json["contentLocation"] ?? '',
-    // `contentType` is required (non-nullable); fall back to textPlain
-    // so a malformed cache row doesn't throw at the constructor. The
-    // server side is expected to emit the enum `.value` (a MIME string
-    // like "text/plain") so the lookup works on the forward path.
-    contentType:
-        FieldHelper.enumFromValue(ContentType.values, json["contentType"]) ??
-            ContentType.textPlain,
+    // `ContentType.fromMime` throws on unknown MIME — see the enum
+    // doc-comment for why silent fallbacks here are dangerous. If a
+    // round-trip from a cache row produces an unknown MIME, the
+    // failure surfaces immediately (crashlytics) rather than rendering
+    // an empty message.
+    contentType: ContentType.fromMime(
+      json["contentType"] as String? ?? '',
+    ),
     contentTypeSub: json["contentTypeSub"],
     contentTypeTransferEncoding: json["contentTypeTransferEncoding"],
     // `Uri.tryParse` used to throw here when the key was absent (its first
@@ -184,9 +185,12 @@ class MmsPart {
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',
-      contentType:
-          FieldHelper.enumFromValue(ContentType.values, raw["ct"]) ??
-          ContentType.textPlain,
+      // `ContentType.fromMime` throws on unknown MIME so the receive
+      // path fails loudly with the offending string in the error
+      // message. Don't add a silent fallback here — see enum docstring.
+      contentType: ContentType.fromMime(
+        (raw["ct"] as String?) ?? '',
+      ),
       contentTypeSub: raw["ctt_s"],
       contentTypeTransferEncoding: raw["ctt_t"],
       // Real column on `content://mms/part` is `_data` (the file path to the
