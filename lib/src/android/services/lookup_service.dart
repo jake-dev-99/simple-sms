@@ -541,7 +541,14 @@ class LookupService {
 
       if (!enrich) return bare;
 
-    return Future.wait(bare.map(_enrichConversation));
+      return Future.wait(bare.map(_enrichConversation));
+    } catch (e, s) {
+      debugPrint(
+        'simple_sms: listConversations failed (filter=$filter): $e',
+      );
+      debugPrint(s.toString());
+      return const [];
+    }
   }
 
   /// Fetches a single conversation by thread id. Returns null if not found.
