@@ -1,7 +1,19 @@
-<paths>  
-    <external-path name="external_files" path="." />
-    <cache-path name="mms" path="."/>
-    <external-cache-path name="mms" path="." />
-    <files-path name="mms" path="." />
-    <external-files-path name="mms" path="." />
+<paths>
+    <!--
+      Each entry needs a UNIQUE `name=` attribute. AOSP FileProvider's
+      SimplePathStrategy stores roots in a HashMap<String, File>, so
+      duplicate names overwrite each other at parse time and only the
+      last entry survives. Pre-fix all four of cache-path /
+      external-cache-path / files-path / external-files-path used
+      `name="mms"`, which collapsed to a single root pointing at
+      external-files-path. The cache-path root never registered, so
+      `FileProvider.getUriForFile` on a temp file in `context.cacheDir`
+      threw `Failed to find configured root that contains <path>` —
+      crashing every inbound MMS download in InboundMmsHandler.
+    -->
+    <external-path       name="mms_external"        path="." />
+    <cache-path          name="mms_cache"           path="." />
+    <external-cache-path name="mms_external_cache"  path="." />
+    <files-path          name="mms_files"           path="." />
+    <external-files-path name="mms_external_files"  path="." />
 </paths>
