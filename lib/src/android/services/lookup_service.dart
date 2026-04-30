@@ -49,6 +49,31 @@ const String _mmsPartUri = 'content://mms/part';
 const String _mmsSmsConversationsUri =
     'content://mms-sms/conversations?simple=true';
 
+/// Masks an address for [diag] logging so full MSISDNs / emails don't
+/// land in logcat (where third-party crash reporters and `adb logcat -d`
+/// can scrape them). Keeps enough surrounding context to triage:
+///
+/// * `+16165551234` → `+161****1234`
+/// * `email@example.com` → `e***@example.com`
+/// * `…@rcs.google.com` → `<rcsToken@rcs.google.com>`
+/// * shortcodes (≤6 digits) and empties pass through unchanged so the
+///   `192`-style sender numbers remain readable in logs.
+String _maskAddress(String? raw) {
+  if (raw == null) return 'null';
+  final s = raw.trim();
+  if (s.isEmpty) return '(blank)';
+  if (s.endsWith('@rcs.google.com')) return '<rcsToken@rcs.google.com>';
+  final at = s.indexOf('@');
+  if (at > 0) {
+    return '${s.substring(0, 1)}***${s.substring(at)}';
+  }
+  if (s.length <= 6) return s;
+  return '${s.substring(0, 4)}****${s.substring(s.length - 4)}';
+}
+
+String _maskAddresses(Iterable<String?> raws, {String sep = '|'}) =>
+    raws.map(_maskAddress).join(sep);
+
 class LookupService {
   /// Set of E.164-normalized MSISDNs that belong to the device user
   /// itself — populated by the consumer (e.g. simple-messages) at
@@ -76,7 +101,7 @@ class LookupService {
     _selfNumbers = Set<String>.unmodifiable(numbers);
     debugPrint(
       '[diag][simple-sms] LookupService.setSelfNumbers '
-      'count=${numbers.length} values=${numbers.join("|")}',
+      'count=${numbers.length} values=${_maskAddresses(numbers)}',
     );
   }
 
@@ -287,7 +312,8 @@ class LookupService {
       final address = raw['address']?.toString();
       debugPrint(
         '[diag][simple-sms] resolveCanonicalAddress recipientId=$recipientId '
-        'records=${response.records.length} address=$address rawKeys=${raw.keys.toList()}',
+        'records=${response.records.length} address=${_maskAddress(address)} '
+        'rawKeys=${raw.keys.toList()}',
       );
       return (address != null && address.isNotEmpty) ? address : null;
     } catch (e, s) {
@@ -658,18 +684,18 @@ class LookupService {
     // underlying phone numbers from the per-message MMS addr table
     // (`content://mms/{id}/addr`), which on this device carries real
     // E.164 values alongside the RCS-token canonical entry.
-    final tokenIndices = <int>[
+    final tokenIndices = <int>{
       for (var i = 0; i < participants.length; i++)
         if (participants[i].value.contains('@')) i,
-    ];
+    };
     List<Contactable> finalParticipants = participants;
     if (tokenIndices.isNotEmpty) {
       final fallback = await _addressesFromMmsForThread(base.threadId);
       debugPrint(
         '[diag][simple-sms] _enrichConversation rcsTokenFallback '
         'threadId=${base.threadId} '
-        'tokens=${tokenIndices.map((i) => participants[i].value).join("|")} '
-        'fallbackAddresses=${fallback.join("|")}',
+        'tokens=${_maskAddresses(tokenIndices.map((i) => participants[i].value))} '
+        'fallbackAddresses=${_maskAddresses(fallback)}',
       );
       if (fallback.isNotEmpty) {
         // Replace token-shaped participants with MMS-derived ones.
@@ -684,14 +710,27 @@ class LookupService {
               (await lookupContactableByAddress(addr)) ??
               Contactable(id: -1, value: addr)),
         );
-        finalParticipants = [...keepers, ...recovered];
+        // Dedup keepers + recovered. A keeper participant may share
+        // a contact id (or normalized address) with a recovered MMS
+        // participant — e.g. a 1-1 RCS thread where one canonical-id
+        // resolves cleanly and another is the opaque token, but both
+        // refer to the same person. Without dedup the tile would
+        // double-render that person.
+        final seen = <String>{};
+        String key(Contactable c) => (c.id != -1)
+            ? 'id:${c.id}'
+            : 'addr:${c.value.trim().toLowerCase()}';
+        finalParticipants = <Contactable>[
+          for (final c in [...keepers, ...recovered])
+            if (seen.add(key(c))) c,
+        ];
       }
     }
 
     debugPrint(
       '[diag][simple-sms] _enrichConversation threadId=${base.threadId} '
       'simpleId=${base.id} recipientIds=${base.recipientIds.join("|")} '
-      'participants=${finalParticipants.map((p) => p.value).join("|")} '
+      'participants=${_maskAddresses(finalParticipants.map((p) => p.value))} '
       'latestSmsId=${latestSmsList.isEmpty ? "-" : latestSmsList.first.id} '
       'latestMmsId=${latestMmsList.isEmpty ? "-" : latestMmsList.first.id}',
     );
@@ -756,8 +795,9 @@ class LookupService {
     final contactable = await lookupContactableByAddress(address);
     debugPrint(
       '[diag][simple-sms] _resolveParticipant recipientId=$recipientId '
-      'address=$address contactable.value=${contactable?.value} '
-      'contactable.displayName=${contactable?.displayName}',
+      'address=${_maskAddress(address)} '
+      'contactable.value=${_maskAddress(contactable?.value)} '
+      'hasDisplayName=${contactable?.displayName != null}',
     );
     return contactable ?? Contactable(id: -1, value: address);
   }

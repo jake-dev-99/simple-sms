@@ -186,8 +186,24 @@ class InboundMmsHandler() : BroadcastReceiver() {
         // configured roots are stored canonically, so a non-canonical input
         // (e.g. /data/data/<pkg>/... when the resolved root is
         // /data/user/0/<pkg>/...) walks past every configured entry and
-        // throws IllegalArgumentException.
-        val tempMmsFile = createTempMmsFile(context).canonicalFile
+        // throws IllegalArgumentException. `canonicalFile` itself can throw
+        // IOException (filesystem in a bad state); fall back to
+        // `absoluteFile` rather than crashing the receiver — a non-canonical
+        // path may still match if the device doesn't symlink /data/data →
+        // /data/user/0, and the IllegalArgumentException catch below covers
+        // the case where it doesn't.
+        val rawTempMmsFile = createTempMmsFile(context)
+        val tempMmsFile = try {
+            rawTempMmsFile.canonicalFile
+        } catch (e: java.io.IOException) {
+            Log.w(
+                TAG,
+                "canonicalFile failed for ${rawTempMmsFile.absolutePath}; " +
+                    "falling back to absoluteFile",
+                e
+            )
+            rawTempMmsFile.absoluteFile
+        }
         // Defensive: even with file_paths.xml covering every storage type,
         // any future provider misconfiguration should degrade to "no inbound
         // MMS" rather than crashing the receiver process. ART marks the
