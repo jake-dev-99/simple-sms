@@ -87,6 +87,28 @@ String _maskAddress(String? raw) {
 String _maskAddresses(Iterable<String?> raws, {String sep = '|'}) =>
     raws.map(_maskAddress).join(sep);
 
+/// Returns true when [value] looks like an opaque RCS / chat-session
+/// token rather than a real phone number, email, or shortcode.
+///
+/// Two shapes seen in the wild:
+///  * Google RCS: `…@rcs.google.com` (contains `@`)
+///  * Samsung RCS: `d4vtcnrrgy2damjzgu4tghztircdsrrsgrcc…` — long
+///    alphanumeric string with no spaces, no punctuation, no `+` prefix,
+///    and no `@`. Mirrors the heuristic in `_sanitizeTitle` on the host
+///    side (`android_converters.dart`).
+///
+/// Phone numbers always start with `+` or a digit and are at most ~15
+/// chars (E.164 max). Shortcodes are ≤6 digits. Anything that's 20+
+/// chars, all `[a-zA-Z0-9_-]`, no whitespace/punctuation is not a phone
+/// number.
+bool _looksLikeOpaqueToken(String value) {
+  if (value.contains('@')) return true;
+  final trimmed = value.trim();
+  return trimmed.length >= 20 &&
+      !trimmed.contains(RegExp(r'[\s.,+()]')) &&
+      RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(trimmed);
+}
+
 class LookupService {
   /// Set of E.164-normalized MSISDNs that belong to the device user
   /// itself — populated by the consumer (e.g. simple-messages) at
@@ -629,7 +651,7 @@ class LookupService {
     // E.164 values alongside the RCS-token canonical entry.
     final tokenIndices = <int>{
       for (var i = 0; i < participants.length; i++)
-        if (participants[i].value.contains('@')) i,
+        if (_looksLikeOpaqueToken(participants[i].value)) i,
     };
     List<Contactable> finalParticipants = participants;
     if (tokenIndices.isNotEmpty) {
@@ -715,7 +737,7 @@ class LookupService {
         if (v == null || v.isEmpty) continue;
         if (v == 'insert-address-token') continue;
         if (_selfNumbers.contains(v)) continue;
-        if (v.contains('@')) continue;
+        if (_looksLikeOpaqueToken(v)) continue;
         addresses.add(v);
       }
     }
