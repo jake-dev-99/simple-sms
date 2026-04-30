@@ -54,6 +54,10 @@ jobs:
         # warning fatality so it doesn't block the gate.
         run: flutter analyze --no-fatal-warnings
 
+      - name: Lint silent enum defaults
+        working-directory: simple-sms
+        run: ./scripts/lint_silent_defaults.sh
+
       - name: Run tests
         working-directory: simple-sms
         run: flutter test
