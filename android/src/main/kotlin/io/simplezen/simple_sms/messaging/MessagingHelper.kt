@@ -46,18 +46,30 @@ internal fun getSelfNumbers(context: Context): Set<String> {
         PermissionGuards.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
     if (!anyGranted) return emptySet()
 
-    // S2 #18: enumerate ALL active subscriptions, not just the default
-    // SMS subscription. Dual-SIM users where the non-default SIM
-    // received an MMS-to-self otherwise won't have their own number
+    // S2 #18: enumerate ALL active subscriptions on Tiramisu+, not just
+    // the default SMS subscription. Dual-SIM users where the non-default
+    // SIM received an MMS-to-self otherwise won't have their own number
     // stripped during thread-id derivation, leading to mis-grouping.
+    //
+    // If the active-subs list is empty or unreachable (some OEMs gate
+    // it behind READ_PRIVILEGED_PHONE_STATE which we don't hold; some
+    // single-SIM ROMs return an empty list intermittently), fall through
+    // to the legacy `line1Number` path so we still return SOMETHING for
+    // the receiving SIM. Returning an empty set here would regress
+    // single-SIM thread bucketing on those devices.
+    @SuppressLint("HardwareIds")
+    fun line1Fallback(): Set<String> =
+        listOfNotNull(telephonyManager.line1Number)
+            .mapNotNull { formatNumber(context, it) }
+            .toSet()
+
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val activeSubs: List<android.telephony.SubscriptionInfo> = try {
             subscriptionManager.activeSubscriptionInfoList ?: emptyList()
         } catch (e: SecurityException) {
-            // PHONE_STATE alone isn't always sufficient on some OEMs.
             emptyList()
         }
-        activeSubs
+        val fromActiveSubs = activeSubs
             .mapNotNull { subInfo ->
                 runCatching { subscriptionManager.getPhoneNumber(subInfo.subscriptionId) }
                     .getOrNull()
@@ -65,11 +77,9 @@ internal fun getSelfNumbers(context: Context): Set<String> {
             }
             .mapNotNull { formatNumber(context, it) }
             .toSet()
+        fromActiveSubs.ifEmpty { line1Fallback() }
     } else {
-        @SuppressLint("HardwareIds")
-        listOfNotNull(telephonyManager.line1Number)
-            .mapNotNull { formatNumber(context, it) }
-            .toSet()
+        line1Fallback()
     }
 }
 
