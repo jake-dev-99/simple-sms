@@ -433,6 +433,90 @@ void main() {
     });
   });
 
+  group('Mms.fromRaw — strict enum parsing', () {
+    // Tests the strict-throw behaviour of enumFromValueOrThrow through
+    // its actual contract surface (Mms.fromRaw), not by reaching into
+    // the private FieldHelper. If a row carries an unrecognized
+    // required-field value, the parse must fail loudly so crashlytics
+    // surfaces it with the offending value named — silent fallback to
+    // a default is exactly what produced the HEIC-photo and
+    // MmsMessageType-off-by-N classes of bugs.
+
+    test('valid m_type round-trips to the right enum', () {
+      final raw = <String, dynamic>{
+        '_id': 1,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0x84, // RETRIEVE_CONF
+      };
+      expect(Mms.fromRaw(raw).type, MmsMessageType.retrieveConfirmationInd);
+    });
+
+    test('unrecognized m_type throws with the offending value named', () {
+      final raw = <String, dynamic>{
+        '_id': 999,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0xFF, // garbage — not a valid PduHeaders MESSAGE_TYPE
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Mms.type'),
+              contains('255'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('unrecognized msg_box throws with the offending value named', () {
+      final raw = <String, dynamic>{
+        '_id': 999,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 0xFF, // garbage — not a valid MessageBox value
+        'm_type': 0x84, // RETRIEVE_CONF
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Mms.messageBox'),
+              contains('255'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('unrecognized OPTIONAL field (priority) returns null, not throws',
+        () {
+      final raw = <String, dynamic>{
+        '_id': 1,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0x84,
+        'pri': 0xFF, // garbage — but priority is optional
+      };
+      // Optional fields tolerate unrecognized values (returned as null)
+      // because the field is genuinely optional in the spec. Required
+      // fields (m_type, msg_box) throw above.
+      expect(() => Mms.fromRaw(raw), returnsNormally);
+      expect(Mms.fromRaw(raw).priority, isNull);
+    });
+  });
+
   group('ConversationFilter', () {
     // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
     // the latest-message id, not the thread id. Filtering threads must go

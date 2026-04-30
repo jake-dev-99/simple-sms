@@ -231,14 +231,14 @@ class Sms {
     messageId: FieldHelper.asInt(json["messageId"]),
     objectId: json["objectId"],
     person: json["person"],
-    priority: FieldHelper.enumFromValue(
+    priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       json["priority"],
     ),
     protocol: FieldHelper.asInt(json["protocol"]),
     read: FieldHelper.asBool(json["read"]),
     reBody: json["reBody"],
-    reContentType: FieldHelper.enumFromValue(
+    reContentType: FieldHelper.enumFromValueOrNull(
       ContentType.values,
       json["reContentType"],
     ),
@@ -250,7 +250,10 @@ class Sms {
     replyPathPresent: FieldHelper.asBool(json["replyPathPresent"]),
     reRecipientAddress: json["reRecipientAddress"],
     reserved: FieldHelper.asBool(json["reserved"]),
-    reType: FieldHelper.enumFromValue(SmsMessageType.values, json["reType"]),
+    reType: FieldHelper.enumFromValueOrNull(
+      SmsMessageType.values,
+      json["reType"],
+    ),
     roamPending: FieldHelper.asBool(json["roamPending"]),
     safeMessage: FieldHelper.asBool(json["safeMessage"]),
     secretMode: FieldHelper.asBool(json["secretMode"]),
@@ -262,23 +265,32 @@ class Sms {
     simSlot: FieldHelper.asInt(json["simSlot"]),
     sourceLabel: json["sourceLabel"],
     spamReport: FieldHelper.asBool(json["spamReport"]),
-    status:
-        FieldHelper.enumFromValue(
-          AndroidMessageStatus.values,
-          json["status"],
-        ) ??
-        AndroidMessageStatus.retrieved,
+    // Status is the SMS delivery state — if unknown, null is the
+    // honest answer. Pre-fix this fell back to `AndroidMessageStatus.retrieved`,
+    // which silently marked messages as "delivered" when the provider
+    // returned an unrecognized status code. That's actively harmful
+    // (user thinks message was delivered when it might have failed).
+    status: FieldHelper.enumFromValueOrNull(
+      AndroidMessageStatus.values,
+      json["status"],
+    ),
     subject: json["subject"],
     subscriptionId: FieldHelper.asInt(json["subscriptionId"]),
     teleserviceId: FieldHelper.asInt(json["teleserviceId"]),
     threadId: FieldHelper.asInt(json["threadId"]) ?? 0,
-    // Standardized on nullable with a fallback at call sites, matching
-    // fromRaw. Removes the `!` force-unwrap that would throw on any
-    // legacy payload missing `type`.
-    type: FieldHelper.enumFromValue(SmsMessageType.values, json["type"]),
-    usingMode:
-        FieldHelper.enumFromValue(UsingMode.values, json["usingMode"]) ??
-        UsingMode.normal,
+    // REQUIRED — drives SMS direction (inbox / sent / draft).
+    type: FieldHelper.enumFromValueOrThrow(
+      SmsMessageType.values,
+      json["type"],
+      fieldName: 'Sms.type',
+    ),
+    // OrNull — usingMode is optional metadata. Pre-fix this fell back
+    // to `UsingMode.normal` on unrecognized input, masking provider
+    // schema additions.
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      json["usingMode"],
+    ),
     sourceMap: json,
   );
 
@@ -395,14 +407,14 @@ class Sms {
     messageId: FieldHelper.asInt(raw["msg_id"]),
     objectId: raw["object_id"],
     person: raw["person"],
-    priority: FieldHelper.enumFromValue(
+    priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       FieldHelper.asInt(raw["pri"]),
     ),
     protocol: FieldHelper.asInt(raw["protocol"]),
     read: FieldHelper.asBool(raw["read"]),
     reBody: raw["re_body"],
-    reContentType: FieldHelper.enumFromValue(
+    reContentType: FieldHelper.enumFromValueOrNull(
       ContentType.values,
       raw["re_content_type"],
     ),
@@ -414,7 +426,7 @@ class Sms {
     replyPathPresent: FieldHelper.asBool(raw["reply_path_present"]),
     reRecipientAddress: raw["re_recipient_address"],
     reserved: FieldHelper.asBool(raw["reserved"]),
-    reType: FieldHelper.enumFromValue(
+    reType: FieldHelper.enumFromValueOrNull(
       SmsMessageType.values,
       FieldHelper.asInt(raw["re_type"]),
     ),
@@ -429,7 +441,7 @@ class Sms {
     simSlot: FieldHelper.asInt(raw["sim_slot"]),
     sourceLabel: raw["sourceLabel"],
     spamReport: FieldHelper.asBool(raw["spam_report"]),
-    status: FieldHelper.enumFromValue(
+    status: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
       FieldHelper.asInt(raw["status"]),
     ),
@@ -437,11 +449,13 @@ class Sms {
     subscriptionId: FieldHelper.asInt(raw["sub_id"]),
     teleserviceId: FieldHelper.asInt(raw["teleservice_id"]),
     threadId: FieldHelper.asInt(raw["thread_id"]) ?? 0,
-    type: FieldHelper.enumFromValue(
+    // REQUIRED — drives SMS direction (inbox / sent / draft).
+    type: FieldHelper.enumFromValueOrThrow(
       SmsMessageType.values,
       FieldHelper.asInt(raw["type"]),
+      fieldName: 'Sms.type',
     ),
-    usingMode: FieldHelper.enumFromValue(
+    usingMode: FieldHelper.enumFromValueOrNull(
       UsingMode.values,
       FieldHelper.asInt(raw["using_mode"]),
     ),

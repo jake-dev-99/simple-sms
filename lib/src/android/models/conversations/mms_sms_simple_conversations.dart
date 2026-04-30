@@ -246,7 +246,12 @@ class AndroidSimpleConversation {
     menustring: raw["menustring"]?.toString(),
     messageCount: FieldHelper.asInt(raw["message_count"]),
     messageDate: raw["message_date"]?.toString(),
-    smsMmsType: FieldHelper.enumFromValue(SmsMmsType.values, raw["smsMmsType"]),
+    // OrNull — `smsMmsType` only appears on Samsung's variant of the
+    // simple-conversations view; it is genuinely absent on AOSP.
+    smsMmsType: FieldHelper.enumFromValueOrNull(
+      SmsMmsType.values,
+      raw["smsMmsType"],
+    ),
     paOwnnumber: raw["pa_ownnumber"]?.toString(),
     paThread: FieldHelper.asInt(raw["pa_thread"]),
     paUuid: raw["pa_uuid"]?.toString(),
@@ -261,9 +266,17 @@ class AndroidSimpleConversation {
     snippetType: FieldHelper.asInt(raw["snippet_type"]),
     sourceLabel: raw["sourceLabel"]?.toString(),
     translateMode: raw["translate_mode"]?.toString(),
-    type: FieldHelper.enumFromValue(MessageBox.values, raw["type"]),
+    // OrNull — `type` is absent in the simple-conversations view on
+    // AOSP / Samsung; the column only surfaces on Pixel-variant
+    // builds. `null` here is the honest answer for "field genuinely
+    // missing", and downstream code defaults to inbox for absent
+    // values.
+    type: FieldHelper.enumFromValueOrNull(MessageBox.values, raw["type"]),
     unreadCount: FieldHelper.asInt(raw["unread_count"]),
-    usingMode: FieldHelper.enumFromValue(UsingMode.values, raw["using_mode"]),
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      raw["using_mode"],
+    ),
   );
 
   /// Parses a space-separated id column (e.g. `recipient_ids` = "1 2 3") into

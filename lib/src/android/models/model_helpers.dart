@@ -105,11 +105,72 @@ class FieldHelper {
   static int primaryKey(Map<String, dynamic> raw) =>
       asInt(raw['_id']) ?? asInt(raw['id']) ?? 0;
 
-  static T? enumFromValue<T>(Iterable<T> values, dynamic raw) =>
+  /// Resolve an enum value from a raw provider field, returning `null`
+  /// for **either** a missing field OR an unrecognized value.
+  ///
+  /// Use this **only when null genuinely means "field absent / not set"**
+  /// — e.g. optional MMS headers like `priority`, `replyType`,
+  /// `readStatus`. Caller cannot distinguish "field absent in row" from
+  /// "field present but value isn't in the enum"; that ambiguity has
+  /// historically masked real provider-schema mismatches (Samsung OEM
+  /// extensions, new AOSP enum values added in later API levels).
+  ///
+  /// For required fields where unrecognized input is a real bug, use
+  /// [enumFromValueOrThrow] instead so the failure surfaces to
+  /// crashlytics with the offending raw value named.
+  static T? enumFromValueOrNull<T>(Iterable<T> values, dynamic raw) =>
       raw == null
           ? null
           : values.cast<T?>().firstWhere(
             (v) => (v as dynamic).value == raw,
             orElse: () => null,
           );
+
+  /// Resolve an enum value from a raw provider field, throwing
+  /// [StateError] when the field is **present but unrecognized**.
+  /// Returns `null` only when the field is genuinely absent
+  /// (`raw == null`) — which is still an unsafe state for required
+  /// fields, but distinguishable.
+  ///
+  /// Use this for fields where an unrecognized value is a real bug —
+  /// e.g. `MmsMessageType` (drives inbound vs outbound classification),
+  /// `MessageBox`, `SmsMessageType`, `ContentType`. Silent fallbacks
+  /// in those positions historically caused user-visible message-loss
+  /// bugs (HEIC photos rendering as empty messages because
+  /// `image/heic` silently became `text/plain`).
+  ///
+  /// The error message includes [fieldName] and the [raw] input so
+  /// the offender shows up in crashlytics with enough context to fix
+  /// the root cause (typically: add a missing enum entry, or
+  /// understand a new OEM-specific schema).
+  static T? enumFromValueOrThrow<T>(
+    Iterable<T> values,
+    dynamic raw, {
+    required String fieldName,
+  }) {
+    if (raw == null) return null;
+    for (final v in values) {
+      if ((v as dynamic).value == raw) return v;
+    }
+    throw StateError(
+      'Unknown $fieldName value: $raw (type ${raw.runtimeType}). '
+      'Add an enum entry for this value or fix the provider mapping. '
+      'Silent fallbacks in this position have historically caused '
+      'user-visible message-loss bugs.',
+    );
+  }
+
+  /// Backwards-compat alias for [enumFromValueOrNull]. Prefer the
+  /// explicit name in new code so reviewers can immediately see whether
+  /// the callsite is intentionally tolerating unrecognized values.
+  ///
+  /// Existing callsites that have already been audited and confirmed
+  /// safe under null-on-unrecognized may keep using this alias. New
+  /// callsites should not use it.
+  @Deprecated(
+    'Use enumFromValueOrNull (for optional fields) or '
+    'enumFromValueOrThrow (for required fields) explicitly.',
+  )
+  static T? enumFromValue<T>(Iterable<T> values, dynamic raw) =>
+      enumFromValueOrNull(values, raw);
 }
