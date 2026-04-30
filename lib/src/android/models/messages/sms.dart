@@ -237,9 +237,8 @@ class Sms {
     protocol: FieldHelper.asInt(json["protocol"]),
     read: FieldHelper.asBool(json["read"]),
     reBody: json["reBody"],
-    reContentType: FieldHelper.enumFromValueOrNull(
-      ContentType.values,
-      json["reContentType"],
+    reContentType: ContentType.fromMimeOrNull(
+      json["reContentType"]?.toString(),
     ),
     reContentUri: json["reContentUri"],
     reCountInfo: json["reCountInfo"],
@@ -413,9 +412,8 @@ class Sms {
     protocol: FieldHelper.asInt(raw["protocol"]),
     read: FieldHelper.asBool(raw["read"]),
     reBody: raw["re_body"],
-    reContentType: FieldHelper.enumFromValueOrNull(
-      ContentType.values,
-      raw["re_content_type"],
+    reContentType: ContentType.fromMimeOrNull(
+      raw["re_content_type"]?.toString(),
     ),
     reContentUri: raw["re_content_uri"],
     reCountInfo: raw["re_count_info"],

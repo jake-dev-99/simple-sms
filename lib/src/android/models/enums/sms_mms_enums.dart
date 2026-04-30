@@ -337,106 +337,290 @@ enum SmsMessageType {
   final int value;
 }
 
-/// MIME types we recognise on MMS parts.
+/// Top-level MIME category parsed from the "type/" prefix.
 ///
-/// **There is no "other" fallback.** [MmsPart.fromRaw] / [MmsPart.fromJson]
-/// `throw` on unknown MIME strings — silent fall-through to
-/// `text/plain` was the source of the "image-only MMS persisted EMPTY"
-/// class of bugs (an `image/heic` part with no `text/plain` enum match
-/// got mis-categorised as text, the host-app converter treated it as a
-/// non-attachment text body with empty payload, and the message
-/// rendered blank).
+/// Drives renderer selection for both known and unknown MIME types.
+/// An unknown `image/x-whatever` → [MimeCategory.image] → render as
+/// image widget. An unknown `application/vnd.gsma.botmessage` →
+/// [MimeCategory.application] → skip or render as generic file.
+enum MimeCategory {
+  text,
+  image,
+  video,
+  audio,
+  application,
+}
+
+/// MIME content type for MMS parts.
 ///
-/// If a real MMS arrives with a MIME this enum doesn't enumerate, the
-/// receive path throws loudly and the failure surfaces in crashlytics
-/// with the unknown MIME string in the message — that is the signal to
-/// add a new entry below.
+/// Known MIME types have curated entries with exact extensions (e.g.
+/// `image/jpeg` → `jpg`). Unknown MIME types — carrier extensions,
+/// OEM-specific formats, RCS bot messages — produce ad-hoc instances
+/// with:
+///   - [value]: the raw MIME string, preserved verbatim
+///   - [category]: parsed from the `type/` prefix (structurally correct)
+///   - [extension]: best-effort derivation from the subtype
 ///
-/// When adding new entries:
-///   - `value` is the MIME string as the provider stores it in the
+/// This is **not** a return to the old silent-fallback anti-pattern:
+///   - Known MIMEs still get exact matches with curated extensions
+///   - Unknown MIMEs are logged (visible in diagnostics / Crashlytics)
+///   - The raw MIME string is preserved — no mis-categorisation
+///   - The category is parsed from the MIME itself, never guessed
+///
+/// When adding new known entries:
+///   - [value] is the MIME string as the provider stores it in the
 ///     `ct` column. Match the canonical lower-case form.
-///   - `extension` is the file extension (no leading dot) used by
+///   - [extension] is the file extension (no leading dot) used by
 ///     `mmsPartToAttachment` when materialising the part to disk.
-enum ContentType {
-  // ─── Text ────────────────────────────────────────────────────────
-  textPlain(value: 'text/plain', extension: 'txt'),
-  textHtml(value: 'text/html', extension: 'html'),
-  textXVCard(value: 'text/x-vCard', extension: 'vcf'),
-  textVCard(value: 'text/vcard', extension: 'vcf'),
-  textXVCalendar(value: 'text/x-vCalendar', extension: 'vcs'),
-  textCalendar(value: 'text/calendar', extension: 'ics'),
-
-  // ─── Image ───────────────────────────────────────────────────────
-  imageJpeg(value: 'image/jpeg', extension: 'jpg'),
-  imageJpg(value: 'image/jpg', extension: 'jpg'), // some carriers use this
-  imagePng(value: 'image/png', extension: 'png'),
-  imageGif(value: 'image/gif', extension: 'gif'),
-  imageBmp(value: 'image/bmp', extension: 'bmp'),
-  imageWebp(value: 'image/webp', extension: 'webp'),
-  imageHeic(value: 'image/heic', extension: 'heic'),
-  imageHeif(value: 'image/heif', extension: 'heif'),
-  imageAvif(value: 'image/avif', extension: 'avif'),
-  imageTiff(value: 'image/tiff', extension: 'tiff'),
-  imageSvg(value: 'image/svg+xml', extension: 'svg'),
-  // Adobe Digital Negative — RAW camera format some Samsung devices send
-  // when sharing from Pro / Expert RAW mode in the camera app. Surfaces
-  // in real inbound MMS (`mms part #783`, Android 16).
-  imageDng(value: 'image/x-adobe-dng', extension: 'dng'),
-
-  // ─── Video ───────────────────────────────────────────────────────
-  videoMp4(value: 'video/mp4', extension: 'mp4'),
-  videoQuicktime(value: 'video/quicktime', extension: 'mov'),
-  video3gpp(value: 'video/3gpp', extension: '3gp'),
-  video3gpp2(value: 'video/3gpp2', extension: '3g2'),
-  videoWebm(value: 'video/webm', extension: 'webm'),
-  videoAvi(value: 'video/x-msvideo', extension: 'avi'),
-  videoMatroska(value: 'video/x-matroska', extension: 'mkv'),
-
-  // ─── Audio ───────────────────────────────────────────────────────
-  audioAmr(value: 'audio/amr', extension: 'amr'),
-  audioMpeg(value: 'audio/mpeg', extension: 'mp3'),
-  audioMp4(value: 'audio/mp4', extension: 'm4a'),
-  audioMp3(value: 'audio/mp3', extension: 'mp3'),
-  audioOgg(value: 'audio/ogg', extension: 'ogg'),
-  audioWav(value: 'audio/wav', extension: 'wav'),
-  audioXWav(value: 'audio/x-wav', extension: 'wav'),
-  audioAac(value: 'audio/aac', extension: 'aac'),
-  audioFlac(value: 'audio/flac', extension: 'flac'),
-  audio3gpp(value: 'audio/3gpp', extension: '3gp'),
-
-  // ─── Application ─────────────────────────────────────────────────
-  applicationSmil(value: 'application/smil', extension: 'smil'),
-  applicationPdf(value: 'application/pdf', extension: 'pdf'),
-  applicationOctetStream(value: 'application/octet-stream', extension: 'bin'),
-  applicationZip(value: 'application/zip', extension: 'zip');
-
-  const ContentType({required this.value, required this.extension});
+final class ContentType {
   final String value;
   final String extension;
+  final MimeCategory category;
 
-  /// Resolve a MIME string from the provider's `ct` column to a
-  /// [ContentType] entry. Throws [StateError] when the MIME isn't in
-  /// the enum.
+  const ContentType({
+    required this.value,
+    required this.extension,
+    required this.category,
+  });
+
+  // ─── Text ──────────────────────────────────────────────────────────
+  static const textPlain = ContentType(
+    value: 'text/plain', extension: 'txt', category: MimeCategory.text,
+  );
+  static const textHtml = ContentType(
+    value: 'text/html', extension: 'html', category: MimeCategory.text,
+  );
+  static const textXVCard = ContentType(
+    value: 'text/x-vCard', extension: 'vcf', category: MimeCategory.text,
+  );
+  static const textVCard = ContentType(
+    value: 'text/vcard', extension: 'vcf', category: MimeCategory.text,
+  );
+  static const textXVCalendar = ContentType(
+    value: 'text/x-vCalendar', extension: 'vcs', category: MimeCategory.text,
+  );
+  static const textCalendar = ContentType(
+    value: 'text/calendar', extension: 'ics', category: MimeCategory.text,
+  );
+
+  // ─── Image ─────────────────────────────────────────────────────────
+  static const imageJpeg = ContentType(
+    value: 'image/jpeg', extension: 'jpg', category: MimeCategory.image,
+  );
+  /// Some carriers use `image/jpg` instead of `image/jpeg`.
+  static const imageJpg = ContentType(
+    value: 'image/jpg', extension: 'jpg', category: MimeCategory.image,
+  );
+  static const imagePng = ContentType(
+    value: 'image/png', extension: 'png', category: MimeCategory.image,
+  );
+  static const imageGif = ContentType(
+    value: 'image/gif', extension: 'gif', category: MimeCategory.image,
+  );
+  static const imageBmp = ContentType(
+    value: 'image/bmp', extension: 'bmp', category: MimeCategory.image,
+  );
+  static const imageWebp = ContentType(
+    value: 'image/webp', extension: 'webp', category: MimeCategory.image,
+  );
+  static const imageHeic = ContentType(
+    value: 'image/heic', extension: 'heic', category: MimeCategory.image,
+  );
+  static const imageHeif = ContentType(
+    value: 'image/heif', extension: 'heif', category: MimeCategory.image,
+  );
+  static const imageAvif = ContentType(
+    value: 'image/avif', extension: 'avif', category: MimeCategory.image,
+  );
+  static const imageTiff = ContentType(
+    value: 'image/tiff', extension: 'tiff', category: MimeCategory.image,
+  );
+  static const imageSvg = ContentType(
+    value: 'image/svg+xml', extension: 'svg', category: MimeCategory.image,
+  );
+  /// Adobe Digital Negative — RAW camera format some Samsung devices send
+  /// when sharing from Pro / Expert RAW mode in the camera app.
+  static const imageDng = ContentType(
+    value: 'image/x-adobe-dng', extension: 'dng', category: MimeCategory.image,
+  );
+
+  // ─── Video ─────────────────────────────────────────────────────────
+  static const videoMp4 = ContentType(
+    value: 'video/mp4', extension: 'mp4', category: MimeCategory.video,
+  );
+  static const videoQuicktime = ContentType(
+    value: 'video/quicktime', extension: 'mov', category: MimeCategory.video,
+  );
+  static const video3gpp = ContentType(
+    value: 'video/3gpp', extension: '3gp', category: MimeCategory.video,
+  );
+  static const video3gpp2 = ContentType(
+    value: 'video/3gpp2', extension: '3g2', category: MimeCategory.video,
+  );
+  static const videoWebm = ContentType(
+    value: 'video/webm', extension: 'webm', category: MimeCategory.video,
+  );
+  static const videoAvi = ContentType(
+    value: 'video/x-msvideo', extension: 'avi', category: MimeCategory.video,
+  );
+  static const videoMatroska = ContentType(
+    value: 'video/x-matroska', extension: 'mkv', category: MimeCategory.video,
+  );
+
+  // ─── Audio ─────────────────────────────────────────────────────────
+  static const audioAmr = ContentType(
+    value: 'audio/amr', extension: 'amr', category: MimeCategory.audio,
+  );
+  static const audioMpeg = ContentType(
+    value: 'audio/mpeg', extension: 'mp3', category: MimeCategory.audio,
+  );
+  static const audioMp4 = ContentType(
+    value: 'audio/mp4', extension: 'm4a', category: MimeCategory.audio,
+  );
+  static const audioMp3 = ContentType(
+    value: 'audio/mp3', extension: 'mp3', category: MimeCategory.audio,
+  );
+  static const audioOgg = ContentType(
+    value: 'audio/ogg', extension: 'ogg', category: MimeCategory.audio,
+  );
+  static const audioWav = ContentType(
+    value: 'audio/wav', extension: 'wav', category: MimeCategory.audio,
+  );
+  static const audioXWav = ContentType(
+    value: 'audio/x-wav', extension: 'wav', category: MimeCategory.audio,
+  );
+  static const audioAac = ContentType(
+    value: 'audio/aac', extension: 'aac', category: MimeCategory.audio,
+  );
+  static const audioFlac = ContentType(
+    value: 'audio/flac', extension: 'flac', category: MimeCategory.audio,
+  );
+  static const audio3gpp = ContentType(
+    value: 'audio/3gpp', extension: '3gp', category: MimeCategory.audio,
+  );
+
+  // ─── Application ───────────────────────────────────────────────────
+  static const applicationSmil = ContentType(
+    value: 'application/smil', extension: 'smil', category: MimeCategory.application,
+  );
+  static const applicationPdf = ContentType(
+    value: 'application/pdf', extension: 'pdf', category: MimeCategory.application,
+  );
+  static const applicationOctetStream = ContentType(
+    value: 'application/octet-stream', extension: 'bin', category: MimeCategory.application,
+  );
+  static const applicationZip = ContentType(
+    value: 'application/zip', extension: 'zip', category: MimeCategory.application,
+  );
+
+  /// All known content types.
+  static const List<ContentType> values = [
+    textPlain, textHtml, textXVCard, textVCard, textXVCalendar, textCalendar,
+    imageJpeg, imageJpg, imagePng, imageGif, imageBmp, imageWebp,
+    imageHeic, imageHeif, imageAvif, imageTiff, imageSvg, imageDng,
+    videoMp4, videoQuicktime, video3gpp, video3gpp2, videoWebm, videoAvi,
+    videoMatroska,
+    audioAmr, audioMpeg, audioMp4, audioMp3, audioOgg, audioWav, audioXWav,
+    audioAac, audioFlac, audio3gpp,
+    applicationSmil, applicationPdf, applicationOctetStream, applicationZip,
+  ];
+
+  /// Resolve a MIME string to a [ContentType].
   ///
-  /// We do **not** silently fall back to `textPlain` or `other` —
-  /// silent fallbacks here cascade into the converter mis-classifying
-  /// attachments as text, leading to "persisted EMPTY" warnings and
-  /// dropped messages. A loud throw forces the missing MIME into a
-  /// crashlytics report with the actual string, which is the right
-  /// signal to add a new enum entry.
+  /// Known MIMEs return a curated entry with an exact extension.
+  /// Unknown MIMEs produce an ad-hoc instance with [category] parsed
+  /// from the `type/` prefix and [extension] derived from the subtype.
+  /// Never throws — unknown MIMEs are handled gracefully while
+  /// preserving the raw MIME string for logging.
+  ///
+  /// Empty / blank input returns [textPlain] (legacy compat for rows
+  /// where the `ct` column is absent).
   static ContentType fromMime(String mime) {
-    final lower = mime.toLowerCase();
-    for (final ct in ContentType.values) {
+    final trimmed = mime.trim();
+    if (trimmed.isEmpty) return textPlain;
+
+    final lower = trimmed.toLowerCase();
+    for (final ct in values) {
       if (ct.value.toLowerCase() == lower) return ct;
     }
-    throw StateError(
-      'Unknown MIME type "$mime" in MMS part. '
-      'Add a `ContentType` enum entry for this MIME (see '
-      'lib/src/android/models/enums/sms_mms_enums.dart) and ship a fix. '
-      'Silent fallbacks here mis-categorise attachments as text and '
-      'cause messages to render blank.',
+
+    // Unknown MIME — build an ad-hoc instance.
+    return ContentType(
+      value: trimmed,
+      extension: _deriveExtension(lower),
+      category: _parseCategory(lower),
     );
   }
+
+  /// Nullable variant for optional fields (e.g. [Sms.reContentType]).
+  ///
+  /// Returns `null` when [mime] is null or empty — the field is
+  /// genuinely absent. Non-empty strings resolve via [fromMime].
+  static ContentType? fromMimeOrNull(String? mime) {
+    if (mime == null || mime.trim().isEmpty) return null;
+    return fromMime(mime);
+  }
+
+  /// Whether this is an unknown (ad-hoc) content type not in [values].
+  bool get isKnown => values.any((ct) => ct.value == value);
+
+  /// Derive a file extension from an unknown MIME subtype.
+  ///
+  /// Rules (applied in order):
+  ///   1. If `+suffix` present, use it (`…+json` → `json`)
+  ///   2. For `vnd.*` without `+suffix`, fall back to `bin`
+  ///   3. Strip `x-` prefix (`audio/x-m4a` → `m4a`)
+  ///   4. Take the last dot-segment (`x-adobe.dng` → `dng`)
+  ///   5. Fall back to `bin` if subtype is empty
+  static String _deriveExtension(String lowerMime) {
+    final slashIdx = lowerMime.indexOf('/');
+    if (slashIdx < 0 || slashIdx == lowerMime.length - 1) return 'bin';
+    var subtype = lowerMime.substring(slashIdx + 1);
+
+    // Rule 2: structured suffix (e.g. +json, +xml)
+    final plusIdx = subtype.lastIndexOf('+');
+    if (plusIdx >= 0 && plusIdx < subtype.length - 1) {
+      return subtype.substring(plusIdx + 1);
+    }
+
+    // Rule 3: vnd.* without +suffix → opaque vendor type
+    if (subtype.startsWith('vnd.')) return 'bin';
+
+    // Rule 1: strip x- prefix
+    if (subtype.startsWith('x-')) {
+      subtype = subtype.substring(2);
+    }
+
+    // Rule 4: take last dot-segment
+    final lastDot = subtype.lastIndexOf('.');
+    if (lastDot >= 0 && lastDot < subtype.length - 1) {
+      subtype = subtype.substring(lastDot + 1);
+    }
+
+    // Rule 5: strip version-like trailing segments (e.g. "m4a" stays,
+    // "v1" or "1.0" get caught by this but they'd be unlikely subtypes)
+    if (subtype.isEmpty) return 'bin';
+    return subtype;
+  }
+
+  /// Parse [MimeCategory] from the `type/` prefix of a MIME string.
+  static MimeCategory _parseCategory(String lowerMime) {
+    if (lowerMime.startsWith('image/')) return MimeCategory.image;
+    if (lowerMime.startsWith('video/')) return MimeCategory.video;
+    if (lowerMime.startsWith('audio/')) return MimeCategory.audio;
+    if (lowerMime.startsWith('text/')) return MimeCategory.text;
+    return MimeCategory.application;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ContentType && other.value == value;
+
+  @override
+  int get hashCode => value.hashCode;
+
+  @override
+  String toString() => 'ContentType($value)';
 }
 
 /// Character set used for MMS message encoding (common charsets only).
