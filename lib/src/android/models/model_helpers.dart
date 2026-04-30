@@ -105,11 +105,33 @@ class FieldHelper {
   static int primaryKey(Map<String, dynamic> raw) =>
       asInt(raw['_id']) ?? asInt(raw['id']) ?? 0;
 
-  static T? enumFromValue<T>(Iterable<T> values, dynamic raw) =>
-      raw == null
-          ? null
-          : values.cast<T?>().firstWhere(
-            (v) => (v as dynamic).value == raw,
-            orElse: () => null,
-          );
+  /// Lenient enum lookup. Returns `null` for both `raw == null` and
+  /// any non-null value not in [values]. Use only for genuinely
+  /// optional fields where null means "absent or unknown, both fine".
+  static T? enumFromValueOrNull<T>(Iterable<T> values, dynamic raw) {
+    if (raw == null) return null;
+    for (final v in values) {
+      if ((v as dynamic).value == raw) return v;
+    }
+    return null;
+  }
+
+  /// Strict enum lookup. Returns `null` only when [raw] is null
+  /// (field absent). Throws [StateError] when [raw] is present but
+  /// not in [values] — surfaces in crashlytics with [fieldName] and
+  /// the offending value, so missing enum entries get fixed at the
+  /// source instead of silently corrupting downstream data.
+  static T? enumFromValueOrThrow<T>(
+    Iterable<T> values,
+    dynamic raw, {
+    required String fieldName,
+  }) {
+    if (raw == null) return null;
+    for (final v in values) {
+      if ((v as dynamic).value == raw) return v;
+    }
+    throw StateError(
+      'Unknown $fieldName value: $raw (${raw.runtimeType})',
+    );
+  }
 }

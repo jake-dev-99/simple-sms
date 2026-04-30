@@ -134,7 +134,7 @@ class AndroidContact {
     displayName: json['displayName'] ?? '',
     displayNameAlt: json['displayNameAlt'] ?? '',
     displayNameReverse: json['displayNameReverse'] ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       json['displayNameSource'],
     ),
@@ -251,7 +251,7 @@ class AndroidContact {
     displayName: raw['display_name']?.toString() ?? '',
     displayNameAlt: raw['display_name_alt']?.toString() ?? '',
     displayNameReverse: raw['display_name_reverse']?.toString() ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       raw['display_name_source'],
     ),

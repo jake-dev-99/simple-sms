@@ -295,7 +295,7 @@ class Contactable {
     displayName: json['displayName'] ?? '',
     displayNameAlt: json['displayNameAlt'] ?? '',
     displayNameReverse: json['displayNameReverse'] ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       json['displayNameSource'],
     ),
@@ -501,7 +501,7 @@ class Contactable {
     displayName: raw['display_name'] ?? '',
     displayNameAlt: raw['display_name_alt'] ?? '',
     displayNameReverse: raw['display_name_reverse'] ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       raw['display_name_source'],
     ),
