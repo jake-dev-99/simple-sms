@@ -187,10 +187,9 @@ class Sms {
 
   // ---- JSON (App/Server) ----
   factory Sms.fromJson(Map<String, dynamic> json) => Sms(
-    // Match fromRaw's fallback semantics (was `!` force-unwrap). A
-    // cached/server payload missing `id` previously threw; 0 is the
-    // "unparseable row" default used elsewhere in these models.
-    id: FieldHelper.asInt(json["id"]) ?? 0,
+    // `primaryKey` throws when neither `_id` nor `id` parses — see
+    // helper docstring for why a silent `?? 0` here corrupts joins.
+    id: FieldHelper.primaryKey(json),
     address: json["address"],
     announcementsScenarioId: json["announcementsScenarioId"],
     announcementsSubtype: FieldHelper.asInt(json["announcementsSubtype"]),

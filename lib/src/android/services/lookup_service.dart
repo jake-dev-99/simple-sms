@@ -28,6 +28,19 @@ import '../models/people/mms_participant.dart';
 /// in model property getters. This makes the query cost explicit and
 /// avoids surprising side effects when accessing model properties.
 ///
+/// ## Error semantics
+///
+/// Query methods do **not** swallow exceptions. If the underlying
+/// ContentProvider call fails (SQL error, permission revoked, provider
+/// crash), the exception propagates to the caller with its original
+/// stack trace. A blanket `catch + return null/[]` here previously hid
+/// a `thread_id` SQL bug across thousands of full-sync runs — the
+/// failure only surfaced when a downstream `!` upgraded the silent empty
+/// to an NPE. Callers that iterate over many rows (sync loops) should
+/// wrap individual row conversions in their own try/catch so a single
+/// bad row doesn't kill the whole pass; bulk-fetch failures kill the
+/// pass on purpose, since every iteration would fail anyway.
+///
 /// ```dart
 /// final service = LookupService();
 /// final contact = await service.lookupContactById(42);
@@ -109,33 +122,27 @@ class LookupService {
   ///
   /// Returns null if the contact is not found or if the query fails.
   Future<AndroidContact?> lookupContactById(int contactId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          // Use platformSpecific so simple_query doesn't canonicalize
-          // the row into its domain schema (id/displayName/…) — we
-          // need raw Android columns (_id, display_name, …) to feed
-          // AndroidContact.fromRaw.
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _contactsUri},
-          filters: [
-            QueryFilterCondition(
-              field: '_id',
-              operator: QueryFilterOperator.equals,
-              value: contactId.toString(),
-            ),
-          ],
-        ),
-      );
-      if (response.records.isEmpty) return null;
-      return AndroidContact.fromRaw(
-        Map<String, dynamic>.from(response.records.first),
-      );
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to lookup contact $contactId: $e');
-      debugPrint(s.toString());
-      return null;
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        // Use platformSpecific so simple_query doesn't canonicalize
+        // the row into its domain schema (id/displayName/…) — we
+        // need raw Android columns (_id, display_name, …) to feed
+        // AndroidContact.fromRaw.
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _contactsUri},
+        filters: [
+          QueryFilterCondition(
+            field: '_id',
+            operator: QueryFilterOperator.equals,
+            value: contactId.toString(),
+          ),
+        ],
+      ),
+    );
+    if (response.records.isEmpty) return null;
+    return AndroidContact.fromRaw(
+      Map<String, dynamic>.from(response.records.first),
+    );
   }
 
   /// Looks up a contactable (lightweight contact info) by phone number or email.
@@ -143,53 +150,41 @@ class LookupService {
   /// Uses the Android contacts filter URI to match the address against
   /// phone numbers or email addresses in the contacts database.
   Future<Contactable?> lookupContactableByAddress(String address) async {
-    try {
-      final isEmail = address.contains('@');
-      final uri = isEmail
-          ? '$_contactsEmailFilterUri/$address'
-          : '$_contactsPhoneFilterUri/$address';
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': uri},
-        ),
-      );
-      if (response.records.isEmpty) return null;
-      return Contactable.fromRaw(
-        Map<String, dynamic>.from(response.records.first),
-      );
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to lookup contactable for $address: $e');
-      debugPrint(s.toString());
-      return null;
-    }
+    final isEmail = address.contains('@');
+    final uri = isEmail
+        ? '$_contactsEmailFilterUri/$address'
+        : '$_contactsPhoneFilterUri/$address';
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': uri},
+      ),
+    );
+    if (response.records.isEmpty) return null;
+    return Contactable.fromRaw(
+      Map<String, dynamic>.from(response.records.first),
+    );
   }
 
   /// Looks up an MMS message by its database ID.
   Future<Mms?> lookupMmsById(int messageId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _mmsUri},
-          filters: [
-            QueryFilterCondition(
-              field: '_id',
-              operator: QueryFilterOperator.equals,
-              value: messageId.toString(),
-            ),
-          ],
-        ),
-      );
-      if (response.records.isEmpty) return null;
-      return Mms.fromRaw(
-        Map<String, dynamic>.from(response.records.first),
-      );
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to lookup MMS $messageId: $e');
-      debugPrint(s.toString());
-      return null;
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _mmsUri},
+        filters: [
+          QueryFilterCondition(
+            field: '_id',
+            operator: QueryFilterOperator.equals,
+            value: messageId.toString(),
+          ),
+        ],
+      ),
+    );
+    if (response.records.isEmpty) return null;
+    return Mms.fromRaw(
+      Map<String, dynamic>.from(response.records.first),
+    );
   }
 
   /// Lists every address row (sender + recipients) for a single MMS message.
@@ -203,29 +198,18 @@ class LookupService {
   /// MMS rows with empty `recipients` lists by design (they're not in the
   /// `mms` table); enrich with this call when the caller needs to know
   /// which participant in a multi-party thread sent an individual message.
-  ///
-  /// Returns an empty list on any query failure — errors are logged but
-  /// not thrown so a single bad lookup doesn't abort a page sync.
   Future<List<MmsParticipant>> listMmsAddressesByMessage(int mmsId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': 'content://mms/$mmsId/addr'},
-        ),
-      );
-      return response.records
-          .map(
-            (row) => MmsParticipant.fromRaw(Map<String, dynamic>.from(row)),
-          )
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint(
-        'simple_sms: Failed to list MMS addresses for $mmsId: $e',
-      );
-      debugPrint(s.toString());
-      return const [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': 'content://mms/$mmsId/addr'},
+      ),
+    );
+    return response.records
+        .map(
+          (row) => MmsParticipant.fromRaw(Map<String, dynamic>.from(row)),
+        )
+        .toList(growable: false);
   }
 
   /// Resolves (or lazily creates) the thread id for a given recipient set.
@@ -243,7 +227,7 @@ class LookupService {
   /// Without this, first-message-to-new-recipient flows break thread
   /// grouping.
   ///
-  /// Returns null on any query failure or empty addresses input.
+  /// Returns null when [addresses] is empty or no row comes back.
   Future<int?> resolveThreadIdByAddresses(Iterable<String> addresses) async {
     final cleaned =
         addresses
@@ -251,40 +235,26 @@ class LookupService {
             .where((a) => a.isNotEmpty)
             .toList(growable: false);
     if (cleaned.isEmpty) return null;
-    try {
-      // Android's Telephony.Threads builds this URI by appending one
-      // `recipient` query param per address. The provider joins them
-      // internally to look up or create a single thread. We URL-encode
-      // each address (phone numbers with `+` need it) so pluses don't
-      // become spaces on the native side.
-      final params = cleaned
-          .map((a) => 'recipient=${Uri.encodeQueryComponent(a)}')
-          .join('&');
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': 'content://mms-sms/threadID?$params'},
-        ),
-      );
-      if (response.records.isEmpty) return null;
-      final row = response.records.first;
-      final rawId = row['_id'] ?? row['id'];
-      if (rawId is int) return rawId;
-      if (rawId is String) return int.tryParse(rawId.trim());
-      return null;
-    } catch (e, s) {
-      // Don't log the addresses themselves — phone numbers + emails are
-      // PII and debugPrint ends up in Crashlytics + device logs on
-      // consumer builds. Count is enough to triage without leaking
-      // values. Mirrors `resolveCanonicalAddress` above, which logs
-      // only the opaque recipientId.
-      debugPrint(
-        'simple_sms: Failed to resolve threadId for ${cleaned.length} '
-        'address(es): $e',
-      );
-      debugPrint(s.toString());
-      return null;
-    }
+    // Android's Telephony.Threads builds this URI by appending one
+    // `recipient` query param per address. The provider joins them
+    // internally to look up or create a single thread. We URL-encode
+    // each address (phone numbers with `+` need it) so pluses don't
+    // become spaces on the native side.
+    final params = cleaned
+        .map((a) => 'recipient=${Uri.encodeQueryComponent(a)}')
+        .join('&');
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': 'content://mms-sms/threadID?$params'},
+      ),
+    );
+    if (response.records.isEmpty) return null;
+    final row = response.records.first;
+    final rawId = row['_id'] ?? row['id'];
+    if (rawId is int) return rawId;
+    if (rawId is String) return int.tryParse(rawId.trim());
+    return null;
   }
 
   /// Resolves a canonical address (phone number) from a recipient ID.
@@ -327,61 +297,47 @@ class LookupService {
 
   /// Gets all SMS messages in a conversation thread.
   Future<List<Sms>> getSmsByThread(int threadId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _smsUri},
-          filters: [
-            QueryFilterCondition(
-              field: 'thread_id',
-              operator: QueryFilterOperator.equals,
-              value: threadId.toString(),
-            ),
-          ],
-        ),
-      );
-      return response.records
-          .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
-          .toList();
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to get SMS for thread $threadId: $e');
-      debugPrint(s.toString());
-      return [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _smsUri},
+        filters: [
+          QueryFilterCondition(
+            field: 'thread_id',
+            operator: QueryFilterOperator.equals,
+            value: threadId.toString(),
+          ),
+        ],
+      ),
+    );
+    return response.records
+        .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
+        .toList();
   }
 
   /// Lists SMS messages matching the given [filter], ordered by [sort], paged
   /// by [limit] / [offset].
-  ///
-  /// Returns an empty list on query failure.
   Future<List<Sms>> listSms({
     SmsFilter? filter,
     SmsSort? sort,
     int? limit,
     int? offset,
   }) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _smsUri},
-          filters: _buildSmsFilters(filter),
-          sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
-          page:
-              (limit != null || offset != null)
-                  ? QueryPage(limit: limit, offset: offset)
-                  : null,
-        ),
-      );
-      return response.records
-          .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to list SMS ($filter): $e');
-      debugPrint(s.toString());
-      return const [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _smsUri},
+        filters: _buildSmsFilters(filter),
+        sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
+        page:
+            (limit != null || offset != null)
+                ? QueryPage(limit: limit, offset: offset)
+                : null,
+      ),
+    );
+    return response.records
+        .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   /// Fetches a single SMS by its database id. Returns null if not found.
@@ -392,28 +348,22 @@ class LookupService {
 
   /// Gets all MMS messages in a conversation thread.
   Future<List<Mms>> getMmsByThread(int threadId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _mmsUri},
-          filters: [
-            QueryFilterCondition(
-              field: 'thread_id',
-              operator: QueryFilterOperator.equals,
-              value: threadId.toString(),
-            ),
-          ],
-        ),
-      );
-      return response.records
-          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to get MMS for thread $threadId: $e');
-      debugPrint(s.toString());
-      return [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _mmsUri},
+        filters: [
+          QueryFilterCondition(
+            field: 'thread_id',
+            operator: QueryFilterOperator.equals,
+            value: threadId.toString(),
+          ),
+        ],
+      ),
+    );
+    return response.records
+        .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   /// Lists MMS messages matching the given [filter], ordered by [sort], paged
@@ -436,27 +386,21 @@ class LookupService {
     int? limit,
     int? offset,
   }) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _mmsUri},
-          filters: _buildMmsFilters(filter),
-          sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
-          page:
-              (limit != null || offset != null)
-                  ? QueryPage(limit: limit, offset: offset)
-                  : null,
-        ),
-      );
-      return response.records
-          .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to list MMS ($filter): $e');
-      debugPrint(s.toString());
-      return const [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _mmsUri},
+        filters: _buildMmsFilters(filter),
+        sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
+        page:
+            (limit != null || offset != null)
+                ? QueryPage(limit: limit, offset: offset)
+                : null,
+      ),
+    );
+    return response.records
+        .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   /// Lists the parts (text body + attachments) that belong to an MMS message.
@@ -469,39 +413,33 @@ class LookupService {
     required int mmsId,
     MmsPartFilter? filter,
   }) async {
-    try {
-      final conditions = <QueryFilterCondition>[
+    final conditions = <QueryFilterCondition>[
+      QueryFilterCondition(
+        field: 'mid',
+        operator: QueryFilterOperator.equals,
+        value: mmsId.toString(),
+      ),
+    ];
+    final contentType = filter?.contentTypeContains;
+    if (contentType != null && contentType.isNotEmpty) {
+      conditions.add(
         QueryFilterCondition(
-          field: 'mid',
-          operator: QueryFilterOperator.equals,
-          value: mmsId.toString(),
-        ),
-      ];
-      final contentType = filter?.contentTypeContains;
-      if (contentType != null && contentType.isNotEmpty) {
-        conditions.add(
-          QueryFilterCondition(
-            field: 'ct',
-            operator: QueryFilterOperator.contains,
-            value: contentType,
-          ),
-        );
-      }
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          filters: conditions,
-          platformData: {'contentUri': _mmsPartUri},
+          field: 'ct',
+          operator: QueryFilterOperator.contains,
+          value: contentType,
         ),
       );
-      return response.records
-          .map((row) => MmsPart.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to list MMS parts for $mmsId: $e');
-      debugPrint(s.toString());
-      return const [];
     }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: conditions,
+        platformData: {'contentUri': _mmsPartUri},
+      ),
+    );
+    return response.records
+        .map((row) => MmsPart.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   /// Extracts the binary content of a single MMS part to [outputDirectory],
@@ -533,6 +471,9 @@ class LookupService {
       await File(handle.localPath).copy(dest.path);
       return dest;
     } finally {
+      // closeBinary is a best-effort cleanup; surfacing its failure here
+      // would shadow the actual return value (or a real copy/IO error
+      // raised in the try block). Keep it logged but non-fatal.
       try {
         await SimpleQuery.instance.closeBinary(handle.handleId);
       } catch (e) {
@@ -600,12 +541,7 @@ class LookupService {
 
       if (!enrich) return bare;
 
-      return Future.wait(bare.map(_enrichConversation));
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to list conversations ($filter): $e');
-      debugPrint(s.toString());
-      return const [];
-    }
+    return Future.wait(bare.map(_enrichConversation));
   }
 
   /// Fetches a single conversation by thread id. Returns null if not found.
@@ -810,32 +746,24 @@ class LookupService {
   /// (e.g. `vnd.android.cursor.item/phone_v2`,
   /// `vnd.android.cursor.item/email_v2`) to pick the entries they care about.
   Future<List<Contactable>> listContactablesForContact(int contactId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          filters: [
-            QueryFilterCondition(
-              field: 'contact_id',
-              operator: QueryFilterOperator.equals,
-              value: contactId.toString(),
-            ),
-          ],
-          platformData: const {
-            'contentUri': _contactsDataUri,
-          },
-        ),
-      );
-      return response.records
-          .map((row) => Contactable.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint(
-        'simple_sms: Failed to list contactables for contact $contactId: $e',
-      );
-      debugPrint(s.toString());
-      return const [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: [
+          QueryFilterCondition(
+            field: 'contact_id',
+            operator: QueryFilterOperator.equals,
+            value: contactId.toString(),
+          ),
+        ],
+        platformData: const {
+          'contentUri': _contactsDataUri,
+        },
+      ),
+    );
+    return response.records
+        .map((row) => Contactable.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   /// Resolves a contact's structured name (given / family / prefix / suffix /
@@ -848,45 +776,37 @@ class LookupService {
     required int contactId,
     String? accountType,
   }) async {
-    try {
-      final filters = <QueryFilterCondition>[
+    final filters = <QueryFilterCondition>[
+      QueryFilterCondition(
+        field: 'contact_id',
+        operator: QueryFilterOperator.equals,
+        value: contactId.toString(),
+      ),
+      QueryFilterCondition(
+        field: 'mimetype',
+        operator: QueryFilterOperator.equals,
+        value: 'vnd.android.cursor.item/name',
+      ),
+      if (accountType != null)
         QueryFilterCondition(
-          field: 'contact_id',
+          field: 'account_type',
           operator: QueryFilterOperator.equals,
-          value: contactId.toString(),
+          value: accountType,
         ),
-        QueryFilterCondition(
-          field: 'mimetype',
-          operator: QueryFilterOperator.equals,
-          value: 'vnd.android.cursor.item/name',
-        ),
-        if (accountType != null)
-          QueryFilterCondition(
-            field: 'account_type',
-            operator: QueryFilterOperator.equals,
-            value: accountType,
-          ),
-      ];
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          filters: filters,
-          platformData: const {
-            'contentUri': _contactsDataUri,
-          },
-        ),
-      );
-      if (response.records.isEmpty) return null;
-      return AndroidContactName.fromRaw(
-        Map<String, dynamic>.from(response.records.first),
-      );
-    } catch (e, s) {
-      debugPrint(
-        'simple_sms: Failed to get structured name for $contactId: $e',
-      );
-      debugPrint(s.toString());
-      return null;
-    }
+    ];
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: filters,
+        platformData: const {
+          'contentUri': _contactsDataUri,
+        },
+      ),
+    );
+    if (response.records.isEmpty) return null;
+    return AndroidContactName.fromRaw(
+      Map<String, dynamic>.from(response.records.first),
+    );
   }
 
   /// Lists contacts matching the given [filter], ordered by [sort], paged by
@@ -897,27 +817,21 @@ class LookupService {
     int? limit,
     int? offset,
   }) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {'contentUri': _contactsUri},
-          filters: _buildContactFilters(filter),
-          sort: _buildContactSort(sort ?? ContactSort.alphabetical),
-          page:
-              (limit != null || offset != null)
-                  ? QueryPage(limit: limit, offset: offset)
-                  : null,
-        ),
-      );
-      return response.records
-          .map((row) => AndroidContact.fromRaw(Map<String, dynamic>.from(row)))
-          .toList(growable: false);
-    } catch (e, s) {
-      debugPrint('simple_sms: Failed to list contacts ($filter): $e');
-      debugPrint(s.toString());
-      return const [];
-    }
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        platformData: {'contentUri': _contactsUri},
+        filters: _buildContactFilters(filter),
+        sort: _buildContactSort(sort ?? ContactSort.alphabetical),
+        page:
+            (limit != null || offset != null)
+                ? QueryPage(limit: limit, offset: offset)
+                : null,
+      ),
+    );
+    return response.records
+        .map((row) => AndroidContact.fromRaw(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
