@@ -337,41 +337,102 @@ enum SmsMessageType {
   final int value;
 }
 
-/// Represents accepted content MIME types for MMS attachments.
+/// MIME types we recognise on MMS parts.
+///
+/// **There is no "other" fallback.** [MmsPart.fromRaw] / [MmsPart.fromJson]
+/// `throw` on unknown MIME strings — silent fall-through to
+/// `text/plain` was the source of the "image-only MMS persisted EMPTY"
+/// class of bugs (an `image/heic` part with no `text/plain` enum match
+/// got mis-categorised as text, the host-app converter treated it as a
+/// non-attachment text body with empty payload, and the message
+/// rendered blank).
+///
+/// If a real MMS arrives with a MIME this enum doesn't enumerate, the
+/// receive path throws loudly and the failure surfaces in crashlytics
+/// with the unknown MIME string in the message — that is the signal to
+/// add a new entry below.
+///
+/// When adding new entries:
+///   - `value` is the MIME string as the provider stores it in the
+///     `ct` column. Match the canonical lower-case form.
+///   - `extension` is the file extension (no leading dot) used by
+///     `mmsPartToAttachment` when materialising the part to disk.
 enum ContentType {
-  /// Plain text file.
+  // ─── Text ────────────────────────────────────────────────────────
   textPlain(value: 'text/plain', extension: 'txt'),
-
-  /// HTML file.
   textHtml(value: 'text/html', extension: 'html'),
+  textXVCard(value: 'text/x-vCard', extension: 'vcf'),
+  textVCard(value: 'text/vcard', extension: 'vcf'),
+  textXVCalendar(value: 'text/x-vCalendar', extension: 'vcs'),
+  textCalendar(value: 'text/calendar', extension: 'ics'),
 
-  /// JPEG image.
+  // ─── Image ───────────────────────────────────────────────────────
   imageJpeg(value: 'image/jpeg', extension: 'jpg'),
-
-  /// PNG image.
+  imageJpg(value: 'image/jpg', extension: 'jpg'), // some carriers use this
   imagePng(value: 'image/png', extension: 'png'),
-
-  /// GIF image.
   imageGif(value: 'image/gif', extension: 'gif'),
+  imageBmp(value: 'image/bmp', extension: 'bmp'),
+  imageWebp(value: 'image/webp', extension: 'webp'),
+  imageHeic(value: 'image/heic', extension: 'heic'),
+  imageHeif(value: 'image/heif', extension: 'heif'),
+  imageAvif(value: 'image/avif', extension: 'avif'),
+  imageTiff(value: 'image/tiff', extension: 'tiff'),
+  imageSvg(value: 'image/svg+xml', extension: 'svg'),
 
-  /// MP4 video.
+  // ─── Video ───────────────────────────────────────────────────────
   videoMp4(value: 'video/mp4', extension: 'mp4'),
+  videoQuicktime(value: 'video/quicktime', extension: 'mov'),
+  video3gpp(value: 'video/3gpp', extension: '3gp'),
+  video3gpp2(value: 'video/3gpp2', extension: '3g2'),
+  videoWebm(value: 'video/webm', extension: 'webm'),
+  videoAvi(value: 'video/x-msvideo', extension: 'avi'),
+  videoMatroska(value: 'video/x-matroska', extension: 'mkv'),
 
-  /// AMR audio.
+  // ─── Audio ───────────────────────────────────────────────────────
   audioAmr(value: 'audio/amr', extension: 'amr'),
+  audioMpeg(value: 'audio/mpeg', extension: 'mp3'),
+  audioMp4(value: 'audio/mp4', extension: 'm4a'),
+  audioMp3(value: 'audio/mp3', extension: 'mp3'),
+  audioOgg(value: 'audio/ogg', extension: 'ogg'),
+  audioWav(value: 'audio/wav', extension: 'wav'),
+  audioXWav(value: 'audio/x-wav', extension: 'wav'),
+  audioAac(value: 'audio/aac', extension: 'aac'),
+  audioFlac(value: 'audio/flac', extension: 'flac'),
+  audio3gpp(value: 'audio/3gpp', extension: '3gp'),
 
-  /// SMIL presentation.
+  // ─── Application ─────────────────────────────────────────────────
   applicationSmil(value: 'application/smil', extension: 'smil'),
-
-  /// vCard contact file.
-  applicationVCard(value: 'text/x-vCard', extension: 'vcf'),
-
-  /// Other or unspecified type.
-  other(value: '', extension: 'dat');
+  applicationPdf(value: 'application/pdf', extension: 'pdf'),
+  applicationOctetStream(value: 'application/octet-stream', extension: 'bin'),
+  applicationZip(value: 'application/zip', extension: 'zip');
 
   const ContentType({required this.value, required this.extension});
   final String value;
   final String extension;
+
+  /// Resolve a MIME string from the provider's `ct` column to a
+  /// [ContentType] entry. Throws [StateError] when the MIME isn't in
+  /// the enum.
+  ///
+  /// We do **not** silently fall back to `textPlain` or `other` —
+  /// silent fallbacks here cascade into the converter mis-classifying
+  /// attachments as text, leading to "persisted EMPTY" warnings and
+  /// dropped messages. A loud throw forces the missing MIME into a
+  /// crashlytics report with the actual string, which is the right
+  /// signal to add a new enum entry.
+  static ContentType fromMime(String mime) {
+    final lower = mime.toLowerCase();
+    for (final ct in ContentType.values) {
+      if (ct.value.toLowerCase() == lower) return ct;
+    }
+    throw StateError(
+      'Unknown MIME type "$mime" in MMS part. '
+      'Add a `ContentType` enum entry for this MIME (see '
+      'lib/src/android/models/enums/sms_mms_enums.dart) and ship a fix. '
+      'Silent fallbacks here mis-categorise attachments as text and '
+      'cause messages to render blank.',
+    );
+  }
 }
 
 /// Character set used for MMS message encoding (common charsets only).
