@@ -117,13 +117,35 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             @Suppress("DEPRECATION") SmsManager.getDefault()
                         }
 
-                // Store details with the Flutter result callback
+                // Store details with the Flutter result callback.
+                //
+                // Routing:
+                //   - Has attachments OR multiple recipients     → MMS
+                //   - Single recipient + text-only (any length)  → SMS (multipart-aware)
+                //
+                // Pre-fix the second branch routed `body.length >= 160`
+                // through MMS too. That dispatched to Klinker
+                // `Transaction.sendNewMessage`, which then internally
+                // demoted text-only single-recipient sends back to SMS
+                // — using Klinker's OWN sentPI action
+                // (`<package>.SMS_SENT`), not our
+                // `SENTSMS_ACTION = "com.simplezen.simple_sms.SMS_SENT"`.
+                // The SMS sent successfully but our
+                // [OutboundMessagingReceiver] never heard the result,
+                // so the message stayed stuck on "Sending…" forever.
+                // Plus Klinker's pre-prep wrote orphan MMS rows to
+                // the provider for sends that ultimately went out as
+                // SMS (visible as empty `MMS-NNN` rows in the
+                // converter's "persisted EMPTY" warnings).
+                //
+                // [sendSms] now uses `divideMessage` + the multipart
+                // SmsManager API for bodies that exceed a single
+                // segment, so long single-recipient text bypasses
+                // Klinker entirely and our receiver fires correctly.
                 val sendResult =
                         if (requestDetails.attachmentPaths != null &&
                                         requestDetails.attachmentPaths.isNotEmpty()
                         ) {
-                            sendMms(smsManager = smsManager, requestDetails = requestDetails)
-                        } else if (requestDetails.body.length >= 160) {
                             sendMms(smsManager = smsManager, requestDetails = requestDetails)
                         } else if (requestDetails.addresses.size > 1) {
                             sendMms(smsManager = smsManager, requestDetails = requestDetails)
@@ -338,14 +360,49 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             // input — SmsManager.sendTextMessage accepts shortcodes
             // and other carrier-specific destinations directly.
             val destAddress = formatNumber(context, rawDest) ?: rawDest
-            smsManager.sendTextMessage(
-                    destAddress,
-                    null, // originating address
-                    requestDetails.body,
-                    outboundPendingIntent,
-                    outboundPendingIntent,
-                    msgId.toLong()
-            )
+
+            // Use SmsManager's segmenter to decide whether the body
+            // fits in a single SMS or needs multipart concatenation.
+            // For bodies that fit (≤ 160 7-bit / 70 UCS-2 chars) we
+            // call the single-message API; for longer bodies we use
+            // sendMultipartTextMessage with one PendingIntent per
+            // part (all pointing at the same broadcast — the receiver
+            // tolerates duplicate fires).
+            //
+            // Doing this in our own send path (instead of routing to
+            // Klinker's Transaction.sendNewMessage for long bodies)
+            // ensures the sent-result PendingIntent broadcasts via
+            // SENTSMS_ACTION, which is what
+            // [OutboundMessagingReceiver] listens for. Klinker's
+            // sentPI uses `<package>.SMS_SENT` (a different action),
+            // so going through Klinker for long bodies left the
+            // message stuck at "Sending…" with no status callback.
+            val parts = smsManager.divideMessage(requestDetails.body)
+            if (parts.size <= 1) {
+                smsManager.sendTextMessage(
+                        destAddress,
+                        null, // originating address
+                        requestDetails.body,
+                        outboundPendingIntent,
+                        outboundPendingIntent,
+                        msgId.toLong()
+                )
+            } else {
+                val sentPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
+                    repeat(parts.size) { add(outboundPendingIntent) }
+                }
+                val deliveredPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
+                    repeat(parts.size) { add(outboundPendingIntent) }
+                }
+                smsManager.sendMultipartTextMessage(
+                        destAddress,
+                        null, // originating address
+                        parts,
+                        sentPendingIntents,
+                        deliveredPendingIntents,
+                        msgId.toLong()
+                )
+            }
         } catch (e: Exception) {
             Log.e("OutboundMessagingHandler", "Error initiating SMS send: ${e.message}", e)
             return false
