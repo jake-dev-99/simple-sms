@@ -49,20 +49,24 @@ object MmsDatabaseWriter {
     ): List<Map<String, Any?>> {
         val addrs = mutableListOf<MmsAddr>().apply {
 
+            // formatNumber returns null for non-parseable inputs
+            // (shortcodes, alphanumeric senders). Preserve the raw
+            // string in that case — it's still a valid display value
+            // and downstream comparisons handle both forms.
             // Add Sender
             if(sender.isNotEmpty())
-                add(MmsAddr(address = formatNumber(context, sender), type = PduHeaders.FROM, msgId = msgId, charset = charset))
+                add(MmsAddr(address = formatNumber(context, sender) ?: sender, type = PduHeaders.FROM, msgId = msgId, charset = charset))
 
             // Add CC
             if(ccList.isNotEmpty())
                 addAll(ccList.map { cc ->
-                    MmsAddr(address = formatNumber(context, cc), type = PduHeaders.CC, msgId = msgId, charset = charset)
+                    MmsAddr(address = formatNumber(context, cc) ?: cc, type = PduHeaders.CC, msgId = msgId, charset = charset)
                 })
 
             // Add Recipients
             if(toList.isNotEmpty())
                 addAll(toList.map { addr ->
-                    MmsAddr(address = formatNumber(context, addr), type = PduHeaders.TO, msgId = msgId, charset = charset)
+                    MmsAddr(address = formatNumber(context, addr) ?: addr, type = PduHeaders.TO, msgId = msgId, charset = charset)
                 })
         }
 
