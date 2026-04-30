@@ -378,6 +378,10 @@ enum ContentType {
   imageAvif(value: 'image/avif', extension: 'avif'),
   imageTiff(value: 'image/tiff', extension: 'tiff'),
   imageSvg(value: 'image/svg+xml', extension: 'svg'),
+  // Adobe Digital Negative — RAW camera format some Samsung devices send
+  // when sharing from Pro / Expert RAW mode in the camera app. Surfaces
+  // in real inbound MMS (`mms part #783`, Android 16).
+  imageDng(value: 'image/x-adobe-dng', extension: 'dng'),
 
   // ─── Video ───────────────────────────────────────────────────────
   videoMp4(value: 'video/mp4', extension: 'mp4'),
