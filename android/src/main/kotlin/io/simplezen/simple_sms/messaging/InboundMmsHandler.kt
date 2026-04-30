@@ -125,18 +125,46 @@ class InboundMmsHandler() : BroadcastReceiver() {
         // can kill the process between onReceive() returning and the
         // executor's task running, dropping the carrier ack window.
         val pendingResult = goAsync()
+        // Verizon's MMSC sends a *template* contentLocation in the
+        // NotificationInd, ending with an empty `?message-id=` query
+        // parameter that the client is expected to fill in:
+        //
+        //   http://63.59.x.x/servlets/mms?message-id=
+        //
+        // Without filling in a value, the MMSC returns an error (or
+        // never produces a result broadcast at all on some Android
+        // versions). The pre-port simple-sms code unconditionally
+        // appended `transactionIdStr`, which produces a syntactically
+        // valid URL on Verizon and is silently tolerated by carriers
+        // (T-Mobile, AT&T, Google Fi) that send a complete URL —
+        // those MMSCs ignore the trailing characters in the query.
+        //
+        // Audit S0 #2 / PR #59 removed this concat on the (theoretical)
+        // grounds that it would corrupt T-Mobile MMSC requests, but
+        // there was no empirical breakage; the audit reasoning was
+        // wrong. Removing it broke Verizon empirically. Restore the
+        // concat behind a narrow heuristic so we only touch the URL
+        // when it actually looks like a Verizon template.
+        //
+        // The semantic mismatch (`message-id` parameter receiving a
+        // transaction-id value) is intentional: NotificationInd PDUs
+        // don't carry an X-Mms-Message-ID header in our PDU library
+        // surface, so `transactionIdStr` is the only message-unique
+        // value we have. Verizon's MMSC accepts it because it parses
+        // the query loosely and uses the value to disambiguate
+        // pending downloads — any unique-per-WAP-PUSH token works.
+        val downloadContentUri =
+            if (contentUri.endsWith("?message-id=") || contentUri.endsWith("=")) {
+                contentUri + transactionIdStr
+            } else {
+                contentUri
+            }
+
         sharedExecutor.execute {
             try {
                 startMmsDownload(
                     context = context,
-                    // S0 #2: pass the contentLocation URL VERBATIM. The
-                    // previous implementation appended `transactionIdStr`
-                    // to the URL, corrupting MMSC requests on carriers
-                    // that interpret query suffixes (notably T-Mobile).
-                    // SmsManager.downloadMultimediaMessage already wires
-                    // X-Mms-Transaction-Id into the request headers
-                    // internally — manual concat is incorrect.
-                    contentUri = contentUri,
+                    contentUri = downloadContentUri,
                     transactionId = transactionIdStr,
                     subId = subId,
                     expirySeconds = expirySeconds,
