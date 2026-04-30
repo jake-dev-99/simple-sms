@@ -98,12 +98,18 @@ class FieldHelper {
   }
 
   /// Reads a primary-key int from a raw provider row, trying `_id` first
-  /// (the BaseColumns PK every Android provider uses) and falling back to
-  /// `id` for the legacy test-fixture shape. Defaults to 0 when both keys
-  /// are missing or unparseable, matching the "unparseable row" semantics
-  /// used elsewhere in these parsers rather than throwing at construction.
-  static int primaryKey(Map<String, dynamic> raw) =>
-      asInt(raw['_id']) ?? asInt(raw['id']) ?? 0;
+  /// (the BaseColumns PK every Android provider uses) then `id` (legacy
+  /// test-fixture shape). Throws [StateError] when neither parses —
+  /// rows without a usable PK collide downstream in
+  /// `HiveSearch.byExternalId` lookups, so silently returning `0` (the
+  /// previous behaviour) corrupts joins instead of failing loudly.
+  static int primaryKey(Map<String, dynamic> raw) {
+    final id = asInt(raw['_id']) ?? asInt(raw['id']);
+    if (id != null) return id;
+    throw StateError(
+      'Row has no parseable primary key (_id or id). Keys: ${raw.keys.toList()}',
+    );
+  }
 
   /// Lenient enum lookup. Returns `null` for both `raw == null` and
   /// any non-null value not in [values]. Use only for genuinely

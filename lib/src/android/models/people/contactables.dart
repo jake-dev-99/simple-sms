@@ -246,7 +246,7 @@ class Contactable {
     // Default to 0 on missing/unparseable id, matching the other `fromJson`
     // paths in this package — throwing at deserialization on a legacy cache
     // row was the original bug this pattern replaces.
-    id: FieldHelper.asInt(json['id']) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     parentId: json['parentId'] ?? '',
     accountName: json['accountName'] ?? '',

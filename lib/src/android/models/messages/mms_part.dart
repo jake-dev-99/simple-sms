@@ -92,7 +92,7 @@ class MmsPart {
   });
 
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
-    id: FieldHelper.asInt(json["id"]) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     parentId: json["parentId"]?.toString() ?? '',
     charset: FieldHelper.enumFromValueOrNull(
@@ -175,7 +175,7 @@ class MmsPart {
     // for callers that already use it.
     final parentId = raw["mid"]?.toString() ?? '';
     MmsPart part = MmsPart(
-      id: FieldHelper.asInt(raw['_id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       sourceMap: raw,
       parentId: parentId,
       charset: FieldHelper.enumFromValueOrNull(
