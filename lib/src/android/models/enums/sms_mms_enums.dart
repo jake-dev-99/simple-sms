@@ -530,23 +530,40 @@ final class ContentType {
   /// Known MIMEs return a curated entry with an exact extension.
   /// Unknown MIMEs produce an ad-hoc instance with [category] parsed
   /// from the `type/` prefix and [extension] derived from the subtype.
-  /// Never throws — unknown MIMEs are handled gracefully while
-  /// preserving the raw MIME string for logging.
   ///
-  /// Empty / blank input returns [textPlain] (legacy compat for rows
-  /// where the `ct` column is absent).
+  /// Parameters after the first `;` are stripped before matching, so
+  /// `image/jpeg; name=photo.jpg` and `text/plain; charset=utf-8`
+  /// resolve to the same curated entries as their bare forms. The raw
+  /// (sans-parameter) MIME string is preserved on the returned instance.
+  ///
+  /// Throws [StateError] when [mime] is empty or contains only
+  /// parameters (no bare type/subtype). An MMS part row with an absent
+  /// `ct` column is malformed — silent fallback to `textPlain` here is
+  /// the exact pattern that produced the HEIC "persisted EMPTY" bug
+  /// class. For genuinely optional fields (e.g. [Sms.reContentType]),
+  /// use [fromMimeOrNull] instead.
   static ContentType fromMime(String mime) {
-    final trimmed = mime.trim();
-    if (trimmed.isEmpty) return textPlain;
+    // Strip parameters: "image/jpeg; name=photo.jpg" → "image/jpeg".
+    final semi = mime.indexOf(';');
+    final bare = (semi >= 0 ? mime.substring(0, semi) : mime).trim();
 
-    final lower = trimmed.toLowerCase();
+    if (bare.isEmpty) {
+      throw StateError(
+        'ContentType.fromMime called with empty MIME (raw input: "$mime"). '
+        'An MMS part with an absent `ct` column is malformed — silent '
+        'fallback to text/plain here recreates the HEIC "persisted EMPTY" '
+        'bug. For optional fields, use fromMimeOrNull instead.',
+      );
+    }
+
+    final lower = bare.toLowerCase();
     for (final ct in values) {
       if (ct.value.toLowerCase() == lower) return ct;
     }
 
-    // Unknown MIME — build an ad-hoc instance.
+    // Unknown MIME — build an ad-hoc instance with parameters stripped.
     return ContentType(
-      value: trimmed,
+      value: bare,
       extension: _deriveExtension(lower),
       category: _parseCategory(lower),
     );
@@ -554,10 +571,14 @@ final class ContentType {
 
   /// Nullable variant for optional fields (e.g. [Sms.reContentType]).
   ///
-  /// Returns `null` when [mime] is null or empty — the field is
-  /// genuinely absent. Non-empty strings resolve via [fromMime].
+  /// Returns `null` when [mime] is null, empty, or parameter-only —
+  /// the field is genuinely absent. Non-empty strings resolve via
+  /// [fromMime] (which strips parameters before matching).
   static ContentType? fromMimeOrNull(String? mime) {
-    if (mime == null || mime.trim().isEmpty) return null;
+    if (mime == null) return null;
+    final semi = mime.indexOf(';');
+    final bare = (semi >= 0 ? mime.substring(0, semi) : mime).trim();
+    if (bare.isEmpty) return null;
     return fromMime(mime);
   }
 
