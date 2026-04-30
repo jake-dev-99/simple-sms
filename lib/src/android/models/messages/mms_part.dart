@@ -95,7 +95,7 @@ class MmsPart {
     id: FieldHelper.primaryKey(json),
     sourceMap: json,
     parentId: json["parentId"]?.toString() ?? '',
-    charset: FieldHelper.enumFromValue(
+    charset: FieldHelper.enumFromValueOrNull(
       CharSet.values,
       FieldHelper.asInt(json["charset"]),
     ),
@@ -178,7 +178,7 @@ class MmsPart {
       id: FieldHelper.primaryKey(raw),
       sourceMap: raw,
       parentId: parentId,
-      charset: FieldHelper.enumFromValue(
+      charset: FieldHelper.enumFromValueOrNull(
         CharSet.values,
         FieldHelper.asInt(raw["chset"]),
       ),
