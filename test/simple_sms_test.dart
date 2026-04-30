@@ -586,10 +586,70 @@ void main() {
       test('trims whitespace', () {
         expect(ContentType.fromMime('  image/jpeg  '), same(ContentType.imageJpeg));
       });
+    });
 
-      test('empty/blank returns textPlain', () {
-        expect(ContentType.fromMime(''), same(ContentType.textPlain));
-        expect(ContentType.fromMime('   '), same(ContentType.textPlain));
+    group('parameter stripping', () {
+      // Real Android `ct` columns deliver MIMEs with parameters:
+      //   image/jpeg; name=photo.jpg
+      //   text/plain; charset=utf-8
+      //   application/smil; charset=utf-8
+      // These must resolve to the same curated entries as bare forms.
+
+      test('strips parameters from MIME for known matching', () {
+        final ct = ContentType.fromMime('image/jpeg; name=photo.jpg');
+        expect(ct, same(ContentType.imageJpeg));
+        expect(ct.extension, 'jpg');
+        expect(ct.value, 'image/jpeg'); // params stripped from value
+      });
+
+      test('strips parameters with whitespace tolerance', () {
+        expect(
+          ContentType.fromMime('text/plain; charset=utf-8'),
+          same(ContentType.textPlain),
+        );
+        expect(
+          ContentType.fromMime('  text/plain  ;charset=utf-8  '),
+          same(ContentType.textPlain),
+        );
+      });
+
+      test('strips parameters from unknown MIMEs too', () {
+        final ct = ContentType.fromMime('image/x-custom; param=val');
+        expect(ct.value, 'image/x-custom'); // params stripped
+        expect(ct.category, MimeCategory.image);
+        expect(ct.extension, 'custom'); // x- stripped, no params in extension
+      });
+    });
+
+    group('empty / malformed throws', () {
+      // PR-A philosophy: an MMS part row with an absent `ct` column is
+      // malformed. Silent fallback to text/plain here is the exact bug
+      // class that produced "persisted EMPTY" for HEIC photos.
+
+      test('empty mime throws StateError', () {
+        expect(
+          () => ContentType.fromMime(''),
+          throwsA(isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('empty MIME'),
+          )),
+        );
+      });
+
+      test('whitespace-only mime throws StateError', () {
+        expect(
+          () => ContentType.fromMime('   '),
+          throwsA(isA<StateError>()),
+        );
+      });
+
+      test('parameter-only after semicolon throws', () {
+        // No bare type/subtype before `;` — equally malformed.
+        expect(
+          () => ContentType.fromMime('; charset=utf-8'),
+          throwsA(isA<StateError>()),
+        );
       });
     });
 
