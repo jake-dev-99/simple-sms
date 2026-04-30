@@ -567,6 +567,194 @@ void main() {
     });
   });
 
+  group('ContentType — dynamic MIME handling', () {
+    group('known MIME resolution', () {
+      test('returns curated entry for known MIME', () {
+        final ct = ContentType.fromMime('image/jpeg');
+        expect(ct, same(ContentType.imageJpeg));
+        expect(ct.value, 'image/jpeg');
+        expect(ct.extension, 'jpg');
+        expect(ct.category, MimeCategory.image);
+      });
+
+      test('case-insensitive matching', () {
+        expect(ContentType.fromMime('IMAGE/JPEG'), same(ContentType.imageJpeg));
+        expect(ContentType.fromMime('Text/Plain'), same(ContentType.textPlain));
+        expect(ContentType.fromMime('VIDEO/MP4'), same(ContentType.videoMp4));
+      });
+
+      test('trims whitespace', () {
+        expect(ContentType.fromMime('  image/jpeg  '), same(ContentType.imageJpeg));
+      });
+
+      test('empty/blank returns textPlain', () {
+        expect(ContentType.fromMime(''), same(ContentType.textPlain));
+        expect(ContentType.fromMime('   '), same(ContentType.textPlain));
+      });
+    });
+
+    group('unknown MIME — ad-hoc instances', () {
+      test('preserves raw MIME string verbatim', () {
+        final ct = ContentType.fromMime('image/x-custom-format');
+        expect(ct.value, 'image/x-custom-format');
+      });
+
+      test('parses category from type/ prefix', () {
+        expect(
+          ContentType.fromMime('image/x-custom').category,
+          MimeCategory.image,
+        );
+        expect(
+          ContentType.fromMime('video/x-custom').category,
+          MimeCategory.video,
+        );
+        expect(
+          ContentType.fromMime('audio/x-m4a').category,
+          MimeCategory.audio,
+        );
+        expect(
+          ContentType.fromMime('text/x-custom').category,
+          MimeCategory.text,
+        );
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage').category,
+          MimeCategory.application,
+        );
+      });
+
+      test('unknown top-level type defaults to application', () {
+        expect(
+          ContentType.fromMime('multipart/mixed').category,
+          MimeCategory.application,
+        );
+      });
+
+      test('isKnown is false for ad-hoc instances', () {
+        expect(ContentType.fromMime('image/jpeg').isKnown, isTrue);
+        expect(ContentType.fromMime('image/x-custom').isKnown, isFalse);
+      });
+    });
+
+    group('extension derivation', () {
+      test('strips x- prefix', () {
+        // audio/x-m4a → m4a
+        expect(ContentType.fromMime('audio/x-m4a').extension, 'm4a');
+      });
+
+      test('uses +suffix for structured types', () {
+        // application/vnd.gsma.botmessage.v1.0+json → json
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage.v1.0+json').extension,
+          'json',
+        );
+        // image/svg+xml → xml (but known entry returns 'svg')
+        expect(
+          ContentType.fromMime('application/xhtml+xml').extension,
+          'xml',
+        );
+      });
+
+      test('vnd.* without +suffix falls back to bin', () {
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage').extension,
+          'bin',
+        );
+      });
+
+      test('simple unknown subtype becomes extension directly', () {
+        expect(ContentType.fromMime('image/jxl').extension, 'jxl');
+        expect(ContentType.fromMime('video/h264').extension, 'h264');
+      });
+
+      test('no slash falls back to bin', () {
+        expect(ContentType.fromMime('garbage').extension, 'bin');
+      });
+    });
+
+    group('fromMimeOrNull', () {
+      test('null input returns null', () {
+        expect(ContentType.fromMimeOrNull(null), isNull);
+      });
+
+      test('empty string returns null', () {
+        expect(ContentType.fromMimeOrNull(''), isNull);
+        expect(ContentType.fromMimeOrNull('   '), isNull);
+      });
+
+      test('valid MIME returns ContentType', () {
+        expect(ContentType.fromMimeOrNull('image/png'), same(ContentType.imagePng));
+      });
+
+      test('unknown MIME returns ad-hoc instance', () {
+        final ct = ContentType.fromMimeOrNull('audio/x-m4a');
+        expect(ct, isNotNull);
+        expect(ct!.value, 'audio/x-m4a');
+        expect(ct.category, MimeCategory.audio);
+      });
+    });
+
+    group('equality', () {
+      test('known entries with same value are identical', () {
+        expect(ContentType.fromMime('image/jpeg') == ContentType.imageJpeg, isTrue);
+      });
+
+      test('ad-hoc instances with same value are equal', () {
+        final a = ContentType.fromMime('image/x-custom');
+        final b = ContentType.fromMime('image/x-custom');
+        expect(a == b, isTrue);
+        expect(a.hashCode, b.hashCode);
+      });
+
+      test('different values are not equal', () {
+        expect(ContentType.imageJpeg == ContentType.imagePng, isFalse);
+      });
+    });
+  });
+
+  group('MmsPart — category-based helpers', () {
+    MmsPart _makePart(String mime) => MmsPart.fromRaw({
+      '_id': 1,
+      'ct': mime,
+      'cl': 'test',
+    });
+
+    test('isText is true for text/* MIMEs', () {
+      expect(_makePart('text/plain').isText, isTrue);
+      expect(_makePart('text/html').isText, isTrue);
+    });
+
+    test('isText is false for non-text MIMEs', () {
+      expect(_makePart('image/jpeg').isText, isFalse);
+      expect(_makePart('application/smil').isText, isFalse);
+    });
+
+    test('isImage is true for image/* MIMEs', () {
+      expect(_makePart('image/jpeg').isImage, isTrue);
+      expect(_makePart('image/x-adobe-dng').isImage, isTrue);
+    });
+
+    test('isImage is true for unknown image/* MIMEs', () {
+      expect(_makePart('image/x-custom-format').isImage, isTrue);
+    });
+
+    test('isVideo is true for video/* MIMEs', () {
+      expect(_makePart('video/mp4').isVideo, isTrue);
+    });
+
+    test('isAudio is true for audio/* MIMEs', () {
+      expect(_makePart('audio/amr').isAudio, isTrue);
+      expect(_makePart('audio/x-m4a').isAudio, isTrue);
+    });
+
+    test('isSmil is true for application/smil', () {
+      expect(_makePart('application/smil').isSmil, isTrue);
+    });
+
+    test('isSmil is false for other application/* MIMEs', () {
+      expect(_makePart('application/pdf').isSmil, isFalse);
+    });
+  });
+
   group('ConversationFilter', () {
     // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
     // the latest-message id, not the thread id. Filtering threads must go

@@ -877,16 +877,11 @@ class LookupService {
   }
 
   /// Maps a MIME string to a dotted extension (e.g. `image/jpeg` → `.jpg`).
-  /// Returns `''` when the MIME is null or unrecognised — callers attach
-  /// the result directly to the filename stem and expect no suffix for
-  /// unknown types. Delegates to the canonical [ContentType] table rather
-  /// than maintaining a parallel switch.
+  /// Returns `''` when the MIME is null. Delegates to [ContentType.fromMime]
+  /// which handles both known and unknown MIME types.
   static String _extensionForMime(String? mime) {
-    if (mime == null) return '';
-    for (final ct in ContentType.values) {
-      if (ct.value.isNotEmpty && ct.value == mime) return '.${ct.extension}';
-    }
-    return '';
+    if (mime == null || mime.trim().isEmpty) return '';
+    return '.${ContentType.fromMime(mime).extension}';
   }
 
   // --- Private filter / sort translation -----------------------------------

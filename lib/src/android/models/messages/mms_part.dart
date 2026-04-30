@@ -61,8 +61,22 @@ class MmsPart {
   /// flag used by Samsung's suggested-reply feature.
   final int? smartSuggestionClassification;
 
-  bool get isText => contentType.value.contains("text");
+  /// Whether this part is a text body (any `text/*` MIME).
+  bool get isText => contentType.category == MimeCategory.text;
+
+  /// Whether this part is a SMIL layout descriptor (`application/smil`).
+  /// SMIL's category is [MimeCategory.application], so this stays as a
+  /// value check rather than a category check.
   bool get isSmil => contentType.value.contains("smil");
+
+  /// Whether this part is an image attachment (any `image/*` MIME).
+  bool get isImage => contentType.category == MimeCategory.image;
+
+  /// Whether this part is a video attachment (any `video/*` MIME).
+  bool get isVideo => contentType.category == MimeCategory.video;
+
+  /// Whether this part is an audio attachment (any `audio/*` MIME).
+  bool get isAudio => contentType.category == MimeCategory.audio;
 
   MmsPart({
     required this.id,
