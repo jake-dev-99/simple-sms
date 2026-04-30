@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Telephony.Mms
 import android.util.Log
 import com.google.android.mms.MmsException
+import com.google.android.mms.pdu_alt.PduHeaders
 import com.google.android.mms.pdu_alt.PduPersister
 import com.google.android.mms.pdu_alt.RetrieveConf
 import io.simplezen.simple_sms.queries.Query
@@ -173,7 +174,7 @@ object InboundMmsPersister {
             try {
                 val predicates = mutableListOf<String>()
                 val args = mutableListOf<String>()
-                args += "130" // PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND
+                args += PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND.toString()
                 if (cleanupTransactionId != null) {
                     predicates += "${Mms.TRANSACTION_ID}=?"
                     args += cleanupTransactionId
@@ -184,8 +185,13 @@ object InboundMmsPersister {
                 }
                 val selection =
                     "${Mms.MESSAGE_TYPE}=? AND (${predicates.joinToString(" OR ")})"
+                // Scoped to `Mms.Inbox.CONTENT_URI` rather than the
+                // top-level `Mms.CONTENT_URI`. NotificationInd rows
+                // only exist in inbox by spec; narrowing to inbox
+                // ensures we never touch other folders even if a
+                // future OEM repurposed `m_type=130` somewhere else.
                 val deleted = context.contentResolver.delete(
-                    Mms.CONTENT_URI,
+                    Mms.Inbox.CONTENT_URI,
                     selection,
                     args.toTypedArray(),
                 )
