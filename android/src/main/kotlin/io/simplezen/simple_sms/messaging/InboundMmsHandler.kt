@@ -45,9 +45,13 @@ import java.util.concurrent.Executors
  *     fires for ALL apps including the default, but we have no
  *     authority to ack the carrier from the RECEIVED path, so its
  *     filter was removed from the manifest.
- *   - The result `PendingIntent` uses `FLAG_MUTABLE | FLAG_ONE_SHOT` so
- *     SmsManager can populate `EXTRA_MMS_HTTP_STATUS` on Android 12+
- *     while the PendingIntent is invalidated after a single fire.
+ *   - The result `PendingIntent` uses `FLAG_ONE_SHOT | FLAG_IMMUTABLE`
+ *     — the AOSP `RetrieveTransaction` canonical pair. ONE_SHOT
+ *     invalidates the PendingIntent the moment SmsManager fires the
+ *     result broadcast; IMMUTABLE locks the stashed intent. SmsManager
+ *     still delivers result extras (`EXTRA_MMS_HTTP_STATUS`, etc.) by
+ *     merging an `extrasIntent` at `pendingIntent.send(ctx, code,
+ *     extrasIntent)` time — IMMUTABLE doesn't block that path.
  */
 class InboundMmsHandler() : BroadcastReceiver() {
 
@@ -150,29 +154,49 @@ class InboundMmsHandler() : BroadcastReceiver() {
         subId: Int,
         expirySeconds: Long,
     ) {
-        Log.d(TAG, "Starting MMS download from: $contentUri (txn=$transactionId, sub=$subId)")
         val tempMmsFile = createTempMmsFile(context)
         val contentFileUri: Uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
             tempMmsFile
         )
+        Log.d(
+            TAG,
+            "Starting MMS download from: $contentUri " +
+                "(txn=$transactionId, sub=$subId, tempFile=${tempMmsFile.absolutePath})"
+        )
 
         // S1 #7: unique requestCode per inbound MMS. Two near-
         // simultaneous WAP_PUSHes used to collide on requestCode=0,
-        // overwriting each other's extras under FLAG_UPDATE_CURRENT.
+        // overwriting each other's extras.
         val requestCode = transactionId.hashCode()
 
-        // S1 #15: FLAG_MUTABLE so SmsManager.downloadMultimediaMessage
-        // can populate EXTRA_MMS_HTTP_STATUS and EXTRA_MMS_DATA on
-        // Android 12+. AOSP MmsService uses the mutable variant for
-        // this exact pattern.
+        // PendingIntent flags match AOSP `RetrieveTransaction` for this
+        // exact use case: `FLAG_ONE_SHOT | FLAG_IMMUTABLE`.
         //
-        // FLAG_ONE_SHOT pairs with FLAG_MUTABLE as defense in depth:
-        // once SmsManager fires the result broadcast, the PendingIntent
-        // is invalidated, so a mutable PendingIntent can't be retained
-        // or reused by another component. AOSP's RetrieveTransaction
-        // uses the same flag combination.
+        // - FLAG_ONE_SHOT: invalidates the PendingIntent the moment
+        //   SmsManager fires the result broadcast. Carrier ack happens
+        //   inside that broadcast — defense in depth against any reuse.
+        // - FLAG_IMMUTABLE: the PendingIntent's stashed Intent is
+        //   sealed. SmsManager populates result extras (resultCode,
+        //   EXTRA_MMS_HTTP_STATUS, etc.) by calling
+        //   `pendingIntent.send(ctx, code, extrasIntent)` — that
+        //   `extrasIntent` is merged into the outgoing broadcast and
+        //   delivered to MmsDownloadReceiver, regardless of mutability.
+        //   IMMUTABLE just blocks the PendingIntent's stashed Intent
+        //   from being modified directly by any caller.
+        //
+        // Pre-fix the flags were `UPDATE_CURRENT | MUTABLE | ONE_SHOT`
+        // — UPDATE_CURRENT was pointless under unique requestCodes,
+        // and MUTABLE was based on a misreading of how SmsManager
+        // delivers result extras (it doesn't need a mutable
+        // PendingIntent to do so). The mismatch matters in practice:
+        // some Android versions / OEMs reject or silently drop
+        // unusual flag combinations, leaving the result PendingIntent
+        // never delivered — causing every download to "succeed at
+        // initiation" but never produce a result broadcast for
+        // MmsDownloadReceiver. AOSP's canonical pair is the safe
+        // baseline.
         val pi = PendingIntent.getBroadcast(
             context,
             requestCode,
@@ -184,9 +208,7 @@ class InboundMmsHandler() : BroadcastReceiver() {
                 putExtra("expirySeconds", expirySeconds)
                 setClass(context, MmsDownloadReceiver::class.java)
             },
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                PendingIntent.FLAG_MUTABLE or
-                PendingIntent.FLAG_ONE_SHOT
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val smsManager = context.getSystemService(SmsManager::class.java)
@@ -197,7 +219,7 @@ class InboundMmsHandler() : BroadcastReceiver() {
             null,
             pi
         )
-        Log.d(TAG, "MMS download initiated")
+        Log.d(TAG, "MMS download initiated (awaiting result broadcast for txn=$transactionId)")
     }
 
     private fun createTempMmsFile(context: Context): File =
