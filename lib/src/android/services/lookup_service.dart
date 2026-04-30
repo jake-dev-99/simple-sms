@@ -574,11 +574,18 @@ class LookupService {
 
       return Future.wait(bare.map(_enrichConversation));
     } catch (e, s) {
+      // Per the file-level contract (see lines 31-42): query methods
+      // do NOT swallow exceptions. The previous `catch + return const []`
+      // here was the regression that recreated the exact thread_id SQL
+      // bug class — silent empty list across thousands of full-sync
+      // calls, only surfacing when realtime force-unwrapped a `!`.
+      // Log diagnostics for triage, then rethrow so callers can decide
+      // (retry, surface to UI, kill the sync pass).
       debugPrint(
         'simple_sms: listConversations failed (filter=$filter): $e',
       );
       debugPrint(s.toString());
-      return const [];
+      rethrow;
     }
   }
 
