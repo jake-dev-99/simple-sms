@@ -291,7 +291,10 @@ enum MmsMessageType {
   readOriginatedInd(value: 0x88),
 
   /// `M-forward.req` — outbound forward request. Transport-only.
-  forwardRequestInd(value: 0x89);
+  forwardRequestInd(value: 0x89),
+
+  /// `M-forward.conf` — MMSC's ack to a forward request. Transport-only.
+  forwardConf(value: 0x8A);
 
   const MmsMessageType({required this.value});
   final int value;
