@@ -116,9 +116,12 @@ object InboundMmsPersister {
         // > Also update the transaction id and the expiry from
         // > NotificationInd so that wap push dedup would work even
         // > after the wap push is deleted.
+        // Skip TRANSACTION_ID when blank — pinning an empty string
+        // wouldn't help downstream dedup probes match against this row
+        // and would shadow whatever the PDU-derived value already was.
         val cv = ContentValues(3).apply {
             put(Mms.DATE, receivedTimestampSeconds)
-            put(Mms.TRANSACTION_ID, transactionId)
+            if (transactionId.isNotBlank()) put(Mms.TRANSACTION_ID, transactionId)
             if (expirySeconds > 0L) put(Mms.EXPIRY, expirySeconds)
         }
         try {
@@ -138,7 +141,11 @@ object InboundMmsPersister {
                 "Persisted MMS at $uri but re-query returned no row"
             )
         }
-        val mmsRow = mmsRowList.first().toMutableMap().apply { put("uri", uri) }
+        // Store `uri` as a String — the bridge serializes the payload
+        // through `AnySerializer.encodeToString` (kotlinx.serialization),
+        // which doesn't know how to encode a raw `android.net.Uri`.
+        // Dart side already parses URIs from strings.
+        val mmsRow = mmsRowList.first().toMutableMap().apply { put("uri", uri.toString()) }
 
         val partRows = Query(context).query(
             QueryObj(
