@@ -48,11 +48,16 @@ object BackgroundEngineManager {
             return
         }
 
-        // If the foreground plugin is attached, use it directly
+        // If the foreground plugin is attached, use it directly.
+        // Method channels were already set up in
+        // `SimpleSmsPlugin.onAttachedToActivity`; calling
+        // `ensureMethodChannels` here on every inbound message was
+        // constructing a fresh `OutboundMessagingHandler` (and thus a
+        // fresh `OutboundMessagingReceiver`) on every delivery — a
+        // receiver leak that compounded for the session lifetime.
         val foregroundMessenger = SimpleSmsPlugin.flutterBinding?.binaryMessenger
         if (foregroundMessenger != null) {
             Log.d(TAG, "Foreground engine available, sending directly")
-            ensureMethodChannels(context, foregroundMessenger)
             invokeMethod(foregroundMessenger, method, jsonString)
             return
         }
@@ -135,7 +140,14 @@ object BackgroundEngineManager {
      */
     fun onForegroundDetached() {
         synchronized(lock) {
-            backgroundEngine?.destroy()
+            backgroundEngine?.let { engine ->
+                // Release the cached OutboundMessagingHandler for the
+                // background messenger before destroying the engine —
+                // otherwise the handler's BroadcastReceiver lingers in
+                // the Android registry after teardown.
+                SimpleSmsPlugin.releaseHandler(engine.dartExecutor.binaryMessenger)
+                engine.destroy()
+            }
             backgroundEngine = null
             isEngineReady = false
             // Don't clear pending messages — they'll be delivered if a new engine starts

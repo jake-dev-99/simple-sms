@@ -5,83 +5,156 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.Telephony
-import com.google.android.mms.ContentType
-import com.google.android.mms.pdu_alt.NotificationInd
-import com.google.android.mms.pdu_alt.PduParser
-import com.google.android.mms.pdu_alt.RetrieveConf
 import android.telephony.SmsManager
-import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import io.simplezen.simple_sms.models.MmsObject
-import io.simplezen.simple_sms.models.MmsPart
+import com.google.android.mms.pdu_alt.NotificationInd
+import com.google.android.mms.pdu_alt.PduParser
+import com.google.android.mms.pdu_alt.RetrieveConf
 import java.io.File
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-// Inbound MMS Messages
+/**
+ * WAP_PUSH receiver for inbound MMS.
+ *
+ * Lifecycle (mirrors AOSP `ReceiveMmsMessageAction`):
+ *   1. Carrier delivers `android.provider.Telephony.WAP_PUSH_DELIVER`
+ *      with a `NotificationInd` PDU in the `data` extra.
+ *   2. We parse the NotificationInd, extract `contentLocation`,
+ *      `transactionId`, and `expiry`.
+ *   3. We allocate a temp file under our FileProvider authority,
+ *      construct a result `PendingIntent` for [MmsDownloadReceiver],
+ *      and call `SmsManager.downloadMultimediaMessage` to fetch the
+ *      RetrieveConf from the MMSC.
+ *   4. SmsManager broadcasts the result; [MmsDownloadReceiver] picks
+ *      it up and persists the message via [InboundMmsPersister].
+ *
+ * Receiver hardening (audit defects S1 #7, #10, #11, #12, #15):
+ *   - Each WAP_PUSH gets a unique PendingIntent requestCode derived
+ *     from the transaction id, so concurrent inbound MMS no longer
+ *     collide on the same PendingIntent slot.
+ *   - `goAsync()` keeps the process alive across the dispatch
+ *     boundary, so Android can't kill us between `onReceive` returning
+ *     and the executor running.
+ *   - Single shared executor across all inbound MMS — no per-receive
+ *     `newSingleThreadExecutor()` thread leak.
+ *   - `WAP_PUSH_RECEIVED` (the non-default-SMS-app action) is logged
+ *     and ignored cleanly.
+ *   - The result `PendingIntent` uses `FLAG_MUTABLE | FLAG_ONE_SHOT` so
+ *     SmsManager can populate `EXTRA_MMS_HTTP_STATUS` on Android 12+
+ *     while the PendingIntent is invalidated after a single fire.
+ */
 class InboundMmsHandler() : BroadcastReceiver() {
-    @OptIn(ExperimentalStdlibApi::class)
+
+    companion object {
+        private const val TAG = "InboundMmsHandler"
+
+        // Single shared executor across all inbound MMS. Lazily
+        // initialized on first use; never shut down — this object
+        // lives for the lifetime of the receiver process.
+        private val sharedExecutor: ExecutorService =
+            Executors.newSingleThreadExecutor { r ->
+                Thread(r, "InboundMmsHandler-Executor").apply { isDaemon = true }
+            }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
-        if (
-            intent.action == "android.provider.Telephony.WAP_PUSH_DELIVER"
-            && intent.type == "application/vnd.wap.mms-message"
-        ) {
-            val pdu = intent.getByteArrayExtra("data") ?: return
-
-            // Parse NotificationInd from PDU
-            val notification = PduParser(pdu, true).parse()
-            if (notification !is NotificationInd) {
-                Log.e("InboundMmsHandler", "Failed to parse MMS NotificationInd PDU!")
-                return
+        when (intent.action) {
+            "android.provider.Telephony.WAP_PUSH_DELIVER" -> handleDeliver(context, intent)
+            "android.provider.Telephony.WAP_PUSH_RECEIVED" -> {
+                // Fires when this app is NOT the default SMS handler.
+                // We can't act on it (the carrier expects the default
+                // app to ack), but we should not crash — just log so
+                // any unexpected delivery is visible.
+                Log.d(TAG, "Ignoring WAP_PUSH_RECEIVED (not the default SMS app path)")
             }
-
-            Log.d("InboundMmsHandler", "Received MMS notification, size: ${notification.messageSize}")
-
-            val contentLocation : ByteArray = notification.contentLocation
-            if (contentLocation.isEmpty()) {
-                Log.e("InboundMmsHandler", "No contentLocation in MMS NotificationInd PDU!")
-                return
-            }
-
-            val transactionId = notification.transactionId
-            if (transactionId.isEmpty()) {
-                Log.e("InboundMmsHandler", "No transactionId in MMS NotificationInd PDU!")
-                return
-            }
-
-            val contentUri = try {
-                String(contentLocation, Charsets.UTF_8) // UTF-8 is safest per MMS spec
-            } catch (e: Exception) {
-                Log.e("InboundMmsHandler", "Failed to parse contentLocation: $e")
-                return
-            }
-
-            val transactionIdStr = try {
-                String(transactionId, Charsets.UTF_8) // UTF-8 is safest per MMS spec
-            } catch (e: Exception) {
-                Log.e("InboundMmsHandler", "Failed to parse contentLocation: $e")
-                return
-            }
-
-            if (contentUri.isBlank()) {
-                Log.e("InboundMmsHandler", "contentUri is blank after decoding!")
-                return
-            }
-
-            // Run off main thread
-            Executors.newSingleThreadExecutor().execute {
-                startMmsDownload(context, contentUri.trim() + transactionIdStr)
-            }
-
-        } else {
-            Log.w("InboundMmsHandler", "Received unexpected action: ${intent.action}")
+            else -> Log.w(TAG, "Received unexpected action: ${intent.action}")
         }
     }
 
-    private fun startMmsDownload(context: Context, contentUri: String) {
-        Log.d("InboundMmsHandler", "Starting MMS download from: $contentUri")
+    private fun handleDeliver(context: Context, intent: Intent) {
+        if (intent.type != "application/vnd.wap.mms-message") {
+            Log.w(TAG, "WAP_PUSH_DELIVER with unexpected type: ${intent.type}")
+            return
+        }
+
+        val pdu = intent.getByteArrayExtra("data") ?: run {
+            Log.e(TAG, "WAP_PUSH_DELIVER missing 'data' extra")
+            return
+        }
+
+        val notification = PduParser(pdu, true).parse()
+        if (notification !is NotificationInd) {
+            Log.e(TAG, "Failed to parse MMS NotificationInd PDU")
+            return
+        }
+
+        Log.d(TAG, "Received MMS notification, size=${notification.messageSize}")
+
+        val contentLocationBytes: ByteArray = notification.contentLocation
+        if (contentLocationBytes.isEmpty()) {
+            Log.e(TAG, "No contentLocation in MMS NotificationInd PDU")
+            return
+        }
+
+        val transactionIdBytes = notification.transactionId
+        if (transactionIdBytes.isEmpty()) {
+            Log.e(TAG, "No transactionId in MMS NotificationInd PDU")
+            return
+        }
+
+        val contentUri = String(contentLocationBytes, Charsets.UTF_8).trim()
+        if (contentUri.isBlank()) {
+            Log.e(TAG, "contentUri is blank after decoding")
+            return
+        }
+
+        val transactionIdStr = String(transactionIdBytes, Charsets.UTF_8)
+
+        val subId: Int = intent.getIntExtra(
+            "subscription",
+            SmsManager.getDefaultSmsSubscriptionId()
+        )
+
+        val expirySeconds: Long = notification.expiry
+
+        // Use goAsync() so the process survives long enough to invoke
+        // SmsManager.downloadMultimediaMessage. Without this, Android
+        // can kill the process between onReceive() returning and the
+        // executor's task running, dropping the carrier ack window.
+        val pendingResult = goAsync()
+        sharedExecutor.execute {
+            try {
+                startMmsDownload(
+                    context = context,
+                    // S0 #2: pass the contentLocation URL VERBATIM. The
+                    // previous implementation appended `transactionIdStr`
+                    // to the URL, corrupting MMSC requests on carriers
+                    // that interpret query suffixes (notably T-Mobile).
+                    // SmsManager.downloadMultimediaMessage already wires
+                    // X-Mms-Transaction-Id into the request headers
+                    // internally — manual concat is incorrect.
+                    contentUri = contentUri,
+                    transactionId = transactionIdStr,
+                    subId = subId,
+                    expirySeconds = expirySeconds,
+                )
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+
+    private fun startMmsDownload(
+        context: Context,
+        contentUri: String,
+        transactionId: String,
+        subId: Int,
+        expirySeconds: Long,
+    ) {
+        Log.d(TAG, "Starting MMS download from: $contentUri (txn=$transactionId, sub=$subId)")
         val tempMmsFile = createTempMmsFile(context)
         val contentFileUri: Uri = FileProvider.getUriForFile(
             context,
@@ -89,15 +162,35 @@ class InboundMmsHandler() : BroadcastReceiver() {
             tempMmsFile
         )
 
+        // S1 #7: unique requestCode per inbound MMS. Two near-
+        // simultaneous WAP_PUSHes used to collide on requestCode=0,
+        // overwriting each other's extras under FLAG_UPDATE_CURRENT.
+        val requestCode = transactionId.hashCode()
+
+        // S1 #15: FLAG_MUTABLE so SmsManager.downloadMultimediaMessage
+        // can populate EXTRA_MMS_HTTP_STATUS and EXTRA_MMS_DATA on
+        // Android 12+. AOSP MmsService uses the mutable variant for
+        // this exact pattern.
+        //
+        // FLAG_ONE_SHOT pairs with FLAG_MUTABLE as defense in depth:
+        // once SmsManager fires the result broadcast, the PendingIntent
+        // is invalidated, so a mutable PendingIntent can't be retained
+        // or reused by another component. AOSP's RetrieveTransaction
+        // uses the same flag combination.
         val pi = PendingIntent.getBroadcast(
             context,
-            0,
+            requestCode,
             Intent(context, MmsDownloadReceiver::class.java).apply {
                 putExtra("contentFileUri", contentFileUri.toString())
-                putExtra("contentUri", contentUri.toString())
+                putExtra("contentUri", contentUri)
+                putExtra("transactionId", transactionId)
+                putExtra("subId", subId)
+                putExtra("expirySeconds", expirySeconds)
                 setClass(context, MmsDownloadReceiver::class.java)
             },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                PendingIntent.FLAG_MUTABLE or
+                PendingIntent.FLAG_ONE_SHOT
         )
 
         val smsManager = context.getSystemService(SmsManager::class.java)
@@ -108,102 +201,82 @@ class InboundMmsHandler() : BroadcastReceiver() {
             null,
             pi
         )
-        Log.d("InboundMmsHandler", "MMS download initiated")
+        Log.d(TAG, "MMS download initiated")
     }
 
-    private fun createTempMmsFile(context: Context): File {
-        // This file will receive the MMS PDU via downloadMultimediaMessage
-        return File.createTempFile("mmsdownload", ".dat", context.cacheDir)
-    }
+    private fun createTempMmsFile(context: Context): File =
+        File.createTempFile("mmsdownload", ".dat", context.cacheDir)
 }
 
 class MmsDownloadReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val contentFileUri: Uri? = intent.extras?.getString("contentFileUri")?.toUri()
+        val extras = intent.extras
+        val contentFileUri: Uri? = extras?.getString("contentFileUri")?.toUri()
         if (contentFileUri == null) {
-            Log.e("MmsDownloadReceiver.onReceive", " >>> No downloaded MMS content URI!")
+            Log.e(TAG, "No downloaded MMS content URI in broadcast extras")
             return
         }
 
-        val contentUri: Uri? = intent.extras?.getString("contentUri")?.toUri()
-        if (contentUri == null) {
-            Log.e("MmsDownloadReceiver.onReceive", "Missing provider download uri - ignoring")
-        }
-
-        Telephony.Mms.RETRIEVE_STATUS
+        val transactionId: String = extras.getString("transactionId").orEmpty()
+        val subId: Int = extras.getInt("subId", SmsManager.getDefaultSmsSubscriptionId())
+        val expirySeconds: Long = extras.getLong("expirySeconds", -1L)
 
         try {
-            val pduBytes =
-                context.contentResolver.openInputStream(contentFileUri)?.use { it.readBytes() }
+            val pduBytes = context.contentResolver
+                .openInputStream(contentFileUri)
+                ?.use { it.readBytes() }
 
-            if (pduBytes != null) {
-                val pdu = PduParser(pduBytes, true).parse()
-                if (pdu is RetrieveConf) {
-
-                    val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-                    // Prime Addrs to generate Thread ID
-                    val selfNumbers = getSelfNumbers(context)
-
-                    fun cleanAddress(address: String?): String? =
-                        address?.let { formatNumber(context, it) }?.takeIf { it.isNotBlank() && it !in selfNumbers }
-
-                    val ccList = pdu.cc?.mapNotNull { cleanAddress(it.string) }?.toSet() ?: emptySet()
-                    val toList = pdu.to?.mapNotNull { cleanAddress(it.string) }?.toSet() ?: emptySet()
-                    val sender = cleanAddress(pdu.from?.string) ?: ""
-                    val participants = (ccList + toList + if (sender.isNotBlank()) setOf(sender) else emptySet())
-                        .toSet()
-
-                    // Prime Text Only, and Message Size
-                    var textOnly = true
-                    var messageSize = 0L
-                    for(i in 0 until pdu.body.partsNum) {
-                        val part = pdu.body.getPart(i)
-                        messageSize += part.data.size
-                        if (part.contentType != null && String(part.contentType) != ContentType.TEXT_PLAIN) {
-                            textOnly = false
-                        }
-                    }
-
-                    // Insert MMS
-                    val subscriptionId = SmsManager.getDefaultSmsSubscriptionId()
-                    val threadId = Telephony.Threads.getOrCreateThreadId(context, participants)
-
-                    val mmsObj = MmsObject.pduToMms(context, pdu, threadId, textOnly, messageSize, subscriptionId)
-                    val newMms = MmsDatabaseWriter.insertMms(context, mmsObj).toMutableMap()
-                    val newMmsId = newMms["_id"].toString().toLong()
-
-                    // Insert Addrs
-                    val charset = pdu.from.characterSet
-                    val newAddrs = MmsDatabaseWriter
-                        .insertMmsAddrs(context, newMmsId, ccList, toList, sender, charset)
-                    newMms.put("recipients", newAddrs)
-
-                    // Insert Parts
-                    val pduParts = mutableListOf<MmsPart>()
-                    for(i in 0 until pdu.body.partsNum) {
-                        val part = MmsPart.pduPartToMmsPart(context, i, pdu.body.getPart(i))
-                        pduParts.add(part)
-                    }
-                    val newParts = MmsDatabaseWriter.insertMmsParts(context, newMmsId, pduParts)
-                    newMms.put("parts", newParts)
-
-                    // Transfer Message to Dart
-                    Log.d("MmsDownloadReceiver.onReceive", " >>> MMS saved to DB")
-                    Log.d("MmsDownloadReceiver.onReceive", " >>> Transferring MMS to Dart App")
-                    InboundMessaging(context).transferInboundMessage(MessageType.MMS, newMms)
-
-                } else {
-                    Log.e(
-                        "MmsDownloadReceiver.onReceive",
-                        " >>> Unable to parse downloaded MMS PDU"
-                    )
-                }
+            if (pduBytes == null) {
+                Log.e(TAG, "Failed to read downloaded MMS PDU bytes from $contentFileUri")
+                return
             }
 
-            // Clean up temp file
-            context.contentResolver.delete(contentFileUri, null, null)
+            val pdu = PduParser(pduBytes, true).parse()
+            if (pdu !is RetrieveConf) {
+                Log.e(
+                    TAG,
+                    "Downloaded PDU is not a RetrieveConf (got ${pdu?.javaClass?.simpleName})"
+                )
+                return
+            }
+
+            // Hand off to the canonical persister. PduPersister handles all
+            // column writes (Mms row, addresses, parts including _data
+            // streams, thread-id derivation). The persister overlays
+            // local DATE / TRANSACTION_ID / EXPIRY post-insert per AOSP
+            // MmsUtils.insertReceivedMmsMessage.
+            val persisted = InboundMmsPersister.persistRetrievedMms(
+                context = context,
+                retrieveConf = pdu,
+                transactionId = transactionId,
+                subId = subId,
+                expirySeconds = expirySeconds,
+            )
+
+            // Shape for the Dart bridge: the existing transferInboundMessage
+            // contract expects the Mms row map with `parts` and `recipients`
+            // attached as nested lists.
+            val payload = persisted.mmsRow.apply {
+                put("parts", persisted.partRows)
+                put("recipients", persisted.addrRows)
+            }
+            Log.d(TAG, "MMS persisted at ${persisted.uri}; transferring to Dart")
+            InboundMessaging(context).transferInboundMessage(MessageType.MMS, payload)
         } catch (e: Exception) {
-            Log.e("MmsDownloadReceiver.onReceive", " >>> Error processing downloaded MMS: $e", e)
+            Log.e(TAG, "Error processing downloaded MMS: $e", e)
+        } finally {
+            // Always clean up the temp file, even when persist or parse
+            // threw. The previous structure left orphans on every parse
+            // failure (S1 #9).
+            try {
+                context.contentResolver.delete(contentFileUri, null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete temp MMS file at $contentFileUri", e)
+            }
         }
+    }
+
+    companion object {
+        private const val TAG = "MmsDownloadReceiver"
     }
 }

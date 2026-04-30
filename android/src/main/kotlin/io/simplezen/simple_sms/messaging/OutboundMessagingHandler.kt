@@ -160,6 +160,21 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
         channelResultMap.clear()
     }
 
+    /**
+     * Explicit teardown for handlers constructed via the secondary
+     * [constructor(Context)] rather than spun up as a Service. Android
+     * never fires [onDestroy] on those, so the receiver we register in
+     * [setupSmsReceiver] would otherwise leak forever.
+     *
+     * Called from `SimpleSmsPlugin.releaseHandler` when the messenger
+     * this handler was registered on goes away (plugin detach,
+     * background engine teardown).
+     */
+    fun release() {
+        unregisterSmsReceiver()
+        channelResultMap.clear()
+    }
+
     private fun setupSmsReceiver() {
         if (messageStatusReceiver == null) {
             Log.d("OutboundMessagingHandler", "Setting up OutboundMessagingReceiver.")
@@ -317,8 +332,14 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             PendingIntent.FLAG_IMMUTABLE
                     )
 
+            val rawDest = requestDetails.addresses.first()
+            // formatNumber may return null for non-E.164-parseable
+            // inputs (shortcodes, alphanumeric). Fall back to the raw
+            // input — SmsManager.sendTextMessage accepts shortcodes
+            // and other carrier-specific destinations directly.
+            val destAddress = formatNumber(context, rawDest) ?: rawDest
             smsManager.sendTextMessage(
-                    formatNumber(context, requestDetails.addresses.first()),
+                    destAddress,
                     null, // originating address
                     requestDetails.body,
                     outboundPendingIntent,
@@ -364,18 +385,27 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val attachments = requestDetails.attachmentPaths ?: emptyList<String>()
             for (attachment in attachments) {
                 val mimeType = getMimeType(attachment)
+                val file = File(attachment)
+                val bytes = try {
+                    file.readBytes()
+                } catch (e: Exception) {
+                    Log.e("OutboundMessagingHandler", "Failed to read attachment $attachment: ${e.message}", e)
+                    byteArrayOf()
+                }
+                val name = file.name
                 parts.add(
                         MmsPart(
                                 seq = i,
-                                mimeType = mimeType ?: "text/plain",
-                                filename = "$i.txt",
-                                contentLocation = "$i.txt",
+                                mimeType = mimeType ?: "application/octet-stream",
+                                filename = name,
+                                contentLocation = name,
                                 text = "",
+                                size = bytes.size.toLong(),
                                 contentId = "",
                                 contentDisposition = "",
-                                name = "",
+                                name = name,
                                 charset = 106,
-                                data = byteArrayOf()
+                                data = bytes
                         )
                 )
                 i++
@@ -415,7 +445,10 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val newParts: List<Map<String, Any?>> =
                     MmsDatabaseWriter.insertMmsParts(context, msgId.toLong(), parts)
 
-            val cleanedRecipients = requestDetails.addresses.map { formatNumber(context, it) }
+            // Preserve raw values when formatNumber can't normalize
+            // (shortcodes, alphanumeric senders). Downstream comparisons
+            // tolerate both forms via PhoneNumberUtils.areSamePhoneNumber.
+            val cleanedRecipients = requestDetails.addresses.map { formatNumber(context, it) ?: it }
 
             newMms["parts"] = newParts
             newMms["addrs"] = newAddrs
@@ -440,30 +473,28 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
 
             for (attachment in requestDetails.attachmentPaths ?: emptyList<String>()) {
                 try {
+                    val file = File(attachment)
+                    val mimeType = getMimeType(attachment) ?: "application/octet-stream"
 
-                    // Convert URI string to Uri object
-                    val uri = Uri.fromFile(File(attachment))
-
-                    // Get content resolver
-                    val contentResolver = context.contentResolver
-
-                    // Load bitmap from URI
-                    val bitmap =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                // For API 28 and above
-                                val source = ImageDecoder.createSource(contentResolver, uri)
-                                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                                    decoder.isMutableRequired = true
+                    if (mimeType.startsWith("image/")) {
+                        val uri = Uri.fromFile(file)
+                        val contentResolver = context.contentResolver
+                        val bitmap =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                    val source = ImageDecoder.createSource(contentResolver, uri)
+                                    ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                                        decoder.isMutableRequired = true
+                                    }
+                                } else {
+                                    MediaStore.Images.Media.getBitmap(contentResolver, uri)
                                 }
-                            } else {
-                                // For older versions
-                                MediaStore.Images.Media.getBitmap(contentResolver, uri)
-                            }
-
-                    message.addImage(bitmap)
+                        message.addImage(bitmap)
+                    } else {
+                        message.addMedia(file.readBytes(), mimeType, file.name)
+                    }
                 } catch (e: Exception) {
-                    Log.e("OutboundMessagingHandler", "Failed to load image: ${e.message}", e)
+                    Log.e("OutboundMessagingHandler", "Failed to load attachment $attachment: ${e.message}", e)
                 }
             }
 

@@ -3,8 +3,29 @@ package io.simplezen.simple_sms.models
 import android.content.ContentValues
 import android.content.Context
 import android.provider.Telephony.Mms
+import com.google.android.mms.pdu_alt.CharacterSets
 import com.google.android.mms.pdu_alt.PduPart
 import java.io.File
+import java.nio.charset.Charset
+
+/**
+ * Decode a part's bytes using its IANA MIBenum charset.
+ *
+ * `PduPart.charset` is an IANA MIBenum integer (3 = US-ASCII, 4 = Latin-1,
+ * 106 = UTF-8, 1015 = UCS-2, etc.). We resolve via [CharacterSets] from the
+ * vendored PDU library, falling back to UTF-8 when the charset is
+ * unspecified (0) or the resolved name isn't supported by the JVM.
+ */
+private fun decodeWithCharset(bytes: ByteArray, charsetMibEnum: Int): String {
+    if (bytes.isEmpty()) return ""
+    val name: String? = runCatching {
+        if (charsetMibEnum > 0) CharacterSets.getMimeName(charsetMibEnum) else null
+    }.getOrNull()
+    val charset: Charset = name
+        ?.let { runCatching { Charset.forName(it) }.getOrNull() }
+        ?: Charsets.UTF_8
+    return String(bytes, charset)
+}
 
 data class MmsPart(
     var seq: Int,
@@ -25,16 +46,27 @@ data class MmsPart(
         fun pduPartToMmsPart(context: Context, seq: Int, part: PduPart): MmsPart {
             val charset: Int = part.charset
             val name = String(part.name ?: byteArrayOf())
-            val data: ByteArray = part.data
-            val size: Long = part.data?.size?.toLong() ?: 0L
-            var text: String =
-                if (String(part.data ?: byteArrayOf()).contains("�") == false)
-                    String(part.data)
-                else ""
+            val data: ByteArray = part.data ?: byteArrayOf()
+            val size: Long = data.size.toLong()
+            val contentType = String(part.contentType ?: byteArrayOf())
+
+            // S1 #13 / S2 #19: only treat the part as text when its
+            // declared content type starts with "text/". Decode using
+            // the part's declared charset (IANA MIBenum from PduPart),
+            // not the JVM platform default. The previous implementation
+            // used a "contains U+FFFD" heuristic over a platform-default
+            // String decode, which produced mojibake on Latin-1 / GSM-7
+            // / UCS-2 parts and false-positively classified attachment
+            // bytes as text whenever their byte stream happened not to
+            // contain the replacement character.
+            val text: String = if (contentType.startsWith("text/", ignoreCase = true)) {
+                runCatching { decodeWithCharset(data, charset) }.getOrDefault("")
+            } else {
+                ""
+            }
 
             val contentDisposition = String(part.contentDisposition ?: byteArrayOf())
             val contentId = String(part.contentId ?: byteArrayOf())
-            val contentType = String(part.contentType ?: byteArrayOf())
             val filename = String(part.filename ?: byteArrayOf())
             val contentLocation = String(part.contentLocation ?: byteArrayOf())
 
