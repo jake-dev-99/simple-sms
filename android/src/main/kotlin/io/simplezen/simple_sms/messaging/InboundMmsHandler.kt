@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -40,8 +41,10 @@ import java.util.concurrent.Executors
  *     and the executor running.
  *   - Single shared executor across all inbound MMS — no per-receive
  *     `newSingleThreadExecutor()` thread leak.
- *   - `WAP_PUSH_RECEIVED` (the non-default-SMS-app action) is logged
- *     and ignored cleanly.
+ *   - Only `WAP_PUSH_DELIVER` is registered — `WAP_PUSH_RECEIVED`
+ *     fires for ALL apps including the default, but we have no
+ *     authority to ack the carrier from the RECEIVED path, so its
+ *     filter was removed from the manifest.
  *   - The result `PendingIntent` uses `FLAG_MUTABLE | FLAG_ONE_SHOT` so
  *     SmsManager can populate `EXTRA_MMS_HTTP_STATUS` on Android 12+
  *     while the PendingIntent is invalidated after a single fire.
@@ -63,13 +66,6 @@ class InboundMmsHandler() : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             "android.provider.Telephony.WAP_PUSH_DELIVER" -> handleDeliver(context, intent)
-            "android.provider.Telephony.WAP_PUSH_RECEIVED" -> {
-                // Fires when this app is NOT the default SMS handler.
-                // We can't act on it (the carrier expects the default
-                // app to ack), but we should not crash — just log so
-                // any unexpected delivery is visible.
-                Log.d(TAG, "Ignoring WAP_PUSH_RECEIVED (not the default SMS app path)")
-            }
             else -> Log.w(TAG, "Received unexpected action: ${intent.action}")
         }
     }
@@ -221,13 +217,56 @@ class MmsDownloadReceiver : BroadcastReceiver() {
         val subId: Int = extras.getInt("subId", SmsManager.getDefaultSmsSubscriptionId())
         val expirySeconds: Long = extras.getLong("expirySeconds", -1L)
 
+        // Check the SmsManager.downloadMultimediaMessage result BEFORE
+        // attempting to parse. Pre-fix, a failed download (network
+        // unavailable, MMSC HTTP 4xx/5xx, APN misconfiguration) wrote
+        // an empty or error-payload temp file and we'd hit
+        //   "Downloaded PDU is not a RetrieveConf (got null)"
+        // every time, with no diagnostic for what actually failed.
+        //
+        // - `getResultCode()` is set to Activity.RESULT_OK on success,
+        //   otherwise a SmsManager.MMS_ERROR_* sentinel.
+        // - `EXTRA_MMS_HTTP_STATUS` is populated on Android 7.1+ with
+        //   the underlying HTTP status when the failure was HTTP-level.
+        val resultCode = resultCode
+        // Telephony.Mms.Intents.EXTRA_MMS_HTTP_STATUS — accessed via the
+        // string literal so the build doesn't tie its compileSdk to the
+        // API 25+ visibility of the constant.
+        val httpStatus = extras.getInt(
+            "android.provider.extra.MMS_HTTP_STATUS",
+            -1
+        )
+        if (resultCode != Activity.RESULT_OK) {
+            Log.e(
+                TAG,
+                "MMS download failed: resultCode=$resultCode httpStatus=$httpStatus " +
+                    "txn=$transactionId sub=$subId. " +
+                    "Common causes: MMS APN not configured for this SIM; " +
+                    "mobile data or roaming disabled; carrier MMSC unreachable. " +
+                    "Skipping parse; temp file will be cleaned up."
+            )
+            // Bail before parsing — the temp file either contains an
+            // error response from the MMSC or is empty.
+            try {
+                context.contentResolver.delete(contentFileUri, null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete temp MMS file at $contentFileUri", e)
+            }
+            return
+        }
+
         try {
             val pduBytes = context.contentResolver
                 .openInputStream(contentFileUri)
                 ?.use { it.readBytes() }
 
-            if (pduBytes == null) {
-                Log.e(TAG, "Failed to read downloaded MMS PDU bytes from $contentFileUri")
+            if (pduBytes == null || pduBytes.isEmpty()) {
+                Log.e(
+                    TAG,
+                    "Downloaded MMS PDU is empty (resultCode=$resultCode " +
+                        "httpStatus=$httpStatus). Carrier returned no body — likely a " +
+                        "stub MMSC response. Skipping."
+                )
                 return
             }
 
@@ -235,7 +274,9 @@ class MmsDownloadReceiver : BroadcastReceiver() {
             if (pdu !is RetrieveConf) {
                 Log.e(
                     TAG,
-                    "Downloaded PDU is not a RetrieveConf (got ${pdu?.javaClass?.simpleName})"
+                    "Downloaded PDU is not a RetrieveConf (got " +
+                        "${pdu?.javaClass?.simpleName} from ${pduBytes.size} bytes; " +
+                        "resultCode=$resultCode httpStatus=$httpStatus)"
                 )
                 return
             }
