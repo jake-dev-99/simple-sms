@@ -62,8 +62,65 @@ const String _mmsPartUri = 'content://mms/part';
 const String _mmsSmsConversationsUri =
     'content://mms-sms/conversations?simple=true';
 
+/// Masks an address for [diag] logging so full MSISDNs / emails don't
+/// land in logcat (where third-party crash reporters and `adb logcat -d`
+/// can scrape them). Keeps enough surrounding context to triage:
+///
+/// * `+16165551234` → `+161****1234`
+/// * `email@example.com` → `e***@example.com`
+/// * `…@rcs.google.com` → `<rcsToken@rcs.google.com>`
+/// * shortcodes (≤6 digits) and empties pass through unchanged so the
+///   `192`-style sender numbers remain readable in logs.
+String _maskAddress(String? raw) {
+  if (raw == null) return 'null';
+  final s = raw.trim();
+  if (s.isEmpty) return '(blank)';
+  if (s.endsWith('@rcs.google.com')) return '<rcsToken@rcs.google.com>';
+  final at = s.indexOf('@');
+  if (at > 0) {
+    return '${s.substring(0, 1)}***${s.substring(at)}';
+  }
+  if (s.length <= 6) return s;
+  return '${s.substring(0, 4)}****${s.substring(s.length - 4)}';
+}
+
+String _maskAddresses(Iterable<String?> raws, {String sep = '|'}) =>
+    raws.map(_maskAddress).join(sep);
+
 class LookupService {
-  /// Looks up a contact by their database ID. Returns null if not found.
+  /// Set of E.164-normalized MSISDNs that belong to the device user
+  /// itself — populated by the consumer (e.g. simple-messages) at
+  /// bootstrap from `SimpleTelephonyNative.listSimCards()` and used by
+  /// MMS-addr-derived participant resolution to drop self entries from
+  /// thread participant sets.
+  ///
+  /// Default empty: when not configured, group-MMS threads (and the
+  /// RCS-token fallback path that recovers participants from
+  /// `content://mms/{id}/addr`) will include the user's own number as
+  /// a participant. Tiles render slightly noisier but routing stays
+  /// correct.
+  ///
+  /// Reset with `setSelfNumbers(const {})` if e.g. the active SIM
+  /// changes mid-session.
+  static Set<String> _selfNumbers = const <String>{};
+
+  /// Replaces the self-MSISDN set used by MMS-addr filtering. Call
+  /// once at app bootstrap with the result of an E.164 normalization
+  /// pass over `SimpleTelephonyNative.listSimCards()` `number` fields,
+  /// dropping empty values. Plugin keeps its dep-graph self-contained
+  /// by accepting these values rather than reaching into
+  /// `simple_telephony`.
+  static void setSelfNumbers(Set<String> numbers) {
+    _selfNumbers = Set<String>.unmodifiable(numbers);
+    debugPrint(
+      '[diag][simple-sms] LookupService.setSelfNumbers '
+      'count=${numbers.length} values=${_maskAddresses(numbers)}',
+    );
+  }
+
+  /// Looks up a contact by their database ID.
+  ///
+  /// Returns null if the contact is not found or if the query fails.
   Future<AndroidContact?> lookupContactById(int contactId) async {
     final response = await SimpleQuery.instance.query(
       QueryRequest(
@@ -205,17 +262,37 @@ class LookupService {
   /// Android stores conversation recipients as numeric IDs that map to
   /// canonical addresses via the `content://mms-sms/canonical-address/` URI.
   Future<String?> resolveCanonicalAddress(String recipientId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {
-          'contentUri': 'content://mms-sms/canonical-address/$recipientId',
-        },
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    final address = response.records.first['address']?.toString();
-    return (address != null && address.isNotEmpty) ? address : null;
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          platformData: {
+            'contentUri': 'content://mms-sms/canonical-address/$recipientId',
+          },
+        ),
+      );
+      if (response.records.isEmpty) {
+        debugPrint(
+          '[diag][simple-sms] resolveCanonicalAddress recipientId=$recipientId '
+          'records=0 address=null',
+        );
+        return null;
+      }
+      final raw = response.records.first;
+      final address = raw['address']?.toString();
+      debugPrint(
+        '[diag][simple-sms] resolveCanonicalAddress recipientId=$recipientId '
+        'records=${response.records.length} address=${_maskAddress(address)} '
+        'rawKeys=${raw.keys.toList()}',
+      );
+      return (address != null && address.isNotEmpty) ? address : null;
+    } catch (e, s) {
+      debugPrint(
+        'simple_sms: Failed to resolve canonical address $recipientId: $e',
+      );
+      debugPrint(s.toString());
+      return null;
+    }
   }
 
   /// Gets all SMS messages in a conversation thread.
@@ -418,26 +495,51 @@ class LookupService {
     int? offset,
     bool enrich = true,
   }) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: _buildConversationFilters(filter),
-        sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
-        page:
-            (limit != null || offset != null)
-                ? QueryPage(limit: limit, offset: offset)
-                : null,
-        platformData: {'contentUri': _mmsSmsConversationsUri},
-      ),
-    );
-    final bare = response.records
-        .map(
-          (row) => AndroidSimpleConversation.fromRaw(
-            Map<String, dynamic>.from(row),
-          ),
-        )
-        .toList(growable: false);
-    if (!enrich) return bare;
+    try {
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          filters: _buildConversationFilters(filter),
+          sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
+          page:
+              (limit != null || offset != null)
+                  ? QueryPage(limit: limit, offset: offset)
+                  : null,
+          platformData: {'contentUri': _mmsSmsConversationsUri},
+        ),
+      );
+      final allBare = response.records
+          .map(
+            (row) => AndroidSimpleConversation.fromRaw(
+              Map<String, dynamic>.from(row),
+            ),
+          )
+          .toList(growable: false);
+
+      // Drop phantom orphan rows: empty recipient_ids AND zero
+      // messages. AOSP/Samsung leave these behind when a draft is
+      // composed-then-discarded or an RCS notification thread is
+      // purged after delivery; they have no addressable participant
+      // and nothing for the user to read, so they render as a "ghost"
+      // tile labelled "Unknown" with an empty thread screen.
+      //
+      // Rows with empty recipient_ids but message_count > 0 are NOT
+      // filtered — better to surface a stripped-down "Unknown" tile
+      // than silently hide user-readable history.
+      final bare = allBare.where((c) {
+        final isPhantom = c.recipientIds.isEmpty &&
+            (c.messageCount == null || c.messageCount == 0);
+        if (isPhantom) {
+          debugPrint(
+            '[diag][simple-sms] listConversations dropped phantom thread '
+            'simpleId=${c.id} threadId=${c.threadId} date=${c.date} '
+            'messageCount=${c.messageCount}',
+          );
+        }
+        return !isPhantom;
+      }).toList(growable: false);
+
+      if (!enrich) return bare;
 
     return Future.wait(bare.map(_enrichConversation));
   }
@@ -454,7 +556,21 @@ class LookupService {
       enrich: enrich,
       limit: 1,
     );
-    return results.isEmpty ? null : results.first;
+    if (results.isEmpty) {
+      debugPrint(
+        '[diag][simple-sms] getConversationByThread asked=$threadId '
+        'returned=NONE',
+      );
+      return null;
+    }
+    final r = results.first;
+    debugPrint(
+      '[diag][simple-sms] getConversationByThread asked=$threadId '
+      'returned.simpleId=${r.id} returned.threadId=${r.threadId} '
+      'returned.recipientIds=${r.recipientIds.join("|")} '
+      'returned.participants=${r.participants?.map((p) => p.value).join("|")}',
+    );
+    return r;
   }
 
   /// Resolves participants + latestSms / latestMms for a bare conversation.
@@ -496,11 +612,107 @@ class LookupService {
     final latestSmsList = results[1] as List<Sms>;
     final latestMmsList = results[2] as List<Mms>;
 
+    // RCS-token fallback. When canonical-addresses returns an opaque
+    // RCS chat-bot identifier (anything containing `@`, e.g.
+    // `…@rcs.google.com`), the contacts provider has nothing to match
+    // it against — `lookupContactableByAddress` returns null and the
+    // conversation tile renders the literal token. Recover the
+    // underlying phone numbers from the per-message MMS addr table
+    // (`content://mms/{id}/addr`), which on this device carries real
+    // E.164 values alongside the RCS-token canonical entry.
+    final tokenIndices = <int>{
+      for (var i = 0; i < participants.length; i++)
+        if (participants[i].value.contains('@')) i,
+    };
+    List<Contactable> finalParticipants = participants;
+    if (tokenIndices.isNotEmpty) {
+      final fallback = await _addressesFromMmsForThread(base.threadId);
+      debugPrint(
+        '[diag][simple-sms] _enrichConversation rcsTokenFallback '
+        'threadId=${base.threadId} '
+        'tokens=${_maskAddresses(tokenIndices.map((i) => participants[i].value))} '
+        'fallbackAddresses=${_maskAddresses(fallback)}',
+      );
+      if (fallback.isNotEmpty) {
+        // Replace token-shaped participants with MMS-derived ones.
+        // Pure-RCS bots with no MMS messages keep the token (fallback
+        // empty) so the tile at least renders something stable.
+        final keepers = <Contactable>[
+          for (var i = 0; i < participants.length; i++)
+            if (!tokenIndices.contains(i)) participants[i],
+        ];
+        final recovered = await Future.wait(
+          fallback.map((addr) async =>
+              (await lookupContactableByAddress(addr)) ??
+              Contactable(id: -1, value: addr)),
+        );
+        // Dedup keepers + recovered. A keeper participant may share
+        // a contact id (or normalized address) with a recovered MMS
+        // participant — e.g. a 1-1 RCS thread where one canonical-id
+        // resolves cleanly and another is the opaque token, but both
+        // refer to the same person. Without dedup the tile would
+        // double-render that person.
+        final seen = <String>{};
+        String key(Contactable c) => (c.id != -1)
+            ? 'id:${c.id}'
+            : 'addr:${c.value.trim().toLowerCase()}';
+        finalParticipants = <Contactable>[
+          for (final c in [...keepers, ...recovered])
+            if (seen.add(key(c))) c,
+        ];
+      }
+    }
+
+    debugPrint(
+      '[diag][simple-sms] _enrichConversation threadId=${base.threadId} '
+      'simpleId=${base.id} recipientIds=${base.recipientIds.join("|")} '
+      'participants=${_maskAddresses(finalParticipants.map((p) => p.value))} '
+      'latestSmsId=${latestSmsList.isEmpty ? "-" : latestSmsList.first.id} '
+      'latestMmsId=${latestMmsList.isEmpty ? "-" : latestMmsList.first.id}',
+    );
     return base.enrich(
-      participants: participants,
+      participants: finalParticipants,
       latestSms: latestSmsList.isEmpty ? null : latestSmsList.first,
       latestMms: latestMmsList.isEmpty ? null : latestMmsList.first,
     );
+  }
+
+  /// Returns distinct, non-self, phone-number-shaped addresses for an
+  /// MMS thread, sourced from per-message
+  /// [`content://mms/{id}/addr`](https://developer.android.com/reference/android/provider/Telephony.Mms.Addr)
+  /// rows.
+  ///
+  /// Used by [_enrichConversation] as a fall-back when a thread's
+  /// canonical-addresses entries are opaque RCS tokens. Skips:
+  ///
+  /// * `insert-address-token` — Telephony's "self" placeholder for
+  ///   outbound MMS rows.
+  /// * MSISDNs in `LookupService._selfNumbers` — the device user's own
+  ///   numbers (populated by the consumer at bootstrap via
+  ///   [setSelfNumbers]).
+  /// * Any value containing `@` — defensive guard against further RCS
+  ///   tokens that may bleed into the addr rows alongside real phone
+  ///   numbers on some OEMs.
+  ///
+  /// Returns an empty list when the thread has zero MMS messages
+  /// (e.g. pure-RCS chat-bot threads with no underlying MMS) — the
+  /// caller is expected to fall back to keeping the token participant.
+  Future<List<String>> _addressesFromMmsForThread(int threadId) async {
+    final mmsList = await getMmsByThread(threadId);
+    if (mmsList.isEmpty) return const [];
+    final addresses = <String>{};
+    for (final mms in mmsList) {
+      final addr = await listMmsAddressesByMessage(mms.id);
+      for (final a in addr) {
+        final v = a.address?.trim();
+        if (v == null || v.isEmpty) continue;
+        if (v == 'insert-address-token') continue;
+        if (_selfNumbers.contains(v)) continue;
+        if (v.contains('@')) continue;
+        addresses.add(v);
+      }
+    }
+    return addresses.toList(growable: false);
   }
 
   /// Resolves a single recipient id to a [Contactable]: canonical-address
@@ -509,8 +721,20 @@ class LookupService {
   /// recipient id doesn't resolve to any canonical address.
   Future<Contactable?> _resolveParticipant(String recipientId) async {
     final address = await resolveCanonicalAddress(recipientId);
-    if (address == null) return null;
+    if (address == null) {
+      debugPrint(
+        '[diag][simple-sms] _resolveParticipant recipientId=$recipientId '
+        'address=null contactable=null',
+      );
+      return null;
+    }
     final contactable = await lookupContactableByAddress(address);
+    debugPrint(
+      '[diag][simple-sms] _resolveParticipant recipientId=$recipientId '
+      'address=${_maskAddress(address)} '
+      'contactable.value=${_maskAddress(contactable?.value)} '
+      'hasDisplayName=${contactable?.displayName != null}',
+    );
     return contactable ?? Contactable(id: -1, value: address);
   }
 
