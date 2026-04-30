@@ -129,7 +129,7 @@ class AndroidContact {
 
   // == App-style JSON (camelCase) ==
   factory AndroidContact.fromJson(Map<String, dynamic> json) => AndroidContact(
-    id: FieldHelper.asInt(json['id']) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     displayName: json['displayName'] ?? '',
     displayNameAlt: json['displayNameAlt'] ?? '',

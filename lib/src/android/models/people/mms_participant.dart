@@ -43,7 +43,7 @@ class MmsParticipant {
       FieldHelper.asInt(json["charset"]),
     ),
     contactId: FieldHelper.asInt(json["contact_id"]),
-    id: FieldHelper.asInt(json["_id"]) ?? 0,
+    id: FieldHelper.primaryKey(json),
     msgId: FieldHelper.asInt(json["msg_id"]),
     sourceLabel: json["sourceLabel"],
     participantType: FieldHelper.enumFromValue(

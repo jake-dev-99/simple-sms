@@ -43,7 +43,7 @@ class AndroidContactName {
 
   factory AndroidContactName.fromJson(Map<String, dynamic> json) =>
       AndroidContactName(
-        id: FieldHelper.asInt(json['id']) ?? 0,
+        id: FieldHelper.primaryKey(json),
         sourceMap: json,
         displayName: json['displayName'],
         givenName: json['givenName'],

@@ -433,6 +433,56 @@ void main() {
     });
   });
 
+  group('Mms.fromRaw — primary key strictness', () {
+    test('throws StateError when neither _id nor id is present', () {
+      // Pre-fix this silently coerced the row to id=0; multiple
+      // PK-less rows then collided in HiveSearch lookups. Now the
+      // parse throws so corruption surfaces in crashlytics with the
+      // row's keys named.
+      final raw = <String, dynamic>{
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('primary key'),
+              contains('thread_id'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('throws when _id is unparseable junk', () {
+      final raw = <String, dynamic>{
+        '_id': 'not-a-number',
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(() => Mms.fromRaw(raw), throwsA(isA<StateError>()));
+    });
+
+    test('falls back to legacy "id" key when "_id" is absent', () {
+      final raw = <String, dynamic>{
+        'id': 77,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(Mms.fromRaw(raw).id, 77);
+    });
+  });
+
   group('ConversationFilter', () {
     // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
     // the latest-message id, not the thread id. Filtering threads must go

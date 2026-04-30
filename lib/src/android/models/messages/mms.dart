@@ -346,7 +346,7 @@ class Mms {
   ///
   /// Handles app-side JSON format where fields use camelCase naming
   static Mms fromJson(Map<String, dynamic> json) => Mms(
-    id: FieldHelper.asInt(json['id']) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     body: json['body'],
     parts:
