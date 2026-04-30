@@ -992,13 +992,20 @@ class LookupService {
 
   /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
   ///
-  /// The `content://mms-sms/conversations?simple=true` view exposes `_id`
-  /// as the **latest-message id** in the thread (NOT the thread id, on
-  /// Samsung Android 16 and AOSP's Mms-Sms provider), `thread_id` as the
-  /// stable thread primary key, `date` as the last-activity timestamp,
-  /// `read` as an int flag, and `has_attachment` as an int flag. Thread
-  /// filtering goes through `thread_id` so joins with `SmsFilter.threadId`
-  /// / `MmsFilter.threadId` stay consistent.
+  /// The `content://mms-sms/conversations?simple=true` view exposes the
+  /// thread id as `_id` — there is **no separate `thread_id` column**.
+  /// AOSP's `MmsSmsProvider` resolves the URI to a `SELECT * FROM threads`
+  /// (or, on Samsung, `view_threads`); both expose the thread PK as
+  /// `_id`. Filtering on `thread_id` SQLites out with
+  ///   `SQLiteException: no such column: thread_id`
+  /// (verified on Samsung Android 16; same on stock AOSP).
+  ///
+  /// A previous comment here claimed `_id` was the latest-message id and
+  /// `thread_id` the stable PK — that was wrong. The simple-conversations
+  /// view's `_id` IS the thread id.
+  ///
+  /// Other columns: `date` (last-activity timestamp), `read` (int flag),
+  /// `has_attachment` (int flag), `archived` (int flag).
   List<QueryFilterCondition> _buildConversationFilters(
     ConversationFilter? filter,
   ) {
@@ -1009,7 +1016,7 @@ class LookupService {
     if (threadIds != null && threadIds.isNotEmpty) {
       conditions.add(
         QueryFilterCondition(
-          field: 'thread_id',
+          field: '_id',
           operator: QueryFilterOperator.inList,
           value: threadIds.map((id) => id.toString()).toList(),
         ),
@@ -1071,7 +1078,7 @@ class LookupService {
     if (filter.threadIdAfter != null) {
       conditions.add(
         QueryFilterCondition(
-          field: 'thread_id',
+          field: '_id',
           operator: QueryFilterOperator.greaterThan,
           value: filter.threadIdAfter!.toString(),
         ),
