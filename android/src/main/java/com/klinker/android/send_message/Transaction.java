@@ -267,8 +267,17 @@ public class Transaction {
 
                 sentIntent.putExtra("message_uri", messageUri == null ? "" : messageUri.toString());
                 sentIntent.putExtra(SENT_SMS_BUNDLE, sentMessageParcelable);
+                // Android 12+ (S, API 31) requires explicit FLAG_IMMUTABLE
+                // or FLAG_MUTABLE on every PendingIntent — the platform
+                // throws IllegalArgumentException at construction time
+                // otherwise. The vendored Klinker source pre-dates that
+                // requirement; this patch (simplezen) adds IMMUTABLE
+                // since SmsManager delivers the result by merging
+                // extras into the broadcast at send-time, which works
+                // regardless of the PendingIntent's mutability.
                 PendingIntent sentPI = PendingIntent.getBroadcast(
-                        context, messageId, sentIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+                        context, messageId, sentIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
                 Intent deliveredIntent;
                 if (explicitDeliveredSmsReceiver == null) {
@@ -281,7 +290,8 @@ public class Transaction {
                 deliveredIntent.putExtra("message_uri", messageUri == null ? "" : messageUri.toString());
                 deliveredIntent.putExtra(DELIVERED_SMS_BUNDLE, deliveredParcelable);
                 PendingIntent deliveredPI = PendingIntent.getBroadcast(
-                        context, messageId, deliveredIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+                        context, messageId, deliveredIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
                 ArrayList<PendingIntent> sPI = new ArrayList<PendingIntent>();
                 ArrayList<PendingIntent> dPI = new ArrayList<PendingIntent>();
@@ -682,8 +692,11 @@ public class Transaction {
 
             intent.putExtra(MmsSentReceiver.EXTRA_CONTENT_URI, messageUri.toString());
             intent.putExtra(MmsSentReceiver.EXTRA_FILE_PATH, mSendFile.getPath());
+            // Android 12+ requires FLAG_IMMUTABLE / FLAG_MUTABLE; see
+            // matching patch on the SMS-side PendingIntents above.
             final PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                    context, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+                    context, 0, intent,
+                    PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
             Uri writerUri = (new Uri.Builder())
                     .authority(context.getPackageName() + ".MmsFileProvider")
