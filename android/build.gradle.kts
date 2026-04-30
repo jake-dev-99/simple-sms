@@ -84,7 +84,14 @@ dependencies {
     // Same plugin-loader pattern as simple_permissions_android above.
     implementation(project(":simple_query_android"))
 
-    implementation(project(":google_apps_messaging_core"))
+    // `google_apps_messaging_core` removed in the inbound-MMS port.
+    // Its `MmsUtils.insertReceivedMmsMessage` was the canonical reference
+    // we ported into `InboundMmsPersister.kt`; with that port complete,
+    // nothing in this module's runtime code calls into Bugle anymore.
+    // PduPersister + the Klinker send_message tree under
+    // `src/main/java/com/{google,android,klinker}/...` remain — those
+    // are still used directly by inbound (PduPersister) and outbound
+    // (Klinker Transaction). Their removal is a separate follow-up.
     implementation(project(":google_i18n_libphonenumber"))
     implementation(project(":google_chips"))
     implementation(project(":google_photoviewer"))
