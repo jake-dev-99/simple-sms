@@ -216,20 +216,95 @@ enum MessageBox {
   final int value;
 }
 
+/// MMS PDU message type, as written to the `m_type` column of the
+/// Telephony MMS provider.
+///
+/// Values come straight from AOSP `com.google.android.mms.pdu.PduHeaders`
+/// (see also WAP-MMS Encapsulation v1.2, section 7.2 "X-Mms-Message-Type"):
+///
+/// ```
+/// MESSAGE_TYPE_SEND_REQ            = 0x80
+/// MESSAGE_TYPE_SEND_CONF           = 0x81
+/// MESSAGE_TYPE_NOTIFICATION_IND    = 0x82
+/// MESSAGE_TYPE_NOTIFYRESP_IND      = 0x83
+/// MESSAGE_TYPE_RETRIEVE_CONF       = 0x84
+/// MESSAGE_TYPE_ACKNOWLEDGE_IND     = 0x85
+/// MESSAGE_TYPE_DELIVERY_IND        = 0x86
+/// MESSAGE_TYPE_READ_REC_IND        = 0x87
+/// MESSAGE_TYPE_READ_ORIG_IND       = 0x88
+/// MESSAGE_TYPE_FORWARD_REQ         = 0x89
+/// MESSAGE_TYPE_FORWARD_CONF        = 0x8A
+/// ```
+///
+/// Pre-fix this enum had the labels and values misaligned (notificationInd
+/// pointed at 0x80 / SEND_REQ, deliveryInd at 0x81 / SEND_CONF,
+/// acknowledgeInd at 0x82 / NOTIFICATION_IND, etc.). Every consumer that
+/// matched on the wrong label silently produced incorrect classifications
+/// — most visibly, real inbound NotificationInd placeholder rows
+/// (`m_type = 0x82`) being labeled `acknowledgeInd` and routed as if they
+/// were "outbound delivered" messages.
+///
+/// The enum is keyed by IANA-aligned PDU-spec naming. Apps that need a
+/// "user-visible" predicate should prefer `[sendRequest]` (outbound) +
+/// `[retrieveConfirmationInd]` (inbound downloaded); everything else is
+/// transport-only metadata that should not be persisted as a UI message.
 enum MmsMessageType {
-  // MMS message types (mms.m_type column)
-  notificationInd(value: 0x80), // 128
-  deliveryInd(value: 0x81), // 129
-  acknowledgeInd(value: 0x82), // 130
-  deliveryReportInd(value: 0x86), // 134 (rare)
-  retrieveConfirmationInd(value: 0x84), // 132
-  readReceivedInd(value: 0x87), // 135
-  readOriginatedInd(value: 0x88), // 136
-  forwardRequestInd(value: 0x8A), // 138
-  readReportInd(value: 0x8C); // 140 (rare)
+  /// `M-send.req` — outbound MMS authored locally, to be sent to the
+  /// MMSC. User-visible (the row carries body, subject, parts).
+  sendRequest(value: 0x80),
+
+  /// `M-send.conf` — MMSC's reply to a SEND_REQ. Transport-only.
+  sendConf(value: 0x81),
+
+  /// `M-notification.ind` — carrier's pre-download notification that an
+  /// inbound MMS is waiting on the MMSC. The placeholder row gets
+  /// inserted by the system before the actual download happens; once
+  /// the RetrieveConf is fetched, a separate row with `RETRIEVE_CONF`
+  /// (0x84) is written. NOT user-visible — these placeholder rows
+  /// contain no body, parts, or addresses and should be filtered out
+  /// of conversation views.
+  notificationInd(value: 0x82),
+
+  /// `M-notifyresp.ind` — our app's response to the NOTIFICATION_IND.
+  /// Transport-only.
+  notifyRespInd(value: 0x83),
+
+  /// `M-retrieve.conf` — inbound MMS as actually downloaded from the
+  /// MMSC. User-visible.
+  retrieveConfirmationInd(value: 0x84),
+
+  /// `M-acknowledge.ind` — our app's ack after retrieving the MMS.
+  /// Transport-only.
+  acknowledgeInd(value: 0x85),
+
+  /// `M-delivery.ind` — delivery report from the recipient's carrier
+  /// for an outbound MMS. Transport-only (status update, not a
+  /// conversation message).
+  deliveryInd(value: 0x86),
+
+  /// `M-read-rec.ind` — read report received for our outbound MMS.
+  /// Transport-only.
+  readReceivedInd(value: 0x87),
+
+  /// `M-read-orig.ind` — read report we originated for an inbound MMS.
+  /// Transport-only.
+  readOriginatedInd(value: 0x88),
+
+  /// `M-forward.req` — outbound forward request. Transport-only.
+  forwardRequestInd(value: 0x89);
 
   const MmsMessageType({required this.value});
   final int value;
+
+  /// Whether this PDU type represents a row that should be persisted
+  /// as a user-visible conversation message. Only outbound `sendRequest`
+  /// (m_type=0x80) and inbound `retrieveConfirmationInd` (m_type=0x84)
+  /// carry body + parts + addresses; the rest are transport-only
+  /// notifications, acknowledgements, or status reports that pollute
+  /// conversation views with empty rows.
+  bool get isUserVisible =>
+      this == MmsMessageType.sendRequest ||
+      this == MmsMessageType.retrieveConfirmationInd;
 }
 
 /// General SMS/MMS message type as used in Android's message table.
