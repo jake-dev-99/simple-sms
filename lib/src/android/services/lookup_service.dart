@@ -359,7 +359,7 @@ class LookupService {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _smsUri},
         filters: _buildSmsFilters(filter),
-        sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
+        sort: _buildSmsSort(sort ?? SmsSort.newestFirst), // ignore: silent_default
         page:
             (limit != null || offset != null)
                 ? QueryPage(limit: limit, offset: offset)
@@ -422,7 +422,7 @@ class LookupService {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _mmsUri},
         filters: _buildMmsFilters(filter),
-        sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
+        sort: _buildMmsSort(sort ?? MmsSort.newestFirst), // ignore: silent_default
         page:
             (limit != null || offset != null)
                 ? QueryPage(limit: limit, offset: offset)
@@ -531,7 +531,7 @@ class LookupService {
         QueryRequest(
           domain: QueryDomain.platformSpecific,
           filters: _buildConversationFilters(filter),
-          sort: _buildConversationSort(sort ?? ConversationSort.mostRecent),
+          sort: _buildConversationSort(sort ?? ConversationSort.mostRecent), // ignore: silent_default
           page:
               (limit != null || offset != null)
                   ? QueryPage(limit: limit, offset: offset)
@@ -860,7 +860,7 @@ class LookupService {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _contactsUri},
         filters: _buildContactFilters(filter),
-        sort: _buildContactSort(sort ?? ContactSort.alphabetical),
+        sort: _buildContactSort(sort ?? ContactSort.alphabetical), // ignore: silent_default
         page:
             (limit != null || offset != null)
                 ? QueryPage(limit: limit, offset: offset)
