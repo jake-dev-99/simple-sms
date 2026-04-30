@@ -65,9 +65,11 @@ class MmsPart {
   bool get isText => contentType.category == MimeCategory.text;
 
   /// Whether this part is a SMIL layout descriptor (`application/smil`).
-  /// SMIL's category is [MimeCategory.application], so this stays as a
-  /// value check rather than a category check.
-  bool get isSmil => contentType.value.contains("smil");
+  /// SMIL's category is [MimeCategory.application], so this uses a
+  /// direct equality check rather than a category check. Case-insensitive
+  /// because [ContentType.fromMime] preserves raw case for unknown MIMEs.
+  bool get isSmil =>
+      contentType.value.toLowerCase() == ContentType.applicationSmil.value;
 
   /// Whether this part is an image attachment (any `image/*` MIME).
   bool get isImage => contentType.category == MimeCategory.image;

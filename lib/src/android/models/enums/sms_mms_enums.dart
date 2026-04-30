@@ -566,12 +566,12 @@ final class ContentType {
 
   /// Derive a file extension from an unknown MIME subtype.
   ///
-  /// Rules:
-  ///   1. Strip `x-` prefix (`image/x-adobe-dng` → `adobe-dng`)
-  ///   2. If `+suffix` present, use it (`…+json` → `json`)
-  ///   3. For `vnd.*` without `+suffix`, fall back to `bin`
-  ///   4. Take the last dot-segment (`adobe-dng` → `dng`)
-  ///   5. Strip version-like suffixes (`v1.0` etc.)
+  /// Rules (applied in order):
+  ///   1. If `+suffix` present, use it (`…+json` → `json`)
+  ///   2. For `vnd.*` without `+suffix`, fall back to `bin`
+  ///   3. Strip `x-` prefix (`audio/x-m4a` → `m4a`)
+  ///   4. Take the last dot-segment (`x-adobe.dng` → `dng`)
+  ///   5. Fall back to `bin` if subtype is empty
   static String _deriveExtension(String lowerMime) {
     final slashIdx = lowerMime.indexOf('/');
     if (slashIdx < 0 || slashIdx == lowerMime.length - 1) return 'bin';
