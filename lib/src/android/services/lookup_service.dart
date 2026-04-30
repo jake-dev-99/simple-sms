@@ -91,7 +91,7 @@ String _maskAddresses(Iterable<String?> raws, {String sep = '|'}) =>
 /// token rather than a real phone number, email, or shortcode.
 ///
 /// Two shapes seen in the wild:
-///  * Google RCS: `…@rcs.google.com` (contains `@`)
+///  * Google RCS: `…@rcs.google.com` — domain-specific RCS bot address.
 ///  * Samsung RCS: `d4vtcnrrgy2damjzgu4tghztircdsrrsgrcc…` — long
 ///    alphanumeric string with no spaces, no punctuation, no `+` prefix,
 ///    and no `@`. Mirrors the heuristic in `_sanitizeTitle` on the host
@@ -101,11 +101,20 @@ String _maskAddresses(Iterable<String?> raws, {String sep = '|'}) =>
 /// chars (E.164 max). Shortcodes are ≤6 digits. Anything that's 20+
 /// chars, all `[a-zA-Z0-9_-]`, no whitespace/punctuation is not a phone
 /// number.
+///
+/// Note: conventional email addresses (user@gmail.com) are NOT treated
+/// as tokens — only RCS-specific domains. The canonical-address provider
+/// returns phone numbers or RCS identifiers, never emails.
 bool _looksLikeOpaqueToken(String value) {
-  if (value.contains('@')) return true;
   final trimmed = value.trim();
+  // Google RCS bot addresses — domain-specific, not general email.
+  if (trimmed.endsWith('@rcs.google.com') ||
+      trimmed.endsWith('@rcs.android.com')) {
+    return true;
+  }
+  // Samsung-style: long alphanumeric token, no phone-number traits.
   return trimmed.length >= 20 &&
-      !trimmed.contains(RegExp(r'[\s.,+()]')) &&
+      !trimmed.contains(RegExp(r'[\s.,+()@]')) &&
       RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(trimmed);
 }
 
