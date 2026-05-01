@@ -113,6 +113,7 @@ class AttachmentExtractor {
       try {
         await SimpleQuery.instance.closeBinary(handle.handleId);
       } catch (e) {
+        // ignore: silent_catch — best-effort cleanup, see comment above.
         debugPrint('simple_sms: closeBinary failed for $partId: $e');
       }
     }
