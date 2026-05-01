@@ -10,6 +10,11 @@ import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/mms_filter.dart';
 import '../models/messages/mms_part.dart';
 
+/// Content URI for the Android MMS-part provider table. File-private
+/// const so future URI changes are a single-site edit and there's no
+/// risk of typos in the inline string literal at the query site.
+const String _mmsPartUri = 'content://mms/part';
+
 /// MMS attachment retrieval — list parts for a message + extract a part's
 /// binary content to a local file.
 ///
@@ -20,6 +25,14 @@ import '../models/messages/mms_part.dart';
 ///
 /// LookupService keeps its public API for backward-compat — it now
 /// delegates to [AttachmentExtractor.instance].
+///
+/// **Future work — `SimpleQuery` injection.** Sourcery review on PR
+/// #89 suggested taking `SimpleQuery` as a constructor parameter so
+/// this class can be unit-tested with a fake. Deferred because the
+/// rest of the plugin (LookupService, AndroidMessaging, every other
+/// `SimpleQuery.instance` callsite) uses the singleton directly;
+/// flipping just AttachmentExtractor would be inconsistent. Tracked
+/// for a future plugin-wide DI pass.
 class AttachmentExtractor {
   AttachmentExtractor._();
 
@@ -57,7 +70,7 @@ class AttachmentExtractor {
       QueryRequest(
         domain: QueryDomain.platformSpecific,
         filters: conditions,
-        platformData: {'contentUri': 'content://mms/part'},
+        platformData: {'contentUri': _mmsPartUri},
       ),
     );
     return response.records
