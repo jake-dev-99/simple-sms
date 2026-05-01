@@ -55,7 +55,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ steps.resolve.outputs.ref }}
 
@@ -67,7 +67,7 @@ jobs:
       # Use the Flutter toolchain, which bundles Dart, and call
       # `flutter pub ...` throughout. pub.dev's OIDC publish flow
       # works identically through `flutter pub publish`.
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
