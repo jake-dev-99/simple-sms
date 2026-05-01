@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # lint_silent_catches.sh — CI gate for silent-exception anti-patterns
 #
-# Detects `catch` blocks that swallow the exception by returning null /
-# empty list / false without rethrowing or recording to AppLogger.error.
-# This is the same anti-pattern that hid the thread_id SQL bug across
-# thousands of full-sync runs (PR-C / #76).
+# Detects `catch` blocks that swallow the exception by returning a
+# trivial sentinel value without rethrowing or recording to
+# AppLogger.error. This is the same anti-pattern that hid the
+# thread_id SQL bug across thousands of full-sync runs (PR-C / #76).
 #
-# Pattern: a catch block whose ENTIRE body is one of
+# Pattern: a catch block whose ENTIRE body is one of these returns:
 #   - return null;
-#   - return [];
-#   - return const [];
-#   - return false;
-#   - return '';
+#   - return [];        (and `return const []`, `return const <T>[]`)
+#   - return false;     (and `return true;`)
+#   - return 0;
+#   - return '';        (or `return "";`)
 # optionally preceded by debugPrint/print/log calls and comments.
+#
+# `return true;` / `return 0;` are matched on the assumption that they
+# are equally suspicious sentinel values when they appear as the entire
+# catch body — almost always paired with a "false means failed" return
+# contract that misclassifies an exception as success. Whitelist with
+# `// ignore: silent_catch` if a use is intentional.
 #
 # A catch that calls AppLogger.error / recordError / rethrow / throw
 # is exempt by construction (the regex below excludes them).
@@ -27,7 +33,13 @@ set -euo pipefail
 
 TARGET="${1:-lib/}"
 
-# Use perl for proper multi-line balanced-brace matching.
+# Use perl for multi-line catch-body matching. The body match is a
+# heuristic: `[^{}]` excludes any catch whose body contains a nested
+# block (if-statement with braces, lambda, anonymous class). That's
+# intentional — a catch with a nested block is doing real work and
+# isn't the silent-swallow shape we're trying to flag, so missing it
+# is the right behavior. A truly nested silent-swallow inside an
+# inner block of a catch isn't a pattern we've seen in this codebase.
 violations=$(find "$TARGET" -name '*.dart' \
   -not -name '*.g.dart' \
   -not -path '*/build/*' \
