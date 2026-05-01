@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
-import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
@@ -20,6 +19,7 @@ import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
 import '../models/people/mms_participant.dart';
+import 'attachment_extractor.dart';
 
 /// Centralized service for resolving contacts, messages, and addresses
 /// from the Android ContentProvider database.
@@ -58,7 +58,6 @@ const String _contactsEmailFilterUri =
     'content://com.android.contacts/data/emails/filter';
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
-const String _mmsPartUri = 'content://mms/part';
 const String _mmsSmsConversationsUri =
     'content://mms-sms/conversations?simple=true';
 
@@ -440,38 +439,12 @@ class LookupService {
   /// [MmsPartFilter.contentTypeContains] is set, only parts whose `ct`
   /// column contains that substring are returned (e.g. `image/` for all
   /// image attachments).
+  /// Façade — delegates to [AttachmentExtractor] (Tier 0f extraction).
   Future<List<MmsPart>> listMmsParts({
     required int mmsId,
     MmsPartFilter? filter,
-  }) async {
-    final conditions = <QueryFilterCondition>[
-      QueryFilterCondition(
-        field: 'mid',
-        operator: QueryFilterOperator.equals,
-        value: mmsId.toString(),
-      ),
-    ];
-    final contentType = filter?.contentTypeContains;
-    if (contentType != null && contentType.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'ct',
-          operator: QueryFilterOperator.contains,
-          value: contentType,
-        ),
-      );
-    }
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: conditions,
-        platformData: {'contentUri': _mmsPartUri},
-      ),
-    );
-    return response.records
-        .map((row) => MmsPart.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  }) =>
+      AttachmentExtractor.instance.listMmsParts(mmsId: mmsId, filter: filter);
 
   /// Extracts the binary content of a single MMS part to [outputDirectory],
   /// returning the resulting [File]. The file is named [filename] if given,
@@ -480,38 +453,17 @@ class LookupService {
   /// Internally this opens a binary handle via `simple_query`, copies the
   /// temporary content to the caller-specified location, and closes the
   /// handle. Throws if the part cannot be opened or copied.
+  /// Façade — delegates to [AttachmentExtractor] (Tier 0f extraction).
   Future<File> extractMmsPart({
     required int partId,
     required String outputDirectory,
     String? filename,
-  }) async {
-    final handle = await SimpleQuery.instance.openBinary(
-      BinaryRequest(
-        domain: QueryDomain.messages,
-        entityType: 'mmsPart',
-        recordId: partId.toString(),
-      ),
-    );
-    try {
-      final dir = Directory(outputDirectory);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      final targetName = filename ?? _deriveMmsPartFilename(partId, handle);
-      final dest = File('${dir.path}/$targetName');
-      await File(handle.localPath).copy(dest.path);
-      return dest;
-    } finally {
-      // closeBinary is a best-effort cleanup; surfacing its failure here
-      // would shadow the actual return value (or a real copy/IO error
-      // raised in the try block). Keep it logged but non-fatal.
-      try {
-        await SimpleQuery.instance.closeBinary(handle.handleId);
-      } catch (e) {
-        debugPrint('simple_sms: closeBinary failed for $partId: $e');
-      }
-    }
-  }
+  }) =>
+      AttachmentExtractor.instance.extractMmsPart(
+        partId: partId,
+        outputDirectory: outputDirectory,
+        filename: filename,
+      );
 
   /// Lists conversations (MMS-SMS threads) matching the given [filter].
   ///
@@ -879,17 +831,6 @@ class LookupService {
         .toList(growable: false);
   }
 
-  String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
-    return 'mms_part_$partId${_extensionForMime(handle.mimeType)}';
-  }
-
-  /// Maps a MIME string to a dotted extension (e.g. `image/jpeg` → `.jpg`).
-  /// Returns `''` when the MIME is null. Delegates to [ContentType.fromMime]
-  /// which handles both known and unknown MIME types.
-  static String _extensionForMime(String? mime) {
-    if (mime == null || mime.trim().isEmpty) return '';
-    return '.${ContentType.fromMime(mime).extension}';
-  }
 
   // --- Private filter / sort translation -----------------------------------
 
