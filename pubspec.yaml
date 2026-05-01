@@ -12,8 +12,15 @@ topics:
   - android
 
 environment:
+  # Dart `^3.7.0` ships with Flutter 3.27+, so the Flutter constraint
+  # below is redundant when set to anything <= 3.27. Pin to 3.27.0 so
+  # the manifest's reality matches what the SDK constraint actually
+  # admits. Pre-fix this read `flutter: '>=3.3.0'`, which is roughly 2
+  # years' worth of Flutter releases that physically can NOT host Dart
+  # 3.7 — a misleading constraint pub silently clamped via the Dart
+  # bound.
   sdk: ^3.7.0
-  flutter: '>=3.3.0'
+  flutter: '>=3.27.0'
 
 dependencies:
   flutter:
