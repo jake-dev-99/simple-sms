@@ -644,13 +644,47 @@ final class ContentType {
   String toString() => 'ContentType($value)';
 }
 
-/// Character set used for MMS message encoding (common charsets only).
+/// Character set used for MMS message encoding.
+///
+/// IDs are IANA MIBenum values (assigned by the IANA Character Set
+/// Registry, see https://www.iana.org/assignments/character-sets/).
+/// The Android Telephony provider, the WAP-MMS spec, and the AOSP
+/// `PduPart.charset` field all use these MIBenum integers.
+///
+/// Coverage spans the four ASCII/Latin variants the original enum
+/// shipped with plus the four East-Asian and Western-European
+/// charsets most commonly seen on real-world inbound MMS:
+///   * GB2312 — mainland Chinese carriers (China Mobile, China Unicom).
+///   * Shift_JIS — Japanese carriers (NTT DoCoMo, KDDI au).
+///   * Big5 — Taiwanese carriers (Chunghwa, Taiwan Mobile) + Hong Kong.
+///   * Windows-1252 — legacy Windows-defaulted senders, common when
+///     a Windows-side composer encodes non-ASCII Latin characters
+///     (curly quotes, em-dashes, accented Latin) in this charset
+///     instead of UTF-8.
+///
+/// Adding these prevents the host-side Dart layer's
+/// `decodeWithCharset` (in `MmsPart`) from falling back to UTF-8
+/// when an MMS arrives with one of these declared encodings — UTF-8
+/// fallback over a real GB2312/Shift_JIS/Big5 byte stream produces
+/// mojibake or empty body.
 enum CharSet {
   /// US-ASCII (ID: 3)
   usAscii(3),
 
   /// ISO-8859-1 (Latin-1, ID: 4)
   iso88591(4),
+
+  /// Shift_JIS — Japanese (ID: 17)
+  shiftJis(17),
+
+  /// GB2312 — Simplified Chinese (ID: 2025)
+  gb2312(2025),
+
+  /// Big5 — Traditional Chinese (ID: 2026)
+  big5(2026),
+
+  /// Windows-1252 — Western European (ID: 2252)
+  windows1252(2252),
 
   /// UTF-8 (ID: 106)
   utf8(106),
