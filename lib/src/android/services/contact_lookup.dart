@@ -167,8 +167,8 @@ class ContactLookup {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _contactsUri},
         filters: _buildContactFilters(filter),
-        // ignore: silent_default
-        sort: _buildContactSort(sort ?? ContactSort.alphabetical),
+        sort: _buildContactSort(sort ?? ContactSort.alphabetical), // ignore: silent_default
+
         page: (limit != null || offset != null)
             ? QueryPage(limit: limit, offset: offset)
             : null,
@@ -212,6 +212,15 @@ class ContactLookup {
           field: 'has_phone_number',
           operator: QueryFilterOperator.equals,
           value: filter.hasPhoneNumber! ? '1' : '0',
+        ),
+      );
+    }
+    if (filter.hasEmail != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: 'has_email',
+          operator: QueryFilterOperator.equals,
+          value: filter.hasEmail! ? '1' : '0',
         ),
       );
     }
