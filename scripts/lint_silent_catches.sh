@@ -62,13 +62,17 @@ violations=$(find "$TARGET" -name '*.dart' \
       # Skip whitelisted catches.
       next if $body =~ m{//\s*ignore:\s*silent_catch};
 
-      # Skip catches that do real work.
-      next if $body =~ m{(?:AppLogger\.(?:error|warn)|recordError|rethrow|^\s*throw\s)}m;
-
-      # Strip comments and blank lines.
+      # Strip comments first — every subsequent check (real-work
+      # exemption + sentinel-return match) must run on executable
+      # code only. Without this, a comment containing the word
+      # `rethrow` would falsely exempt the catch from the gate.
       my $stripped = $body;
       $stripped =~ s{//[^\n]*}{}g;
       $stripped =~ s{/\*.*?\*/}{}gs;
+
+      # Skip catches that do real work — check on the stripped body
+      # so the exemption tokens have to actually be code.
+      next if $stripped =~ m{(?:AppLogger\.(?:error|warn)|recordError|rethrow|^\s*throw\s)}m;
 
       # Strip allowed soft-statements: debugPrint(...) / print(...) / log(...)
       # — possibly multi-line. Be liberal: any statement that starts
@@ -78,7 +82,11 @@ violations=$(find "$TARGET" -name '*.dart' \
       # Whats left should be ONLY a silent return + whitespace.
       $stripped =~ s{^\s+|\s+$}{}gs;
 
-      if ($stripped =~ m{^return\s+(?:null|\[\s*\]|const\s+(?:<[^>]+>\s*)?\[\s*\]|false|true|0|"")\s*;$}) {
+      # Match both quote styles for empty-string returns. Dart
+      # convention is single quotes (`return '';`); double quotes
+      # (`return "";`) are also valid. The earlier pattern only
+      # caught the double-quoted variant.
+      if ($stripped =~ m{^return\s+(?:null|\[\s*\]|const\s+(?:<[^>]+>\s*)?\[\s*\]|false|true|0|''|"")\s*;$}) {
         print "$ARGV:$line_no: silent catch body\n";
       }
     }
