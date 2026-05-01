@@ -71,6 +71,41 @@ class AttachmentUnreadableException(
     cause: Throwable
 ) : RuntimeException("Cannot read attachment '$attachmentPath': ${cause.message}", cause)
 
+/**
+ * Maps an exception thrown from [sendSms] / [sendMms] into the typed
+ * `(code, message, details)` triple consumed by [MethodChannel.Result.error].
+ *
+ * Single source of truth for the outbound exception → Dart error
+ * contract — referenced by the [onMethodCall] catch block. Add new
+ * exception types here when introducing new error codes; do not
+ * inline new mappings at the call site.
+ */
+internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when (e) {
+    is AttachmentUnreadableException -> Triple(
+        ERR_ATTACHMENT_UNREADABLE,
+        "Cannot read attachment: ${e.attachmentPath}",
+        mapOf(
+            "attachmentPath" to e.attachmentPath,
+            "cause" to (e.cause?.message ?: e.message ?: "unknown")
+        )
+    )
+    is SecurityException -> Triple(
+        ERR_PERMISSION_DENIED,
+        "Send blocked by missing permission: ${e.message}",
+        null
+    )
+    is IllegalArgumentException -> Triple(
+        ERR_INVALID_MESSAGE,
+        "Send rejected as invalid: ${e.message}",
+        null
+    )
+    else -> Triple(
+        ERR_SEND_INITIATION,
+        "Failed to initiate SMS send: ${e.message}",
+        null
+    )
+}
+
 class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     private lateinit var context: Context // Use application context for receivers
     private var messageStatusReceiver: OutboundMessagingReceiver? = null
@@ -172,63 +207,30 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 // SmsManager API for bodies that exceed a single
                 // segment, so long single-recipient text bypasses
                 // Klinker entirely and our receiver fires correctly.
-                // Granular error routing: sendSms / sendMms throw typed
-                // exceptions on real failures so we can surface stable
-                // PlatformException codes Dart can switch on. Pre-fix
-                // they returned `false` for everything from "permission
-                // denied" to "couldn't read attachment" — Dart had no way
-                // to render an actionable error UI.
+                // Send-path error routing: sendSms / sendMms throw on
+                // failure (no Boolean return — exceptions are the sole
+                // failure channel). The single catch + mapSendException
+                // helper translates each typed exception into the
+                // matching ERR_* code. Add new error codes by extending
+                // mapSendException, NOT by adding catch arms here.
+                //
+                // Successful sends are ACKed asynchronously by the
+                // OutboundMessagingReceiver broadcast handler, which
+                // reads channelResultMap[msgId].flutterResult.
                 try {
-                    val sendResult =
-                            if (requestDetails.attachmentPaths != null &&
-                                            requestDetails.attachmentPaths.isNotEmpty()
-                            ) {
-                                sendMms(smsManager = smsManager, requestDetails = requestDetails)
-                            } else if (requestDetails.addresses.size > 1) {
-                                sendMms(smsManager = smsManager, requestDetails = requestDetails)
-                            } else {
-                                sendSms(smsManager = smsManager, requestDetails = requestDetails)
-                            }
-                    if (!sendResult) {
-                        channelResultMap.remove(msgId)
-                        result.error(
-                                ERR_SEND_INITIATION,
-                                "Failed to initiate SMS send.",
-                                null
-                        )
+                    if (requestDetails.attachmentPaths != null &&
+                            requestDetails.attachmentPaths.isNotEmpty()
+                    ) {
+                        sendMms(smsManager = smsManager, requestDetails = requestDetails)
+                    } else if (requestDetails.addresses.size > 1) {
+                        sendMms(smsManager = smsManager, requestDetails = requestDetails)
+                    } else {
+                        sendSms(smsManager = smsManager, requestDetails = requestDetails)
                     }
-                    // A successful result is handled by the broadcast receiver.
-                } catch (e: AttachmentUnreadableException) {
-                    channelResultMap.remove(msgId)
-                    result.error(
-                            ERR_ATTACHMENT_UNREADABLE,
-                            "Cannot read attachment: ${e.attachmentPath}",
-                            mapOf(
-                                    "attachmentPath" to e.attachmentPath,
-                                    "cause" to (e.cause?.message ?: e.message ?: "unknown")
-                            )
-                    )
-                } catch (e: SecurityException) {
-                    channelResultMap.remove(msgId)
-                    result.error(
-                            ERR_PERMISSION_DENIED,
-                            "Send blocked by missing permission: ${e.message}",
-                            null
-                    )
-                } catch (e: IllegalArgumentException) {
-                    channelResultMap.remove(msgId)
-                    result.error(
-                            ERR_INVALID_MESSAGE,
-                            "Send rejected as invalid: ${e.message}",
-                            null
-                    )
                 } catch (e: Exception) {
                     channelResultMap.remove(msgId)
-                    result.error(
-                            ERR_SEND_INITIATION,
-                            "Failed to initiate SMS send: ${e.message}",
-                            null
-                    )
+                    val (code, message, details) = mapSendException(e)
+                    result.error(code, message, details)
                 }
             }
             else -> result.notImplemented()
@@ -397,11 +399,19 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
         }
     }
 
+    /**
+     * Initiates an SMS send. Returns nothing — failures propagate via
+     * typed exceptions (see [mapSendException]) and successes ACK
+     * asynchronously through the [OutboundMessagingReceiver] broadcast.
+     * Pre-fix this returned `Boolean` but the boolean was always `true`
+     * on the success path, so it was a vestigial second error channel
+     * that duplicated the exception-based one.
+     */
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private fun sendSms(
             smsManager: SmsManager,
             requestDetails: MessageRequestDetails,
-    ): Boolean {
+    ) {
         try {
             Log.d("OutboundMessagingHandler", "Sending SMS to ${requestDetails.addresses.size} recipient(s)")
             val newSms = insertSms(context, requestDetails)
@@ -490,11 +500,14 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             Log.e(TAG, "Error initiating SMS send: ${e.message}", e)
             throw e
         }
-        return true
     }
 
+    /**
+     * Initiates an MMS send. See [sendSms] for the return-via-exception
+     * contract; the same applies here.
+     */
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
-    private fun sendMms(smsManager: SmsManager, requestDetails: MessageRequestDetails): Boolean {
+    private fun sendMms(smsManager: SmsManager, requestDetails: MessageRequestDetails) {
         try {
             // Create a message with attachments
             var i = 0
@@ -663,7 +676,6 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val sendTransaction = Transaction(context, sendSettings)
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
-            return true
         } catch (e: AttachmentUnreadableException) {
             // The send is aborted before any wire activity — recipient
             // never sees a partial/empty attachment. Rethrow to
