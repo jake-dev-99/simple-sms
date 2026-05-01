@@ -55,16 +55,26 @@ data class MmsPart(
             // classify a part with no MIME. The previous behaviour
             // substituted "" and propagated; the part deserialized,
             // then exploded a layer up with no attribution to the
-            // offending part. Throwing here surfaces the seq + size
-            // for triage in Crashlytics.
+            // offending part.
+            //
+            // Decoded explicitly as US-ASCII because MIME content types
+            // are spec'd as ASCII. `String(byteArray)` without a
+            // charset uses the platform default, which varies across
+            // devices/locales and can mis-decode non-ASCII bytes.
+            //
+            // Exception body intentionally avoids the part `name` —
+            // attachment filenames can carry user-generated content
+            // (and PII like `Photo from $phoneNumber.jpg`); shipping
+            // those to Crashlytics is a privacy bug. `hasName` and
+            // `nameLength` keep the diagnostic signal without leaking
+            // content.
             val contentTypeBytes = part.contentType
                 ?: throw IllegalStateException(
                     "MmsPart.pduPartToMmsPart: part contentType is null " +
-                        "(seq=$seq, dataLen=${data.size}, name=\"$name\"). " +
-                        "AOSP PduPart with null Content-Type can't be " +
-                        "classified — refusing to fabricate empty MIME."
+                        "(seq=$seq, dataLen=${data.size}, " +
+                        "hasName=${name.isNotEmpty()}, nameLength=${name.length})"
                 )
-            val contentType = String(contentTypeBytes)
+            val contentType = String(contentTypeBytes, Charsets.US_ASCII)
 
             // S1 #13 / S2 #19: only treat the part as text when its
             // declared content type starts with "text/". Decode using
