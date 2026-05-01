@@ -28,18 +28,32 @@ VIOLATIONS=0
 # member. We match PascalCase.camelCase to catch enum references while
 # skipping `?? ''`, `?? 0`, `?? false`, `?? const []`, etc.
 #
-# The grep is intentionally broad; the ignore-comment filter narrows it.
-PATTERN='\?\?\s*[A-Z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*'
+# Excludes method calls (`?? DateTime.now()`) — those are typically
+# clock injection or factory defaults, a different concern from silent
+# enum fallback. The negative lookahead `(?!\()` requires the matched
+# identifier NOT be immediately followed by `(`. Uses PCRE (`grep -P`).
+# `*+` is a POSSESSIVE quantifier — no backtracking. Without it, the
+# regex engine would partially-match `DateTime.now` then backtrack to
+# `DateTime.no` (next char `w` satisfies the lookahead) and succeed.
+PATTERN='\?\?\s*[A-Z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*+(?![(<\[])'
 
+# Use perl for portable PCRE (macOS grep lacks -P).
 while IFS= read -r -d '' file; do
   while IFS=: read -r lineno line; do
     # Skip lines with the explicit opt-out comment
     if echo "$line" | grep -q '// ignore: silent_default'; then
       continue
     fi
+    # Skip lines that are themselves comments (the pattern can appear
+    # in doc-comment examples like `// ... ?? Enum.value ...`). Covers
+    # line comments (//, ///), block-comment openers (/*, /**), and
+    # block-comment continuations (leading `*`).
+    if echo "$line" | grep -qE '^\s*(//|/\*|\*)'; then
+      continue
+    fi
     echo "$file:$lineno: $line"
     VIOLATIONS=$((VIOLATIONS + 1))
-  done < <(grep -n -E "$PATTERN" "$file" || true)
+  done < <(perl -ne "print qq{\$.:\$_} if /$PATTERN/" "$file")
 done < <(find "$TARGET" -name '*.dart' \
   -not -name '*.g.dart' \
   -not -path '*/build/*' \
@@ -47,11 +61,13 @@ done < <(find "$TARGET" -name '*.dart' \
   -not -path '*/test/*' \
   -print0)
 
-if [ "$VIOLATIONS" -gt 0 ]; then
-  echo ""
-  echo "Found $VIOLATIONS potential silent enum default(s)."
-  echo "If a use is intentional (API parameter default, DI, etc.),"
-  echo "add '// ignore: silent_default' to the line."
+if [[ "$VIOLATIONS" -gt 0 ]]; then
+  {
+    echo ""
+    echo "Found $VIOLATIONS potential silent enum default(s)."
+    echo "If a use is intentional (API parameter default, DI, etc.),"
+    echo "add '// ignore: silent_default' to the line."
+  } >&2
   exit 1
 fi
 
