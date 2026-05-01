@@ -159,8 +159,8 @@ class MessageLookup {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _smsUri},
         filters: _buildSmsFilters(filter),
-        // ignore: silent_default
-        sort: _buildSmsSort(sort ?? SmsSort.newestFirst),
+        sort: _buildSmsSort(sort ?? SmsSort.newestFirst), // ignore: silent_default
+
         page: (limit != null || offset != null)
             ? QueryPage(limit: limit, offset: offset)
             : null,
@@ -215,8 +215,8 @@ class MessageLookup {
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _mmsUri},
         filters: _buildMmsFilters(filter),
-        // ignore: silent_default
-        sort: _buildMmsSort(sort ?? MmsSort.newestFirst),
+        sort: _buildMmsSort(sort ?? MmsSort.newestFirst), // ignore: silent_default
+
         page: (limit != null || offset != null)
             ? QueryPage(limit: limit, offset: offset)
             : null,
