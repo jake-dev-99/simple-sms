@@ -21,6 +21,7 @@ import '../models/people/contactables.dart';
 import '../models/people/mms_participant.dart';
 import 'attachment_extractor.dart';
 import 'contact_lookup.dart';
+import 'message_lookup.dart';
 
 /// Centralized service for resolving contacts, messages, and addresses
 /// from the Android ContentProvider database.
@@ -51,8 +52,6 @@ import 'contact_lookup.dart';
 // Kept as constants so the (platformSpecific) domain switch below is
 // easy to audit and stay consistent with `Query.kt` / `ContentQuery`
 // on the Kotlin side.
-const String _smsUri = 'content://sms';
-const String _mmsUri = 'content://mms';
 const String _mmsSmsConversationsUri =
     'content://mms-sms/conversations?simple=true';
 
@@ -159,25 +158,9 @@ class LookupService {
       ContactLookup.instance.lookupContactableByAddress(address);
 
   /// Looks up an MMS message by its database ID.
-  Future<Mms?> lookupMmsById(int messageId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _mmsUri},
-        filters: [
-          QueryFilterCondition(
-            field: '_id',
-            operator: QueryFilterOperator.equals,
-            value: messageId.toString(),
-          ),
-        ],
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    return Mms.fromRaw(
-      Map<String, dynamic>.from(response.records.first),
-    );
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<Mms?> lookupMmsById(int messageId) =>
+      MessageLookup.instance.lookupMmsById(messageId);
 
   /// Lists every address row (sender + recipients) for a single MMS message.
   ///
@@ -190,19 +173,9 @@ class LookupService {
   /// MMS rows with empty `recipients` lists by design (they're not in the
   /// `mms` table); enrich with this call when the caller needs to know
   /// which participant in a multi-party thread sent an individual message.
-  Future<List<MmsParticipant>> listMmsAddressesByMessage(int mmsId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': 'content://mms/$mmsId/addr'},
-      ),
-    );
-    return response.records
-        .map(
-          (row) => MmsParticipant.fromRaw(Map<String, dynamic>.from(row)),
-        )
-        .toList(growable: false);
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<List<MmsParticipant>> listMmsAddressesByMessage(int mmsId) =>
+      MessageLookup.instance.listMmsAddressesByMessage(mmsId);
 
   /// Resolves (or lazily creates) the thread id for a given recipient set.
   ///
@@ -220,180 +193,62 @@ class LookupService {
   /// grouping.
   ///
   /// Returns null when [addresses] is empty or no row comes back.
-  Future<int?> resolveThreadIdByAddresses(Iterable<String> addresses) async {
-    final cleaned =
-        addresses
-            .map((a) => a.trim())
-            .where((a) => a.isNotEmpty)
-            .toList(growable: false);
-    if (cleaned.isEmpty) return null;
-    // Android's Telephony.Threads builds this URI by appending one
-    // `recipient` query param per address. The provider joins them
-    // internally to look up or create a single thread. We URL-encode
-    // each address (phone numbers with `+` need it) so pluses don't
-    // become spaces on the native side.
-    final params = cleaned
-        .map((a) => 'recipient=${Uri.encodeQueryComponent(a)}')
-        .join('&');
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': 'content://mms-sms/threadID?$params'},
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    final row = response.records.first;
-    final rawId = row['_id'] ?? row['id'];
-    if (rawId is int) return rawId;
-    if (rawId is String) return int.tryParse(rawId.trim());
-    return null;
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<int?> resolveThreadIdByAddresses(Iterable<String> addresses) =>
+      MessageLookup.instance.resolveThreadIdByAddresses(addresses);
 
   /// Resolves a canonical address (phone number) from a recipient ID.
   ///
   /// Android stores conversation recipients as numeric IDs that map to
   /// canonical addresses via the `content://mms-sms/canonical-address/` URI.
-  Future<String?> resolveCanonicalAddress(String recipientId) async {
-    try {
-      final response = await SimpleQuery.instance.query(
-        QueryRequest(
-          domain: QueryDomain.platformSpecific,
-          platformData: {
-            'contentUri': 'content://mms-sms/canonical-address/$recipientId',
-          },
-        ),
-      );
-      if (response.records.isEmpty) {
-        debugPrint(
-          '[diag][simple-sms] resolveCanonicalAddress recipientId=$recipientId '
-          'records=0 address=null',
-        );
-        return null;
-      }
-      final raw = response.records.first;
-      final address = raw['address']?.toString();
-      debugPrint(
-        '[diag][simple-sms] resolveCanonicalAddress recipientId=$recipientId '
-        'records=${response.records.length} address=${_maskAddress(address)} '
-        'rawKeys=${raw.keys.toList()}',
-      );
-      return (address != null && address.isNotEmpty) ? address : null;
-    } catch (e, s) {
-      debugPrint(
-        'simple_sms: Failed to resolve canonical address $recipientId: $e',
-      );
-      debugPrint(s.toString());
-      return null;
-    }
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<String?> resolveCanonicalAddress(String recipientId) =>
+      MessageLookup.instance.resolveCanonicalAddress(recipientId);
 
   /// Gets all SMS messages in a conversation thread.
-  Future<List<Sms>> getSmsByThread(int threadId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _smsUri},
-        filters: [
-          QueryFilterCondition(
-            field: 'thread_id',
-            operator: QueryFilterOperator.equals,
-            value: threadId.toString(),
-          ),
-        ],
-      ),
-    );
-    return response.records
-        .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
-        .toList();
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<List<Sms>> getSmsByThread(int threadId) =>
+      MessageLookup.instance.getSmsByThread(threadId);
 
-  /// Lists SMS messages matching the given [filter], ordered by [sort], paged
-  /// by [limit] / [offset].
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
   Future<List<Sms>> listSms({
     SmsFilter? filter,
     SmsSort? sort,
     int? limit,
     int? offset,
-  }) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _smsUri},
-        filters: _buildSmsFilters(filter),
-        sort: _buildSmsSort(sort ?? SmsSort.newestFirst), // ignore: silent_default
-        page:
-            (limit != null || offset != null)
-                ? QueryPage(limit: limit, offset: offset)
-                : null,
-      ),
-    );
-    return response.records
-        .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  }) =>
+      MessageLookup.instance.listSms(
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        offset: offset,
+      );
 
-  /// Fetches a single SMS by its database id. Returns null if not found.
-  Future<Sms?> getSmsById(int id) async {
-    final results = await listSms(filter: SmsFilter(ids: [id]));
-    return results.isEmpty ? null : results.first;
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<Sms?> getSmsById(int id) => MessageLookup.instance.getSmsById(id);
 
-  /// Gets all MMS messages in a conversation thread.
-  Future<List<Mms>> getMmsByThread(int threadId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _mmsUri},
-        filters: [
-          QueryFilterCondition(
-            field: 'thread_id',
-            operator: QueryFilterOperator.equals,
-            value: threadId.toString(),
-          ),
-        ],
-      ),
-    );
-    return response.records
-        .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
+  Future<List<Mms>> getMmsByThread(int threadId) =>
+      MessageLookup.instance.getMmsByThread(threadId);
 
-  /// Lists MMS messages matching the given [filter], ordered by [sort], paged
-  /// by [limit] / [offset].
+  /// Façade — delegates to [MessageLookup] (Tier 0f extraction).
   ///
-  /// Returned [Mms] instances have empty `recipients` and `parts` — fetch them
-  /// separately with:
-  ///   - [listMmsParts] for body + attachment parts,
-  ///   - [listMmsAddressesByMessage] for the per-message sender/recipient set
-  ///     (the right call for group-MMS attribution; don't conflate with the
-  ///     thread-level [resolveCanonicalAddress]),
-  ///   - or re-materialize everything in one shot via [lookupMmsById].
-  ///
-  /// Splitting the enrichment keeps a bulk `listMms` call cheap on large
-  /// histories; per-row attachment + address fetches are O(N) queries
-  /// otherwise.
+  /// Returned [Mms] instances have empty `recipients` and `parts` —
+  /// fetch them separately via [listMmsParts] /
+  /// [listMmsAddressesByMessage], or re-materialize via
+  /// [lookupMmsById].
   Future<List<Mms>> listMms({
     MmsFilter? filter,
     MmsSort? sort,
     int? limit,
     int? offset,
-  }) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _mmsUri},
-        filters: _buildMmsFilters(filter),
-        sort: _buildMmsSort(sort ?? MmsSort.newestFirst), // ignore: silent_default
-        page:
-            (limit != null || offset != null)
-                ? QueryPage(limit: limit, offset: offset)
-                : null,
-      ),
-    );
-    return response.records
-        .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  }) =>
+      MessageLookup.instance.listMms(
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        offset: offset,
+      );
 
   /// Lists the parts (text body + attachments) that belong to an MMS message.
   ///
@@ -741,200 +596,6 @@ class LookupService {
 
   // --- Private filter / sort translation -----------------------------------
 
-  /// Translate an [SmsFilter] to the generic [QueryFilterCondition] list the
-  /// underlying `simple_query` transport expects.
-  List<QueryFilterCondition> _buildSmsFilters(SmsFilter? filter) {
-    if (filter == null) return const [];
-    final conditions = <QueryFilterCondition>[];
-
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
-        ),
-      );
-    }
-    if (filter.threadId != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'thread_id',
-          operator: QueryFilterOperator.equals,
-          value: filter.threadId.toString(),
-        ),
-      );
-    }
-    if (filter.isRead != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'read',
-          operator: QueryFilterOperator.equals,
-          value: filter.isRead! ? '1' : '0',
-        ),
-      );
-    }
-    final types = filter.types;
-    if (types != null && types.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'type',
-          operator: QueryFilterOperator.inList,
-          value: types.map((t) => t.value.toString()).toList(),
-        ),
-      );
-    }
-    if (filter.dateFrom != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'date',
-          operator: QueryFilterOperator.greaterThanOrEqual,
-          value: filter.dateFrom!.millisecondsSinceEpoch.toString(),
-        ),
-      );
-    }
-    if (filter.dateTo != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'date',
-          operator: QueryFilterOperator.lessThanOrEqual,
-          value: filter.dateTo!.millisecondsSinceEpoch.toString(),
-        ),
-      );
-    }
-    if (filter.addressContains != null && filter.addressContains!.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'address',
-          operator: QueryFilterOperator.contains,
-          value: filter.addressContains,
-        ),
-      );
-    }
-    if (filter.subscriptionId != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'sub_id',
-          operator: QueryFilterOperator.equals,
-          value: filter.subscriptionId.toString(),
-        ),
-      );
-    }
-    if (filter.idAfter != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
-        ),
-      );
-    }
-    return conditions;
-  }
-
-  List<QuerySort> _buildSmsSort(SmsSort sort) {
-    final column = switch (sort.field) {
-      SmsSortField.id => '_id',
-      SmsSortField.date => 'date',
-      SmsSortField.threadId => 'thread_id',
-    };
-    return [QuerySort(field: column, direction: _dir(sort.direction))];
-  }
-
-  /// Translate an [MmsFilter] to [QueryFilterCondition]s.
-  ///
-  /// Note: MMS stores `date` in **seconds** since epoch, not milliseconds, so
-  /// the [DateTime] values are divided by 1000 before being compared.
-  List<QueryFilterCondition> _buildMmsFilters(MmsFilter? filter) {
-    if (filter == null) return const [];
-    final conditions = <QueryFilterCondition>[];
-
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
-        ),
-      );
-    }
-    if (filter.threadId != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'thread_id',
-          operator: QueryFilterOperator.equals,
-          value: filter.threadId.toString(),
-        ),
-      );
-    }
-    if (filter.isRead != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'read',
-          operator: QueryFilterOperator.equals,
-          value: filter.isRead! ? '1' : '0',
-        ),
-      );
-    }
-    final types = filter.types;
-    if (types != null && types.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'm_type',
-          operator: QueryFilterOperator.inList,
-          value: types.map((t) => t.value.toString()).toList(),
-        ),
-      );
-    }
-    if (filter.dateFrom != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'date',
-          operator: QueryFilterOperator.greaterThanOrEqual,
-          value: (filter.dateFrom!.millisecondsSinceEpoch ~/ 1000).toString(),
-        ),
-      );
-    }
-    if (filter.dateTo != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'date',
-          operator: QueryFilterOperator.lessThanOrEqual,
-          value: (filter.dateTo!.millisecondsSinceEpoch ~/ 1000).toString(),
-        ),
-      );
-    }
-    if (filter.subscriptionId != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'sub_id',
-          operator: QueryFilterOperator.equals,
-          value: filter.subscriptionId.toString(),
-        ),
-      );
-    }
-    if (filter.idAfter != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
-        ),
-      );
-    }
-    return conditions;
-  }
-
-  List<QuerySort> _buildMmsSort(MmsSort sort) {
-    final column = switch (sort.field) {
-      MmsSortField.id => '_id',
-      MmsSortField.date => 'date',
-      MmsSortField.threadId => 'thread_id',
-    };
-    return [QuerySort(field: column, direction: _dir(sort.direction))];
-  }
 
   QuerySortDirection _dir(SortDirection d) =>
       d == SortDirection.ascending
