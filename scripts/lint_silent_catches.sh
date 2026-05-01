@@ -92,17 +92,22 @@ violations=$(find "$TARGET" -name '*.dart' \
     }
   ' 2>/dev/null)
 
-if [ -n "$violations" ]; then
-  echo "$violations"
+if [[ -n "$violations" ]]; then
+  # Diagnostic output goes to stderr so a CI step that pipes stdout
+  # for log-collection still surfaces failure context, and so callers
+  # invoking the script with `>/dev/null` see the failure cause.
+  echo "$violations" >&2
   count=$(echo "$violations" | wc -l | tr -d ' ')
-  echo ""
-  echo "Found $count silent catch body(ies)."
-  echo "Catch blocks that swallow exceptions by returning null/[]/false"
-  echo "without rethrowing or recording to AppLogger.error hide real bugs"
-  echo "from every caller. If a use is intentionally best-effort (legacy"
-  echo "cleanup, optional-feature degradation), add"
-  echo "  // ignore: silent_catch"
-  echo "anywhere within the catch body."
+  {
+    echo ""
+    echo "Found $count silent catch body(ies)."
+    echo "Catch blocks that swallow exceptions by returning null/[]/false"
+    echo "without rethrowing or recording to AppLogger.error hide real bugs"
+    echo "from every caller. If a use is intentionally best-effort (legacy"
+    echo "cleanup, optional-feature degradation), add"
+    echo "  // ignore: silent_catch"
+    echo "anywhere within the catch body."
+  } >&2
   exit 1
 fi
 
