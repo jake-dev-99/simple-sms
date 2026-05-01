@@ -68,6 +68,10 @@ jobs:
         working-directory: simple-sms
         run: ./scripts/lint_silent_defaults.sh
 
+      - name: Lint silent catch bodies
+        working-directory: simple-sms
+        run: ./scripts/lint_silent_catches.sh
+
       - name: Run tests
         working-directory: simple-sms
         run: flutter test

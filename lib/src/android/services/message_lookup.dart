@@ -136,11 +136,17 @@ class MessageLookup {
       );
       return (address != null && address.isNotEmpty) ? address : null;
     } catch (e, s) {
+      // Per the file-level contract on lookup_service.dart: query
+      // methods do NOT swallow exceptions. The previous
+      // `catch + return null` here recreated the exact bug class
+      // PR-C was opened to eliminate — silent empty across thousands
+      // of full-sync calls, only surfacing when realtime force-
+      // unwrapped a `!`. Log diagnostics for triage, then rethrow.
       debugPrint(
         'simple_sms: Failed to resolve canonical address $recipientId: $e',
       );
       debugPrint(s.toString());
-      return null;
+      rethrow;
     }
   }
 
