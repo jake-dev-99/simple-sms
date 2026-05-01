@@ -20,6 +20,7 @@ import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
 import '../models/people/mms_participant.dart';
 import 'attachment_extractor.dart';
+import 'contact_lookup.dart';
 
 /// Centralized service for resolving contacts, messages, and addresses
 /// from the Android ContentProvider database.
@@ -50,12 +51,6 @@ import 'attachment_extractor.dart';
 // Kept as constants so the (platformSpecific) domain switch below is
 // easy to audit and stay consistent with `Query.kt` / `ContentQuery`
 // on the Kotlin side.
-const String _contactsUri = 'content://com.android.contacts/contacts';
-const String _contactsDataUri = 'content://com.android.contacts/data';
-const String _contactsPhoneFilterUri =
-    'content://com.android.contacts/data/phones/filter';
-const String _contactsEmailFilterUri =
-    'content://com.android.contacts/data/emails/filter';
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
 const String _mmsSmsConversationsUri =
@@ -151,50 +146,17 @@ class LookupService {
   /// Looks up a contact by their database ID.
   ///
   /// Returns null if the contact is not found or if the query fails.
-  Future<AndroidContact?> lookupContactById(int contactId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        // Use platformSpecific so simple_query doesn't canonicalize
-        // the row into its domain schema (id/displayName/…) — we
-        // need raw Android columns (_id, display_name, …) to feed
-        // AndroidContact.fromRaw.
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _contactsUri},
-        filters: [
-          QueryFilterCondition(
-            field: '_id',
-            operator: QueryFilterOperator.equals,
-            value: contactId.toString(),
-          ),
-        ],
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    return AndroidContact.fromRaw(
-      Map<String, dynamic>.from(response.records.first),
-    );
-  }
+  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
+  Future<AndroidContact?> lookupContactById(int contactId) =>
+      ContactLookup.instance.lookupContactById(contactId);
 
   /// Looks up a contactable (lightweight contact info) by phone number or email.
   ///
   /// Uses the Android contacts filter URI to match the address against
   /// phone numbers or email addresses in the contacts database.
-  Future<Contactable?> lookupContactableByAddress(String address) async {
-    final isEmail = address.contains('@');
-    final uri = isEmail
-        ? '$_contactsEmailFilterUri/$address'
-        : '$_contactsPhoneFilterUri/$address';
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': uri},
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    return Contactable.fromRaw(
-      Map<String, dynamic>.from(response.records.first),
-    );
-  }
+  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
+  Future<Contactable?> lookupContactableByAddress(String address) =>
+      ContactLookup.instance.lookupContactableByAddress(address);
 
   /// Looks up an MMS message by its database ID.
   Future<Mms?> lookupMmsById(int messageId) async {
@@ -742,26 +704,9 @@ class LookupService {
   /// Callers typically filter the returned list on `contactable.mimetype`
   /// (e.g. `vnd.android.cursor.item/phone_v2`,
   /// `vnd.android.cursor.item/email_v2`) to pick the entries they care about.
-  Future<List<Contactable>> listContactablesForContact(int contactId) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: [
-          QueryFilterCondition(
-            field: 'contact_id',
-            operator: QueryFilterOperator.equals,
-            value: contactId.toString(),
-          ),
-        ],
-        platformData: const {
-          'contentUri': _contactsDataUri,
-        },
-      ),
-    );
-    return response.records
-        .map((row) => Contactable.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
+  Future<List<Contactable>> listContactablesForContact(int contactId) =>
+      ContactLookup.instance.listContactablesForContact(contactId);
 
   /// Resolves a contact's structured name (given / family / prefix / suffix /
   /// phonetic variants) from the contacts data provider.
@@ -769,67 +714,29 @@ class LookupService {
   /// Queries `content://com.android.contacts/data` filtered by `contact_id`,
   /// `mimetype = vnd.android.cursor.item/name`, and optionally `account_type`.
   /// Returns null when the contact has no structured-name row.
+  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
     String? accountType,
-  }) async {
-    final filters = <QueryFilterCondition>[
-      QueryFilterCondition(
-        field: 'contact_id',
-        operator: QueryFilterOperator.equals,
-        value: contactId.toString(),
-      ),
-      QueryFilterCondition(
-        field: 'mimetype',
-        operator: QueryFilterOperator.equals,
-        value: 'vnd.android.cursor.item/name',
-      ),
-      if (accountType != null)
-        QueryFilterCondition(
-          field: 'account_type',
-          operator: QueryFilterOperator.equals,
-          value: accountType,
-        ),
-    ];
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: filters,
-        platformData: const {
-          'contentUri': _contactsDataUri,
-        },
-      ),
-    );
-    if (response.records.isEmpty) return null;
-    return AndroidContactName.fromRaw(
-      Map<String, dynamic>.from(response.records.first),
-    );
-  }
+  }) =>
+      ContactLookup.instance
+          .getStructuredName(contactId: contactId, accountType: accountType);
 
   /// Lists contacts matching the given [filter], ordered by [sort], paged by
   /// [limit] / [offset].
+  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
   Future<List<AndroidContact>> listContacts({
     ContactFilter? filter,
     ContactSort? sort,
     int? limit,
     int? offset,
-  }) async {
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        platformData: {'contentUri': _contactsUri},
-        filters: _buildContactFilters(filter),
-        sort: _buildContactSort(sort ?? ContactSort.alphabetical), // ignore: silent_default
-        page:
-            (limit != null || offset != null)
-                ? QueryPage(limit: limit, offset: offset)
-                : null,
-      ),
-    );
-    return response.records
-        .map((row) => AndroidContact.fromRaw(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
-  }
+  }) =>
+      ContactLookup.instance.listContacts(
+        filter: filter,
+        sort: sort,
+        limit: limit,
+        offset: offset,
+      );
 
 
   // --- Private filter / sort translation -----------------------------------
@@ -1034,70 +941,6 @@ class LookupService {
           ? QuerySortDirection.ascending
           : QuerySortDirection.descending;
 
-  /// Translate a [ContactFilter] to [QueryFilterCondition]s.
-  List<QueryFilterCondition> _buildContactFilters(ContactFilter? filter) {
-    if (filter == null) return const [];
-    final conditions = <QueryFilterCondition>[];
-
-    final ids = filter.ids;
-    if (ids != null && ids.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.inList,
-          value: ids.map((id) => id.toString()).toList(),
-        ),
-      );
-    }
-    if (filter.displayNameContains != null &&
-        filter.displayNameContains!.isNotEmpty) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'display_name',
-          operator: QueryFilterOperator.contains,
-          value: filter.displayNameContains,
-        ),
-      );
-    }
-    if (filter.hasPhoneNumber != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'has_phone_number',
-          operator: QueryFilterOperator.equals,
-          value: filter.hasPhoneNumber! ? '1' : '0',
-        ),
-      );
-    }
-    if (filter.hasEmail != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'has_email',
-          operator: QueryFilterOperator.equals,
-          value: filter.hasEmail! ? '1' : '0',
-        ),
-      );
-    }
-    if (filter.inVisibleGroup != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: 'in_visible_group',
-          operator: QueryFilterOperator.equals,
-          value: filter.inVisibleGroup! ? '1' : '0',
-        ),
-      );
-    }
-    if (filter.idAfter != null) {
-      conditions.add(
-        QueryFilterCondition(
-          field: '_id',
-          operator: QueryFilterOperator.greaterThan,
-          value: filter.idAfter!.toString(),
-        ),
-      );
-    }
-    return conditions;
-  }
-
   /// Translate a [ConversationFilter] to [QueryFilterCondition]s.
   ///
   /// The `content://mms-sms/conversations?simple=true` view exposes the
@@ -1199,15 +1042,6 @@ class LookupService {
     final column = switch (sort.field) {
       ConversationSortField.date => 'date',
       ConversationSortField.id => '_id',
-    };
-    return [QuerySort(field: column, direction: _dir(sort.direction))];
-  }
-
-  List<QuerySort> _buildContactSort(ContactSort sort) {
-    final column = switch (sort.field) {
-      ContactSortField.displayName => 'display_name',
-      ContactSortField.id => '_id',
-      ContactSortField.lastTimeContacted => 'last_time_contacted',
     };
     return [QuerySort(field: column, direction: _dir(sort.direction))];
   }
