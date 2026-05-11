@@ -38,17 +38,21 @@ class MmsParticipant {
 
   static MmsParticipant fromJson(Map<String, dynamic> json) => MmsParticipant(
     address: json["address"],
-    charset: FieldHelper.enumFromValue(
+    charset: FieldHelper.enumFromValueOrNull(
       CharSet.values,
       FieldHelper.asInt(json["charset"]),
     ),
     contactId: FieldHelper.asInt(json["contact_id"]),
-    id: FieldHelper.asInt(json["_id"]) ?? 0,
+    id: FieldHelper.primaryKey(json),
     msgId: FieldHelper.asInt(json["msg_id"]),
     sourceLabel: json["sourceLabel"],
-    participantType: FieldHelper.enumFromValue(
+    // REQUIRED — drives FROM/TO/CC/BCC classification of MMS
+    // recipients; the inbound persister depends on this to identify
+    // sender vs recipients in group MMS.
+    participantType: FieldHelper.enumFromValueOrThrow(
       AndroidParticipantType.values,
       FieldHelper.asInt(json["type"]),
+      fieldName: 'MmsParticipant.participantType',
     ),
     subId: FieldHelper.asInt(json["sub_id"]),
   );
@@ -69,20 +73,21 @@ class MmsParticipant {
       // `_id` is the BaseColumns PK on mms_addr; `id` is a legacy test shim.
       id: FieldHelper.primaryKey(raw),
       address: raw["address"]?.toString(),
-      charset: FieldHelper.enumFromValue(
+      charset: FieldHelper.enumFromValueOrNull(
         CharSet.values,
         FieldHelper.asInt(raw["charset"]),
       ),
       contactId: FieldHelper.asInt(raw["contact_id"]),
       msgId: FieldHelper.asInt(raw["msg_id"]),
       sourceLabel: raw["sourceLabel"],
-      participantType:
-          raw['type'] is AndroidParticipantType
-              ? raw['type']
-              : FieldHelper.enumFromValue(
-                AndroidParticipantType.values,
-                FieldHelper.asInt(raw["type"]),
-              ),
+      // REQUIRED — see fromJson comment.
+      participantType: raw['type'] is AndroidParticipantType
+          ? raw['type'] as AndroidParticipantType
+          : FieldHelper.enumFromValueOrThrow(
+              AndroidParticipantType.values,
+              FieldHelper.asInt(raw["type"]),
+              fieldName: 'MmsParticipant.participantType',
+            ),
       subId: FieldHelper.asInt(raw["sub_id"]),
     );
 

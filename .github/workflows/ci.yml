@@ -9,6 +9,16 @@ name: CI
 # are relative (`../simple-permissions`, ...), so CI lays out
 # the sibling checkouts alongside this repo under the workspace
 # for `flutter pub get` to resolve.
+#
+# External GitHub Actions are pinned to a full commit SHA rather
+# than a floating tag (`@v4`, `@v2`). Floating tags can be
+# rewritten by the action's repo owner OR by a compromised
+# maintainer account, silently swapping in malicious code mid-CI.
+# The trailing `# v4.3.1` style comment shows the human-readable
+# version the SHA corresponds to so contributors don't have to
+# reverse-look-up the hash. Bump the pin (and the comment) in a
+# dedicated PR. SonarQube rule `githubactions:S7637` enforces
+# this gate.
 on:
   pull_request:
     branches: [develop, staging, main]
@@ -20,25 +30,25 @@ jobs:
 
     steps:
       - name: Checkout simple-sms
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           path: simple-sms
 
       - name: Checkout simple-permissions (sibling dep)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: jake-dev-99/simple-permissions
           ref: main
           path: simple-permissions
 
       - name: Checkout simple-query (sibling dep)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: jake-dev-99/simple-query
           ref: main
           path: simple-query
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
@@ -53,6 +63,14 @@ jobs:
         # path-overrides is expected pre-publish; drop
         # warning fatality so it doesn't block the gate.
         run: flutter analyze --no-fatal-warnings
+
+      - name: Lint silent enum defaults
+        working-directory: simple-sms
+        run: ./scripts/lint_silent_defaults.sh
+
+      - name: Lint silent catch bodies
+        working-directory: simple-sms
+        run: ./scripts/lint_silent_catches.sh
 
       - name: Run tests
         working-directory: simple-sms

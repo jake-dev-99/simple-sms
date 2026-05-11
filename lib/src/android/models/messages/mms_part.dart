@@ -61,8 +61,24 @@ class MmsPart {
   /// flag used by Samsung's suggested-reply feature.
   final int? smartSuggestionClassification;
 
-  bool get isText => contentType.value.contains("text");
-  bool get isSmil => contentType.value.contains("smil");
+  /// Whether this part is a text body (any `text/*` MIME).
+  bool get isText => contentType.category == MimeCategory.text;
+
+  /// Whether this part is a SMIL layout descriptor (`application/smil`).
+  /// SMIL's category is [MimeCategory.application], so this uses a
+  /// direct equality check rather than a category check. Case-insensitive
+  /// because [ContentType.fromMime] preserves raw case for unknown MIMEs.
+  bool get isSmil =>
+      contentType.value.toLowerCase() == ContentType.applicationSmil.value;
+
+  /// Whether this part is an image attachment (any `image/*` MIME).
+  bool get isImage => contentType.category == MimeCategory.image;
+
+  /// Whether this part is a video attachment (any `video/*` MIME).
+  bool get isVideo => contentType.category == MimeCategory.video;
+
+  /// Whether this part is an audio attachment (any `audio/*` MIME).
+  bool get isAudio => contentType.category == MimeCategory.audio;
 
   MmsPart({
     required this.id,
@@ -92,23 +108,24 @@ class MmsPart {
   });
 
   factory MmsPart.fromJson(Map<String, dynamic> json) => MmsPart(
-    id: FieldHelper.asInt(json["id"]) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     parentId: json["parentId"]?.toString() ?? '',
-    charset: FieldHelper.enumFromValue(
+    charset: FieldHelper.enumFromValueOrNull(
       CharSet.values,
       FieldHelper.asInt(json["charset"]),
     ),
     contentDisposition: json["contentDisposition"],
     contentId: json["contentId"],
     contentLocation: json["contentLocation"] ?? '',
-    // `contentType` is required (non-nullable); fall back to textPlain
-    // so a malformed cache row doesn't throw at the constructor. The
-    // server side is expected to emit the enum `.value` (a MIME string
-    // like "text/plain") so the lookup works on the forward path.
-    contentType:
-        FieldHelper.enumFromValue(ContentType.values, json["contentType"]) ??
-            ContentType.textPlain,
+    // `ContentType.fromMime` throws on unknown MIME — see the enum
+    // doc-comment for why silent fallbacks here are dangerous. If a
+    // round-trip from a cache row produces an unknown MIME, the
+    // failure surfaces immediately (crashlytics) rather than rendering
+    // an empty message.
+    contentType: ContentType.fromMime(
+      json["contentType"] as String? ?? '',
+    ),
     contentTypeSub: json["contentTypeSub"],
     contentTypeTransferEncoding: json["contentTypeTransferEncoding"],
     // `Uri.tryParse` used to throw here when the key was absent (its first
@@ -174,19 +191,22 @@ class MmsPart {
     // for callers that already use it.
     final parentId = raw["mid"]?.toString() ?? '';
     MmsPart part = MmsPart(
-      id: FieldHelper.asInt(raw['_id']) ?? 0,
+      id: FieldHelper.primaryKey(raw),
       sourceMap: raw,
       parentId: parentId,
-      charset: FieldHelper.enumFromValue(
+      charset: FieldHelper.enumFromValueOrNull(
         CharSet.values,
         FieldHelper.asInt(raw["chset"]),
       ),
       contentDisposition: raw["cd"],
       contentId: raw["cid"],
       contentLocation: raw["cl"] ?? '',
-      contentType:
-          FieldHelper.enumFromValue(ContentType.values, raw["ct"]) ??
-          ContentType.textPlain,
+      // `ContentType.fromMime` throws on unknown MIME so the receive
+      // path fails loudly with the offending string in the error
+      // message. Don't add a silent fallback here — see enum docstring.
+      contentType: ContentType.fromMime(
+        (raw["ct"] as String?) ?? '',
+      ),
       contentTypeSub: raw["ctt_s"],
       contentTypeTransferEncoding: raw["ctt_t"],
       // Real column on `content://mms/part` is `_data` (the file path to the

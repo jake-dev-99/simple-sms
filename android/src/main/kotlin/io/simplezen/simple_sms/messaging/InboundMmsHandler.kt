@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -40,11 +41,17 @@ import java.util.concurrent.Executors
  *     and the executor running.
  *   - Single shared executor across all inbound MMS — no per-receive
  *     `newSingleThreadExecutor()` thread leak.
- *   - `WAP_PUSH_RECEIVED` (the non-default-SMS-app action) is logged
- *     and ignored cleanly.
- *   - The result `PendingIntent` uses `FLAG_MUTABLE | FLAG_ONE_SHOT` so
- *     SmsManager can populate `EXTRA_MMS_HTTP_STATUS` on Android 12+
- *     while the PendingIntent is invalidated after a single fire.
+ *   - Only `WAP_PUSH_DELIVER` is registered — `WAP_PUSH_RECEIVED`
+ *     fires for ALL apps including the default, but we have no
+ *     authority to ack the carrier from the RECEIVED path, so its
+ *     filter was removed from the manifest.
+ *   - The result `PendingIntent` uses `FLAG_ONE_SHOT | FLAG_IMMUTABLE`
+ *     — the AOSP `RetrieveTransaction` canonical pair. ONE_SHOT
+ *     invalidates the PendingIntent the moment SmsManager fires the
+ *     result broadcast; IMMUTABLE locks the stashed intent. SmsManager
+ *     still delivers result extras (`EXTRA_MMS_HTTP_STATUS`, etc.) by
+ *     merging an `extrasIntent` at `pendingIntent.send(ctx, code,
+ *     extrasIntent)` time — IMMUTABLE doesn't block that path.
  */
 class InboundMmsHandler() : BroadcastReceiver() {
 
@@ -63,13 +70,6 @@ class InboundMmsHandler() : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             "android.provider.Telephony.WAP_PUSH_DELIVER" -> handleDeliver(context, intent)
-            "android.provider.Telephony.WAP_PUSH_RECEIVED" -> {
-                // Fires when this app is NOT the default SMS handler.
-                // We can't act on it (the carrier expects the default
-                // app to ack), but we should not crash — just log so
-                // any unexpected delivery is visible.
-                Log.d(TAG, "Ignoring WAP_PUSH_RECEIVED (not the default SMS app path)")
-            }
             else -> Log.w(TAG, "Received unexpected action: ${intent.action}")
         }
     }
@@ -125,18 +125,46 @@ class InboundMmsHandler() : BroadcastReceiver() {
         // can kill the process between onReceive() returning and the
         // executor's task running, dropping the carrier ack window.
         val pendingResult = goAsync()
+        // Verizon's MMSC sends a *template* contentLocation in the
+        // NotificationInd, ending with an empty `?message-id=` query
+        // parameter that the client is expected to fill in:
+        //
+        //   http://63.59.x.x/servlets/mms?message-id=
+        //
+        // Without filling in a value, the MMSC returns an error (or
+        // never produces a result broadcast at all on some Android
+        // versions). The pre-port simple-sms code unconditionally
+        // appended `transactionIdStr`, which produces a syntactically
+        // valid URL on Verizon and is silently tolerated by carriers
+        // (T-Mobile, AT&T, Google Fi) that send a complete URL —
+        // those MMSCs ignore the trailing characters in the query.
+        //
+        // Audit S0 #2 / PR #59 removed this concat on the (theoretical)
+        // grounds that it would corrupt T-Mobile MMSC requests, but
+        // there was no empirical breakage; the audit reasoning was
+        // wrong. Removing it broke Verizon empirically. Restore the
+        // concat behind a narrow heuristic so we only touch the URL
+        // when it actually looks like a Verizon template.
+        //
+        // The semantic mismatch (`message-id` parameter receiving a
+        // transaction-id value) is intentional: NotificationInd PDUs
+        // don't carry an X-Mms-Message-ID header in our PDU library
+        // surface, so `transactionIdStr` is the only message-unique
+        // value we have. Verizon's MMSC accepts it because it parses
+        // the query loosely and uses the value to disambiguate
+        // pending downloads — any unique-per-WAP-PUSH token works.
+        val downloadContentUri =
+            if (contentUri.endsWith("?message-id=") || contentUri.endsWith("=")) {
+                contentUri + transactionIdStr
+            } else {
+                contentUri
+            }
+
         sharedExecutor.execute {
             try {
                 startMmsDownload(
                     context = context,
-                    // S0 #2: pass the contentLocation URL VERBATIM. The
-                    // previous implementation appended `transactionIdStr`
-                    // to the URL, corrupting MMSC requests on carriers
-                    // that interpret query suffixes (notably T-Mobile).
-                    // SmsManager.downloadMultimediaMessage already wires
-                    // X-Mms-Transaction-Id into the request headers
-                    // internally — manual concat is incorrect.
-                    contentUri = contentUri,
+                    contentUri = downloadContentUri,
                     transactionId = transactionIdStr,
                     subId = subId,
                     expirySeconds = expirySeconds,
@@ -154,29 +182,86 @@ class InboundMmsHandler() : BroadcastReceiver() {
         subId: Int,
         expirySeconds: Long,
     ) {
-        Log.d(TAG, "Starting MMS download from: $contentUri (txn=$transactionId, sub=$subId)")
-        val tempMmsFile = createTempMmsFile(context)
-        val contentFileUri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            tempMmsFile
+        // Resolve to the canonical path before handing to FileProvider — its
+        // configured roots are stored canonically, so a non-canonical input
+        // (e.g. /data/data/<pkg>/... when the resolved root is
+        // /data/user/0/<pkg>/...) walks past every configured entry and
+        // throws IllegalArgumentException. `canonicalFile` itself can throw
+        // IOException (filesystem in a bad state); fall back to
+        // `absoluteFile` rather than crashing the receiver — a non-canonical
+        // path may still match if the device doesn't symlink /data/data →
+        // /data/user/0, and the IllegalArgumentException catch below covers
+        // the case where it doesn't.
+        val rawTempMmsFile = createTempMmsFile(context)
+        val tempMmsFile = try {
+            rawTempMmsFile.canonicalFile
+        } catch (e: java.io.IOException) {
+            Log.w(
+                TAG,
+                "canonicalFile failed for ${rawTempMmsFile.absolutePath}; " +
+                    "falling back to absoluteFile",
+                e
+            )
+            rawTempMmsFile.absoluteFile
+        }
+        // Defensive: even with file_paths.xml covering every storage type,
+        // any future provider misconfiguration should degrade to "no inbound
+        // MMS" rather than crashing the receiver process. ART marks the
+        // process "crashed too many times" after a few rapid receiver crashes
+        // and Android then suppresses subsequent WAP_PUSH deliveries until
+        // reinstall.
+        val contentFileUri: Uri = try {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                tempMmsFile
+            )
+        } catch (e: IllegalArgumentException) {
+            Log.e(
+                TAG,
+                "FileProvider.getUriForFile failed for ${tempMmsFile.absolutePath}; " +
+                    "MMS download aborted. Check file_paths.xml cache-path coverage.",
+                e
+            )
+            return
+        }
+        Log.d(
+            TAG,
+            "Starting MMS download from: $contentUri " +
+                "(txn=$transactionId, sub=$subId, tempFile=${tempMmsFile.absolutePath})"
         )
 
         // S1 #7: unique requestCode per inbound MMS. Two near-
         // simultaneous WAP_PUSHes used to collide on requestCode=0,
-        // overwriting each other's extras under FLAG_UPDATE_CURRENT.
+        // overwriting each other's extras.
         val requestCode = transactionId.hashCode()
 
-        // S1 #15: FLAG_MUTABLE so SmsManager.downloadMultimediaMessage
-        // can populate EXTRA_MMS_HTTP_STATUS and EXTRA_MMS_DATA on
-        // Android 12+. AOSP MmsService uses the mutable variant for
-        // this exact pattern.
+        // PendingIntent flags match AOSP `RetrieveTransaction` for this
+        // exact use case: `FLAG_ONE_SHOT | FLAG_IMMUTABLE`.
         //
-        // FLAG_ONE_SHOT pairs with FLAG_MUTABLE as defense in depth:
-        // once SmsManager fires the result broadcast, the PendingIntent
-        // is invalidated, so a mutable PendingIntent can't be retained
-        // or reused by another component. AOSP's RetrieveTransaction
-        // uses the same flag combination.
+        // - FLAG_ONE_SHOT: invalidates the PendingIntent the moment
+        //   SmsManager fires the result broadcast. Carrier ack happens
+        //   inside that broadcast — defense in depth against any reuse.
+        // - FLAG_IMMUTABLE: the PendingIntent's stashed Intent is
+        //   sealed. SmsManager populates result extras (resultCode,
+        //   EXTRA_MMS_HTTP_STATUS, etc.) by calling
+        //   `pendingIntent.send(ctx, code, extrasIntent)` — that
+        //   `extrasIntent` is merged into the outgoing broadcast and
+        //   delivered to MmsDownloadReceiver, regardless of mutability.
+        //   IMMUTABLE just blocks the PendingIntent's stashed Intent
+        //   from being modified directly by any caller.
+        //
+        // Pre-fix the flags were `UPDATE_CURRENT | MUTABLE | ONE_SHOT`
+        // — UPDATE_CURRENT was pointless under unique requestCodes,
+        // and MUTABLE was based on a misreading of how SmsManager
+        // delivers result extras (it doesn't need a mutable
+        // PendingIntent to do so). The mismatch matters in practice:
+        // some Android versions / OEMs reject or silently drop
+        // unusual flag combinations, leaving the result PendingIntent
+        // never delivered — causing every download to "succeed at
+        // initiation" but never produce a result broadcast for
+        // MmsDownloadReceiver. AOSP's canonical pair is the safe
+        // baseline.
         val pi = PendingIntent.getBroadcast(
             context,
             requestCode,
@@ -188,9 +273,7 @@ class InboundMmsHandler() : BroadcastReceiver() {
                 putExtra("expirySeconds", expirySeconds)
                 setClass(context, MmsDownloadReceiver::class.java)
             },
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                PendingIntent.FLAG_MUTABLE or
-                PendingIntent.FLAG_ONE_SHOT
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val smsManager = context.getSystemService(SmsManager::class.java)
@@ -201,7 +284,7 @@ class InboundMmsHandler() : BroadcastReceiver() {
             null,
             pi
         )
-        Log.d(TAG, "MMS download initiated")
+        Log.d(TAG, "MMS download initiated (awaiting result broadcast for txn=$transactionId)")
     }
 
     private fun createTempMmsFile(context: Context): File =
@@ -221,13 +304,56 @@ class MmsDownloadReceiver : BroadcastReceiver() {
         val subId: Int = extras.getInt("subId", SmsManager.getDefaultSmsSubscriptionId())
         val expirySeconds: Long = extras.getLong("expirySeconds", -1L)
 
+        // Check the SmsManager.downloadMultimediaMessage result BEFORE
+        // attempting to parse. Pre-fix, a failed download (network
+        // unavailable, MMSC HTTP 4xx/5xx, APN misconfiguration) wrote
+        // an empty or error-payload temp file and we'd hit
+        //   "Downloaded PDU is not a RetrieveConf (got null)"
+        // every time, with no diagnostic for what actually failed.
+        //
+        // - `getResultCode()` is set to Activity.RESULT_OK on success,
+        //   otherwise a SmsManager.MMS_ERROR_* sentinel.
+        // - `EXTRA_MMS_HTTP_STATUS` is populated on Android 7.1+ with
+        //   the underlying HTTP status when the failure was HTTP-level.
+        val resultCode = resultCode
+        // Telephony.Mms.Intents.EXTRA_MMS_HTTP_STATUS — accessed via the
+        // string literal so the build doesn't tie its compileSdk to the
+        // API 25+ visibility of the constant.
+        val httpStatus = extras.getInt(
+            "android.provider.extra.MMS_HTTP_STATUS",
+            -1
+        )
+        if (resultCode != Activity.RESULT_OK) {
+            Log.e(
+                TAG,
+                "MMS download failed: resultCode=$resultCode httpStatus=$httpStatus " +
+                    "txn=$transactionId sub=$subId. " +
+                    "Common causes: MMS APN not configured for this SIM; " +
+                    "mobile data or roaming disabled; carrier MMSC unreachable. " +
+                    "Skipping parse; temp file will be cleaned up."
+            )
+            // Bail before parsing — the temp file either contains an
+            // error response from the MMSC or is empty.
+            try {
+                context.contentResolver.delete(contentFileUri, null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete temp MMS file at $contentFileUri", e)
+            }
+            return
+        }
+
         try {
             val pduBytes = context.contentResolver
                 .openInputStream(contentFileUri)
                 ?.use { it.readBytes() }
 
-            if (pduBytes == null) {
-                Log.e(TAG, "Failed to read downloaded MMS PDU bytes from $contentFileUri")
+            if (pduBytes == null || pduBytes.isEmpty()) {
+                Log.e(
+                    TAG,
+                    "Downloaded MMS PDU is empty (resultCode=$resultCode " +
+                        "httpStatus=$httpStatus). Carrier returned no body — likely a " +
+                        "stub MMSC response. Skipping."
+                )
                 return
             }
 
@@ -235,7 +361,9 @@ class MmsDownloadReceiver : BroadcastReceiver() {
             if (pdu !is RetrieveConf) {
                 Log.e(
                     TAG,
-                    "Downloaded PDU is not a RetrieveConf (got ${pdu?.javaClass?.simpleName})"
+                    "Downloaded PDU is not a RetrieveConf (got " +
+                        "${pdu?.javaClass?.simpleName} from ${pduBytes.size} bytes; " +
+                        "resultCode=$resultCode httpStatus=$httpStatus)"
                 )
                 return
             }

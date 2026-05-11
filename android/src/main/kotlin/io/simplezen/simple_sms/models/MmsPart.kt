@@ -48,7 +48,33 @@ data class MmsPart(
             val name = String(part.name ?: byteArrayOf())
             val data: ByteArray = part.data ?: byteArrayOf()
             val size: Long = data.size.toLong()
-            val contentType = String(part.contentType ?: byteArrayOf())
+            // R0-3: throw on null contentType. Empty MIME is a
+            // corruption-class signal — every downstream consumer
+            // (Dart's `ContentType.fromMime` post-PR #82, the Android
+            // attachment renderer, the SMIL classifier) cannot
+            // classify a part with no MIME. The previous behaviour
+            // substituted "" and propagated; the part deserialized,
+            // then exploded a layer up with no attribution to the
+            // offending part.
+            //
+            // Decoded explicitly as US-ASCII because MIME content types
+            // are spec'd as ASCII. `String(byteArray)` without a
+            // charset uses the platform default, which varies across
+            // devices/locales and can mis-decode non-ASCII bytes.
+            //
+            // Exception body intentionally avoids the part `name` —
+            // attachment filenames can carry user-generated content
+            // (and PII like `Photo from $phoneNumber.jpg`); shipping
+            // those to Crashlytics is a privacy bug. `hasName` and
+            // `nameLength` keep the diagnostic signal without leaking
+            // content.
+            val contentTypeBytes = part.contentType
+                ?: throw IllegalStateException(
+                    "MmsPart.pduPartToMmsPart: part contentType is null " +
+                        "(seq=$seq, dataLen=${data.size}, " +
+                        "hasName=${name.isNotEmpty()}, nameLength=${name.length})"
+                )
+            val contentType = String(contentTypeBytes, Charsets.US_ASCII)
 
             // S1 #13 / S2 #19: only treat the part as text when its
             // declared content type starts with "text/". Decode using

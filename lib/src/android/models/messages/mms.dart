@@ -346,7 +346,7 @@ class Mms {
   ///
   /// Handles app-side JSON format where fields use camelCase naming
   static Mms fromJson(Map<String, dynamic> json) => Mms(
-    id: FieldHelper.asInt(json['id']) ?? 0,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     body: json['body'],
     parts:
@@ -360,12 +360,19 @@ class Mms {
     sender: MmsParticipant.fromJson(Map<String, dynamic>.from(json['sender'])),
     address: json['address'],
     threadId: json['threadId'],
-    type: FieldHelper.enumFromValue(MmsMessageType.values, json['type']),
-    status: FieldHelper.enumFromValue(
+    // REQUIRED — drives inbound/outbound classification end-to-end.
+    // Throw on unrecognized so we never silently mis-route a message
+    // (cf. the audit's MmsMessageType off-by-N bug).
+    type: FieldHelper.enumFromValueOrThrow(
+      MmsMessageType.values,
+      json['type'],
+      fieldName: 'Mms.type',
+    ),
+    status: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
       json['status'],
     ),
-    priority: FieldHelper.enumFromValue(
+    priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       json['priority'],
     ),
@@ -387,7 +394,7 @@ class Mms {
     simImsi: json['simImsi'],
     addressCharset: json['addressCharset'],
     appId: json['appId'],
-    binaryInfo: FieldHelper.enumFromValue(
+    binaryInfo: FieldHelper.enumFromValueOrNull(
       BinaryInfo.values,
       json['binaryInfo'],
     ),
@@ -397,35 +404,44 @@ class Mms {
     contentType: json['contentType'],
     correlationTag: json['correlationTag'],
     deliveryDate: FieldHelper.asDateTime(json['deliveryDate']),
-    deliveryReport: FieldHelper.enumFromValue(
+    deliveryReport: FieldHelper.enumFromValueOrNull(
       DeliveryReport.values,
       FieldHelper.asInt(json['deliveryReport']),
     ),
-    deliveryReportStatus: FieldHelper.enumFromValue(
+    deliveryReportStatus: FieldHelper.enumFromValueOrNull(
       DeliveryReportStatus.values,
       json['deliveryReportStatus'],
     ),
     expiryDate: FieldHelper.asDateTime(json['expiryDate']),
-    messageBox: FieldHelper.enumFromValue(
+    // REQUIRED — drives inbox/sent split end-to-end.
+    messageBox: FieldHelper.enumFromValueOrThrow(
       MessageBox.values,
       json['messageBox'],
+      fieldName: 'Mms.messageBox',
     ),
-    messageClass: FieldHelper.enumFromValue(
+    // OrNull (not OrThrow) — known Samsung quirk: `m_cls` arrives as
+    // a String ("personal") on Samsung Android 16 even though the
+    // WAP-MMS spec says it's an int byte code (0x80…). The
+    // MessageClass enum currently only enumerates the int forms, so
+    // a string form returns null here. Widening MessageClass to
+    // accept name-strings is a follow-up; until then null is the
+    // honest answer for unrecognized input.
+    messageClass: FieldHelper.enumFromValueOrNull(
       MessageClass.values,
       json['messageClass'],
     ),
     messageSize: json['messageSize'],
     messageIdentifier: json['messageIdentifier'],
     objectId: json['objectId'],
-    readReport: FieldHelper.enumFromValue(
+    readReport: FieldHelper.enumFromValueOrNull(
       DeliveryReport.values,
       FieldHelper.asInt(json['readReport']),
     ),
-    readReportStatus: FieldHelper.enumFromValue(
+    readReportStatus: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
       json['readReportStatus'],
     ),
-    readStatus: FieldHelper.enumFromValue(
+    readStatus: FieldHelper.enumFromValueOrNull(
       ReadStatus.values,
       json['readStatus'],
     ),
@@ -437,16 +453,19 @@ class Mms {
     replyOriginalBody: json['reOriginalBody'],
     replyOriginalKey: json['reOriginalKey'],
     replyRecipientAddress: json['reRecipientAddress'],
-    replyType: FieldHelper.enumFromValue(ReplyType.values, json['replyType']),
+    replyType: FieldHelper.enumFromValueOrNull(
+      ReplyType.values,
+      json['replyType'],
+    ),
     reserved: FieldHelper.asBool(json['reserved']),
     callbackSet: FieldHelper.asBool(json['callbackSet']),
     reportAddress: json['rptA'],
     responseText: json['respTxt'],
-    responseStatus: FieldHelper.enumFromValue(
+    responseStatus: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
       json['respSt'],
     ),
-    retrieveStatus: FieldHelper.enumFromValue(
+    retrieveStatus: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
       json['retrSt'],
     ),
@@ -454,7 +473,10 @@ class Mms {
     retrievedTextCharset: json['retrTxtCs'],
     sourceLabel: json['sourceLabel'],
     transactionId: json['transactionId'],
-    usingMode: FieldHelper.enumFromValue(UsingMode.values, json['usingMode']),
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      json['usingMode'],
+    ),
     version: json['version'],
     safeMessage: FieldHelper.asBool(json['safeMessage']),
     secretMode: FieldHelper.asBool(json['secretMode']),
@@ -604,15 +626,17 @@ class Mms {
       address: raw['address'],
       threadId: FieldHelper.asInt(raw['thread_id']) ?? 0,
 
-      type: FieldHelper.enumFromValue(
+      // REQUIRED — drives inbound/outbound classification end-to-end.
+      type: FieldHelper.enumFromValueOrThrow(
         MmsMessageType.values,
         FieldHelper.asInt(raw['m_type']),
+        fieldName: 'Mms.type (m_type)',
       ),
-      status: FieldHelper.enumFromValue(
+      status: FieldHelper.enumFromValueOrNull(
         AndroidMessageStatus.values,
         FieldHelper.asInt(raw['st']),
       ),
-      priority: FieldHelper.enumFromValue(
+      priority: FieldHelper.enumFromValueOrNull(
         MessagePriority.values,
         FieldHelper.asInt(raw['pri']),
       ),
@@ -640,7 +664,7 @@ class Mms {
       // preserved for backwards compat with any caller that reads it.
       addressCharset: raw['address_charset'],
       appId: FieldHelper.asInt(raw['app_id']),
-      binaryInfo: FieldHelper.enumFromValue(
+      binaryInfo: FieldHelper.enumFromValueOrNull(
         BinaryInfo.values,
         FieldHelper.asInt(raw['bin_info']),
       ),
@@ -650,43 +674,44 @@ class Mms {
       contentType: raw['ct_t'],
       correlationTag: raw['correlation_tag'],
       deliveryDate: FieldHelper.asDateTime(raw['d_tm']),
-      deliveryReport: FieldHelper.enumFromValue(
+      deliveryReport: FieldHelper.enumFromValueOrNull(
         DeliveryReport.values,
         FieldHelper.asInt(raw['d_rpt']),
       ),
-      deliveryReportStatus: FieldHelper.enumFromValue(
+      deliveryReportStatus: FieldHelper.enumFromValueOrNull(
         DeliveryReportStatus.values,
         FieldHelper.asInt(raw['d_rpt_st']),
       ),
       expiryDate: FieldHelper.asDateTime(raw['exp']),
-      messageBox: FieldHelper.enumFromValue(
+      // REQUIRED — drives inbox/sent split end-to-end.
+      messageBox: FieldHelper.enumFromValueOrThrow(
         MessageBox.values,
         FieldHelper.asInt(raw['msg_box']),
+        fieldName: 'Mms.messageBox (msg_box)',
       ),
-      // `m_cls` arrives as a plain String on Samsung Android 16 (e.g.
-      // "personal") despite the WAP-MMS spec defining it as an int byte
-      // code. `enumFromValue` compares `value == raw`, so the historical
-      // int-coercion made the enum resolution miss on Samsung entirely.
-      // Pass raw through unchanged and let `enumFromValue` try both.
-      // Known gap: MessageClass enum values are currently ints (0x80
-      // etc.); the Samsung String form won't match today. Follow-up
-      // branch to widen MessageClass values to accept name-strings.
-      messageClass: FieldHelper.enumFromValue(
+      // OrNull (not OrThrow) — known Samsung quirk: `m_cls` arrives as
+      // a plain String ("personal") despite the WAP-MMS spec defining
+      // it as an int byte code (0x80…). The MessageClass enum
+      // currently only enumerates the int forms, so a Samsung row's
+      // string value returns null here. Widening MessageClass to also
+      // match name-strings is a follow-up; until then null is the
+      // honest answer for unrecognized input.
+      messageClass: FieldHelper.enumFromValueOrNull(
         MessageClass.values,
         raw['m_cls'],
       ),
       messageSize: FieldHelper.asInt(raw['m_size']),
       messageIdentifier: raw['m_id'],
       objectId: raw['object_id'],
-      readReport: FieldHelper.enumFromValue(
+      readReport: FieldHelper.enumFromValueOrNull(
         DeliveryReport.values,
         FieldHelper.asInt(raw['rr']),
       ),
-      readReportStatus: FieldHelper.enumFromValue(
+      readReportStatus: FieldHelper.enumFromValueOrNull(
         AndroidMessageStatus.values,
         FieldHelper.asInt(raw['rr_st']),
       ),
-      readStatus: FieldHelper.enumFromValue(
+      readStatus: FieldHelper.enumFromValueOrNull(
         ReadStatus.values,
         FieldHelper.asInt(raw['read_status']),
       ),
@@ -698,7 +723,7 @@ class Mms {
       replyOriginalBody: raw['re_original_body'],
       replyOriginalKey: raw['re_original_key'],
       replyRecipientAddress: raw['re_recipient_address'],
-      replyType: FieldHelper.enumFromValue(
+      replyType: FieldHelper.enumFromValueOrNull(
         ReplyType.values,
         FieldHelper.asInt(raw['re_type']),
       ),
@@ -706,11 +731,11 @@ class Mms {
       callbackSet: FieldHelper.asBool(raw['callback_set']),
       reportAddress: raw['rpt_a'],
       responseText: raw['resp_txt'],
-      responseStatus: FieldHelper.enumFromValue(
+      responseStatus: FieldHelper.enumFromValueOrNull(
         AndroidMessageStatus.values,
         FieldHelper.asInt(raw['resp_st']),
       ),
-      retrieveStatus: FieldHelper.enumFromValue(
+      retrieveStatus: FieldHelper.enumFromValueOrNull(
         AndroidMessageStatus.values,
         FieldHelper.asInt(raw['retr_st']),
       ),
@@ -721,7 +746,7 @@ class Mms {
       retrievedTextCharset: FieldHelper.emptyToNull(raw['retr_txt_cs']),
       sourceLabel: raw['sourceLabel'],
       transactionId: raw['tr_id'],
-      usingMode: FieldHelper.enumFromValue(
+      usingMode: FieldHelper.enumFromValueOrNull(
         UsingMode.values,
         FieldHelper.asInt(raw['using_mode']),
       ),

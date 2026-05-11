@@ -433,6 +433,388 @@ void main() {
     });
   });
 
+  group('Mms.fromRaw — strict enum parsing', () {
+    // Tests the strict-throw behaviour of enumFromValueOrThrow through
+    // its actual contract surface (Mms.fromRaw), not by reaching into
+    // the private FieldHelper. If a row carries an unrecognized
+    // required-field value, the parse must fail loudly so crashlytics
+    // surfaces it with the offending value named — silent fallback to
+    // a default is exactly what produced the HEIC-photo and
+    // MmsMessageType-off-by-N classes of bugs.
+
+    test('valid m_type round-trips to the right enum', () {
+      final raw = <String, dynamic>{
+        '_id': 1,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0x84, // RETRIEVE_CONF
+      };
+      expect(Mms.fromRaw(raw).type, MmsMessageType.retrieveConfirmationInd);
+    });
+
+    test('unrecognized m_type throws with the offending value named', () {
+      final raw = <String, dynamic>{
+        '_id': 999,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0xFF, // garbage — not a valid PduHeaders MESSAGE_TYPE
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Mms.type'),
+              contains('255'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('unrecognized msg_box throws with the offending value named', () {
+      final raw = <String, dynamic>{
+        '_id': 999,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 0xFF, // garbage — not a valid MessageBox value
+        'm_type': 0x84, // RETRIEVE_CONF
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Mms.messageBox'),
+              contains('255'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('unrecognized OPTIONAL field (priority) returns null, not throws',
+        () {
+      final raw = <String, dynamic>{
+        '_id': 1,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1, // INBOX
+        'm_type': 0x84,
+        'pri': 0xFF, // garbage — but priority is optional
+      };
+      // Optional fields tolerate unrecognized values (returned as null)
+      // because the field is genuinely optional in the spec. Required
+      // fields (m_type, msg_box) throw above.
+      expect(() => Mms.fromRaw(raw), returnsNormally);
+      expect(Mms.fromRaw(raw).priority, isNull);
+    });
+  });
+
+  group('Mms.fromRaw — primary key strictness', () {
+    test('throws StateError when neither _id nor id is present', () {
+      // Pre-fix this silently coerced the row to id=0; multiple
+      // PK-less rows then collided in HiveSearch lookups. Now the
+      // parse throws so corruption surfaces in crashlytics with the
+      // row's keys named.
+      final raw = <String, dynamic>{
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(
+        () => Mms.fromRaw(raw),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('primary key'),
+              contains('thread_id'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('throws when _id is unparseable junk', () {
+      final raw = <String, dynamic>{
+        '_id': 'not-a-number',
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(() => Mms.fromRaw(raw), throwsA(isA<StateError>()));
+    });
+
+    test('falls back to legacy "id" key when "_id" is absent', () {
+      final raw = <String, dynamic>{
+        'id': 77,
+        'thread_id': 1,
+        'date': 1700000000,
+        'msg_box': 1,
+        'm_type': 0x84,
+      };
+      expect(Mms.fromRaw(raw).id, 77);
+    });
+  });
+
+  group('ContentType — dynamic MIME handling', () {
+    group('known MIME resolution', () {
+      test('returns curated entry for known MIME', () {
+        final ct = ContentType.fromMime('image/jpeg');
+        expect(ct, same(ContentType.imageJpeg));
+        expect(ct.value, 'image/jpeg');
+        expect(ct.extension, 'jpg');
+        expect(ct.category, MimeCategory.image);
+      });
+
+      test('case-insensitive matching', () {
+        expect(ContentType.fromMime('IMAGE/JPEG'), same(ContentType.imageJpeg));
+        expect(ContentType.fromMime('Text/Plain'), same(ContentType.textPlain));
+        expect(ContentType.fromMime('VIDEO/MP4'), same(ContentType.videoMp4));
+      });
+
+      test('trims whitespace', () {
+        expect(ContentType.fromMime('  image/jpeg  '), same(ContentType.imageJpeg));
+      });
+    });
+
+    group('parameter stripping', () {
+      // Real Android `ct` columns deliver MIMEs with parameters:
+      //   image/jpeg; name=photo.jpg
+      //   text/plain; charset=utf-8
+      //   application/smil; charset=utf-8
+      // These must resolve to the same curated entries as bare forms.
+
+      test('strips parameters from MIME for known matching', () {
+        final ct = ContentType.fromMime('image/jpeg; name=photo.jpg');
+        expect(ct, same(ContentType.imageJpeg));
+        expect(ct.extension, 'jpg');
+        expect(ct.value, 'image/jpeg'); // params stripped from value
+      });
+
+      test('strips parameters with whitespace tolerance', () {
+        expect(
+          ContentType.fromMime('text/plain; charset=utf-8'),
+          same(ContentType.textPlain),
+        );
+        expect(
+          ContentType.fromMime('  text/plain  ;charset=utf-8  '),
+          same(ContentType.textPlain),
+        );
+      });
+
+      test('strips parameters from unknown MIMEs too', () {
+        final ct = ContentType.fromMime('image/x-custom; param=val');
+        expect(ct.value, 'image/x-custom'); // params stripped
+        expect(ct.category, MimeCategory.image);
+        expect(ct.extension, 'custom'); // x- stripped, no params in extension
+      });
+    });
+
+    group('empty / malformed throws', () {
+      // PR-A philosophy: an MMS part row with an absent `ct` column is
+      // malformed. Silent fallback to text/plain here is the exact bug
+      // class that produced "persisted EMPTY" for HEIC photos.
+
+      test('empty mime throws StateError', () {
+        expect(
+          () => ContentType.fromMime(''),
+          throwsA(isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('empty MIME'),
+          )),
+        );
+      });
+
+      test('whitespace-only mime throws StateError', () {
+        expect(
+          () => ContentType.fromMime('   '),
+          throwsA(isA<StateError>()),
+        );
+      });
+
+      test('parameter-only after semicolon throws', () {
+        // No bare type/subtype before `;` — equally malformed.
+        expect(
+          () => ContentType.fromMime('; charset=utf-8'),
+          throwsA(isA<StateError>()),
+        );
+      });
+    });
+
+    group('unknown MIME — ad-hoc instances', () {
+      test('preserves raw MIME string verbatim', () {
+        final ct = ContentType.fromMime('image/x-custom-format');
+        expect(ct.value, 'image/x-custom-format');
+      });
+
+      test('parses category from type/ prefix', () {
+        expect(
+          ContentType.fromMime('image/x-custom').category,
+          MimeCategory.image,
+        );
+        expect(
+          ContentType.fromMime('video/x-custom').category,
+          MimeCategory.video,
+        );
+        expect(
+          ContentType.fromMime('audio/x-m4a').category,
+          MimeCategory.audio,
+        );
+        expect(
+          ContentType.fromMime('text/x-custom').category,
+          MimeCategory.text,
+        );
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage').category,
+          MimeCategory.application,
+        );
+      });
+
+      test('unknown top-level type defaults to application', () {
+        expect(
+          ContentType.fromMime('multipart/mixed').category,
+          MimeCategory.application,
+        );
+      });
+
+      test('isKnown is false for ad-hoc instances', () {
+        expect(ContentType.fromMime('image/jpeg').isKnown, isTrue);
+        expect(ContentType.fromMime('image/x-custom').isKnown, isFalse);
+      });
+    });
+
+    group('extension derivation', () {
+      test('strips x- prefix', () {
+        // audio/x-m4a → m4a
+        expect(ContentType.fromMime('audio/x-m4a').extension, 'm4a');
+      });
+
+      test('uses +suffix for structured types', () {
+        // application/vnd.gsma.botmessage.v1.0+json → json
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage.v1.0+json').extension,
+          'json',
+        );
+        // image/svg+xml → xml (but known entry returns 'svg')
+        expect(
+          ContentType.fromMime('application/xhtml+xml').extension,
+          'xml',
+        );
+      });
+
+      test('vnd.* without +suffix falls back to bin', () {
+        expect(
+          ContentType.fromMime('application/vnd.gsma.botmessage').extension,
+          'bin',
+        );
+      });
+
+      test('simple unknown subtype becomes extension directly', () {
+        expect(ContentType.fromMime('image/jxl').extension, 'jxl');
+        expect(ContentType.fromMime('video/h264').extension, 'h264');
+      });
+
+      test('no slash falls back to bin', () {
+        expect(ContentType.fromMime('garbage').extension, 'bin');
+      });
+    });
+
+    group('fromMimeOrNull', () {
+      test('null input returns null', () {
+        expect(ContentType.fromMimeOrNull(null), isNull);
+      });
+
+      test('empty string returns null', () {
+        expect(ContentType.fromMimeOrNull(''), isNull);
+        expect(ContentType.fromMimeOrNull('   '), isNull);
+      });
+
+      test('valid MIME returns ContentType', () {
+        expect(ContentType.fromMimeOrNull('image/png'), same(ContentType.imagePng));
+      });
+
+      test('unknown MIME returns ad-hoc instance', () {
+        final ct = ContentType.fromMimeOrNull('audio/x-m4a');
+        expect(ct, isNotNull);
+        expect(ct!.value, 'audio/x-m4a');
+        expect(ct.category, MimeCategory.audio);
+      });
+    });
+
+    group('equality', () {
+      test('known entries with same value are identical', () {
+        expect(ContentType.fromMime('image/jpeg') == ContentType.imageJpeg, isTrue);
+      });
+
+      test('ad-hoc instances with same value are equal', () {
+        final a = ContentType.fromMime('image/x-custom');
+        final b = ContentType.fromMime('image/x-custom');
+        expect(a == b, isTrue);
+        expect(a.hashCode, b.hashCode);
+      });
+
+      test('different values are not equal', () {
+        expect(ContentType.imageJpeg == ContentType.imagePng, isFalse);
+      });
+    });
+  });
+
+  group('MmsPart — category-based helpers', () {
+    MmsPart _makePart(String mime) => MmsPart.fromRaw({
+      '_id': 1,
+      'ct': mime,
+      'cl': 'test',
+    });
+
+    test('isText is true for text/* MIMEs', () {
+      expect(_makePart('text/plain').isText, isTrue);
+      expect(_makePart('text/html').isText, isTrue);
+    });
+
+    test('isText is false for non-text MIMEs', () {
+      expect(_makePart('image/jpeg').isText, isFalse);
+      expect(_makePart('application/smil').isText, isFalse);
+    });
+
+    test('isImage is true for image/* MIMEs', () {
+      expect(_makePart('image/jpeg').isImage, isTrue);
+      expect(_makePart('image/x-adobe-dng').isImage, isTrue);
+    });
+
+    test('isImage is true for unknown image/* MIMEs', () {
+      expect(_makePart('image/x-custom-format').isImage, isTrue);
+    });
+
+    test('isVideo is true for video/* MIMEs', () {
+      expect(_makePart('video/mp4').isVideo, isTrue);
+    });
+
+    test('isAudio is true for audio/* MIMEs', () {
+      expect(_makePart('audio/amr').isAudio, isTrue);
+      expect(_makePart('audio/x-m4a').isAudio, isTrue);
+    });
+
+    test('isSmil is true for application/smil', () {
+      expect(_makePart('application/smil').isSmil, isTrue);
+    });
+
+    test('isSmil is false for other application/* MIMEs', () {
+      expect(_makePart('application/pdf').isSmil, isFalse);
+    });
+  });
+
   group('ConversationFilter', () {
     // Regression: on the `mms-sms/conversations?simple=true` view, `_id` is
     // the latest-message id, not the thread id. Filtering threads must go

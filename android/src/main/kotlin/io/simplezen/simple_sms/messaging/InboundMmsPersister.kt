@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Telephony.Mms
 import android.util.Log
 import com.google.android.mms.MmsException
+import com.google.android.mms.pdu_alt.PduHeaders
 import com.google.android.mms.pdu_alt.PduPersister
 import com.google.android.mms.pdu_alt.RetrieveConf
 import io.simplezen.simple_sms.queries.Query
@@ -134,6 +135,80 @@ object InboundMmsPersister {
         }
 
         val mmsId = ContentUris.parseId(uri)
+
+        // Clean up the NotificationInd placeholder row that the system
+        // may have inserted before our app handled the WAP_PUSH_DELIVER.
+        //
+        // On AOSP / Pixel-class devices (and several Samsung OEM builds)
+        // the platform's MMS service writes a `NotificationInd` row
+        // (m_type=0x82=130) into `content://mms/inbox` as a pre-download
+        // placeholder BEFORE delivering the WAP push to the default SMS
+        // app. Once the default app downloads the RetrieveConf, the
+        // placeholder is supposed to be promoted in place — but our
+        // `PduPersister.persist(..., Mms.Inbox.CONTENT_URI, ...)` always
+        // inserts a NEW row (since the URI ends in "inbox", not a
+        // numeric id). Result: two rows for the same MMS — a stale
+        // empty NotificationInd and the fresh RetrieveConf we just
+        // wrote.
+        //
+        // Matching: NotificationInd and RetrieveConf for the same
+        // inbound MMS share the carrier-assigned `X-Mms-Message-ID`
+        // (m_id). The NotificationInd's transaction-id is what we
+        // received in the WAP push and what we just pinned into the
+        // RetrieveConf row's TRANSACTION_ID — so it also matches the
+        // placeholder's TRANSACTION_ID column. We OR both predicates
+        // to handle OEMs that stamp one but not the other.
+        //
+        // Constrained to `m_type = 130` so the brand-new RetrieveConf
+        // (m_type = 132) is never at risk; transport-only siblings
+        // (notifyresp.ind, ack.ind) are also outside the predicate.
+        val pduMessageIdBytes = retrieveConf.messageId
+        val pduMessageId: String? =
+            if (pduMessageIdBytes != null && pduMessageIdBytes.isNotEmpty()) {
+                String(pduMessageIdBytes, Charsets.UTF_8)
+            } else {
+                null
+            }
+        val cleanupTransactionId = transactionId.takeIf { it.isNotBlank() }
+        if (cleanupTransactionId != null || pduMessageId != null) {
+            try {
+                val predicates = mutableListOf<String>()
+                val args = mutableListOf<String>()
+                args += PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND.toString()
+                if (cleanupTransactionId != null) {
+                    predicates += "${Mms.TRANSACTION_ID}=?"
+                    args += cleanupTransactionId
+                }
+                if (pduMessageId != null) {
+                    predicates += "${Mms.MESSAGE_ID}=?"
+                    args += pduMessageId
+                }
+                val selection =
+                    "${Mms.MESSAGE_TYPE}=? AND (${predicates.joinToString(" OR ")})"
+                // Scoped to `Mms.Inbox.CONTENT_URI` rather than the
+                // top-level `Mms.CONTENT_URI`. NotificationInd rows
+                // only exist in inbox by spec; narrowing to inbox
+                // ensures we never touch other folders even if a
+                // future OEM repurposed `m_type=130` somewhere else.
+                val deleted = context.contentResolver.delete(
+                    Mms.Inbox.CONTENT_URI,
+                    selection,
+                    args.toTypedArray(),
+                )
+                if (deleted > 0) {
+                    Log.d(
+                        TAG,
+                        "Cleaned up $deleted orphan NotificationInd row(s) " +
+                            "matching txn=$cleanupTransactionId mid=$pduMessageId"
+                    )
+                }
+            } catch (e: Exception) {
+                // Non-fatal — leaving an orphan placeholder is ugly
+                // but doesn't corrupt the freshly persisted RetrieveConf.
+                // Log loudly so we can investigate via crashlytics.
+                Log.w(TAG, "Failed to clean up orphan NotificationInd row(s)", e)
+            }
+        }
 
         val mmsRowList = Query(context).query(QueryObj(contentUri = uri.toString()))
         if (mmsRowList.isEmpty()) {
