@@ -1,6 +1,6 @@
 name: simple_sms_native
 description: "A modern MMS / SMS plugin for Android with typed inbound/outbound messaging, lookup service, and conversation enrichment. Runtime permissions + default-SMS-app role management are delegated to simple_permissions_native."
-version: 0.4.3
+version: 0.5.0
 homepage: https://simplezen.io
 repository: https://github.com/simplezen/simple-sms
 issue_tracker: https://github.com/simplezen/simple-sms/issues
@@ -25,14 +25,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  simple_query: ^0.3.0
+  simple_query: ^0.6.0
   # simple_permissions_native owns the vocabulary for SMS-related
   # runtime permissions (ReceiveSms, ReadSms, SendSms, etc.) and the
   # default-SMS-app role (`DefaultSmsApp`). Any call on this plugin
   # that would surface as `SecurityException` without those grants
   # is a bug in the caller, not this plugin — docs on every such
   # method link back to the permission.
-  simple_permissions_native: ^1.3.0
+  simple_permissions_native: ^1.8.0
 
 dev_dependencies:
   flutter_test:
