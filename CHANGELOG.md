@@ -1,3 +1,16 @@
+## 0.5.0
+
+### Coordinated release
+
+Coordinated minor bump to align with the v1 publish-unblock
+sequence across the simple_* federation. Dependency constraints
+re-pinned to the freshly-coordinated cross-repo versions:
+
+- `simple_query: ^0.3.0` → `^0.6.0`
+- `simple_permissions_native: ^1.3.0` → `^1.8.0`
+
+No source changes — version bump + constraint tightening only.
+
 ## 0.4.3
 
 ### Added
