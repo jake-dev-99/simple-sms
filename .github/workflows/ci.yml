@@ -21,7 +21,13 @@ name: CI
 # this gate.
 on:
   pull_request:
-    branches: [develop, staging, main]
+    branches: [main]
+  # Also run on direct pushes to main so release.yml's commit
+  # (which lands directly via deploy-key bypass, skipping the PR
+  # gate) still goes through analyze + test before any subsequent
+  # tag fires publish.yml.
+  push:
+    branches: [main]
 
 jobs:
   analyze-and-test:
@@ -64,35 +70,14 @@ jobs:
         # warning fatality so it doesn't block the gate.
         run: flutter analyze --no-fatal-warnings
 
-      - name: Lint silent enum defaults
-        working-directory: simple-sms
-        run: ./scripts/lint_silent_defaults.sh
-
-      - name: Lint silent catch bodies
-        working-directory: simple-sms
-        run: ./scripts/lint_silent_catches.sh
-
       - name: Run tests
         working-directory: simple-sms
         run: flutter test
 
-      # Validate publishability at CI time so publish-blocking issues
-      # (missing LICENSE, malformed pubspec, oversize files, missing
-      # repository/issue_tracker URLs) surface before merge instead of
-      # after a tag push. CD then publishes with --skip-validation so
-      # the same checks aren't re-run on the publish runner where
-      # `pubspec_overrides.yaml` hints would otherwise clutter the log
-      # and an interactive OAuth flow could stall the job.
-      #
-      # `--dry-run` exits 0 even when pub emits hints (the in-flight
-      # `pubspec_overrides.yaml` warning during pre-publish dev) so it
-      # doesn't falsely fail develop branches; only hard errors block.
-      - name: Validate publishability (pub publish --dry-run)
-        # 2-minute cap, matching the publish step in publish.yml. A
-        # healthy `--dry-run` finishes in 10-30 s; anything longer
-        # means pub is wedged on dependency resolution or a runaway
-        # file walk. Fail fast rather than burn a runner.
-        timeout-minutes: 2
-        working-directory: simple-sms
-        run: flutter pub publish --dry-run
-
+      # Note: lint scripts (./scripts/lint_silent_defaults.sh,
+      # ./scripts/lint_silent_catches.sh) and validate-publishability
+      # dry-run are intentionally omitted in this Phase A revision.
+      # Both depend on develop-only files (the scripts don't exist on
+      # main yet; pubspec.yaml on main has path-deps that pub publish
+      # rejects). They land via the develop→main bridge merge in
+      # Phase B and the steps come back automatically.
