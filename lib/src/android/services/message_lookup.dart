@@ -90,7 +90,7 @@ class MessageLookup {
     // be allocated, splitting threads that should converge.
     final cleaned = <String>{
       for (final raw in addresses)
-        if (raw.trim().isNotEmpty) raw.trim(),
+        if (raw.trim() case final trimmed when trimmed.isNotEmpty) trimmed,
     }.toList(growable: false);
     if (cleaned.isEmpty) return null;
     final params = cleaned
