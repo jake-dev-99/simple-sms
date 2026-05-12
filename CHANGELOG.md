@@ -143,7 +143,13 @@ No source changes — version bump + constraint tightening only.
   `simple_query_android` 0.2.1 (with the updated permissions pin) is
   published.
 
-## 0.1.0
+## 0.1.0 (legacy unpublished)
+
+> Note: this 0.1.0 entry predates the pub.dev publish series and is
+> retained here for archival reference only. The `## 0.1.0` heading
+> at the top of this file describes the actual first published
+> release. The work below was developed under git tags 0.1.x — 0.4.x
+> that never reached pub.dev and have since been deleted from origin.
 
 ### Added
 * `LookupService.listSms({filter, sort, limit, offset})` — typed list query for SMS, replacing raw content-URI queries from consumers. `SmsFilter` / `SmsSort` / `SortDirection` value types exposed from the top-level import.
