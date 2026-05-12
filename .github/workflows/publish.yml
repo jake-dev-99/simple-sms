@@ -1,14 +1,16 @@
 name: Publish to pub.dev
 
-# Triggered by tag pushes on `main` matching the single package's
-# tag prefix. Tags are created by `release.yml` (workflow_dispatch).
-# There is no auto-tag step; tags only exist when a human
-# deliberately cuts one. This eliminates the orphan-tag drift class
-# that plagued the previous auto-tag.yml flow.
+# Triggered by tag pushes on `main`. Tags are created by
+# `release.yml` (workflow_dispatch). There is no auto-tag step;
+# tags only exist when a human deliberately cuts one. This
+# eliminates the orphan-tag drift class that plagued the previous
+# auto-tag.yml flow.
 #
-# Uses the canonical
-# `dart-lang/setup-dart/.github/workflows/publish.yml@v1` reusable
-# workflow, which handles OIDC token exchange with pub.dev.
+# subosito/flutter-action + flutter pub publish --force
+# --skip-validation. `--skip-validation` lets pub publish work for
+# Flutter packages (skips resolution which trips on `sdk: flutter`);
+# pub.dev's server still enforces version monotonicity, ownership,
+# and OIDC binding.
 
 on:
   push:
@@ -19,6 +21,29 @@ jobs:
   publish:
     permissions:
       id-token: write
-    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
-    with:
-      working-directory: .
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Verify pubspec version matches tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          expected="${tag#simple_sms_native-v}"
+          actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Tag ${tag} does not match pubspec version ${actual} (expected ${expected})"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Publish
+        timeout-minutes: 2
+        run: flutter pub publish --force --skip-validation
