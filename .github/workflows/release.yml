@@ -43,7 +43,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: main
           fetch-depth: 0
@@ -124,6 +124,15 @@ ${entries}
             printf '%s\n' "$entry_block" > "$changelog"
           fi
           git add "$changelog"
+
+          # Defensive: if no staged changes, something went wrong upstream
+          # (file write failed, package already at the bumped version, etc.).
+          # Aborting before tag creation prevents tags pointing at a stale
+          # commit that has nothing to do with the release.
+          if git diff --cached --quiet; then
+            echo "::error::No staged changes after bump — release.yml ran but no version updates were applied. Aborting before tag creation."
+            exit 1
+          fi
 
           git commit -m "chore(release): cut ${tag}"
 
