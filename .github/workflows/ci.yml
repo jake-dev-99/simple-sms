@@ -21,7 +21,7 @@ name: CI
 # this gate.
 on:
   pull_request:
-    branches: [develop, staging, main]
+    branches: [main]
 
 jobs:
   analyze-and-test:

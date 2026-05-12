@@ -1,106 +1,24 @@
 name: Publish to pub.dev
 
-# Single-package repo: one tag prefix, no matrix. See
-# docs/RELEASE.md for the cut-a-release runbook and the
-# required one-time pub.dev "Automated publishing" setup.
+# Triggered by tag pushes on `main` matching the single package's
+# tag prefix. Tags are created by `release.yml` (workflow_dispatch).
+# There is no auto-tag step; tags only exist when a human
+# deliberately cuts one. This eliminates the orphan-tag drift class
+# that plagued the previous auto-tag.yml flow.
 #
-# Two triggers, both needed:
-#
-#   push: tags — classic path, still wired so a manually-
-#     pushed tag (human-cut release) fires publish without
-#     any extra steps.
-#
-#   workflow_dispatch — the auto-tag workflow runs after a
-#     main merge, creates a tag, and pushes it with the
-#     default GITHUB_TOKEN. GitHub deliberately suppresses
-#     `push: tags` workflow triggers when the pusher is the
-#     runner's own token (anti-infinite-loop), so without
-#     this dispatch entrypoint every auto-tag landed without
-#     a publish run. The auto-tag workflow now calls
-#     `gh workflow run publish.yml -f tag=<tag>` per new tag;
-#     workflow_dispatch is the one event that *does* fire
-#     from GITHUB_TOKEN.
+# Uses the canonical
+# `dart-lang/setup-dart/.github/workflows/publish.yml@v1` reusable
+# workflow, which handles OIDC token exchange with pub.dev.
+
 on:
   push:
     tags:
       - 'simple_sms_native-v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Package tag to publish (e.g. simple_sms_native-v0.4.1)'
-        required: true
-        type: string
 
 jobs:
   publish:
     permissions:
       id-token: write
-    runs-on: ubuntu-latest
-
-    steps:
-      # Resolve the tag up front so downstream steps don't need
-      # to branch on event type every time. `push` path comes
-      # from GITHUB_REF; `workflow_dispatch` path comes from the
-      # input. Both formats match the `<pkg>-v<semver>` shape.
-      - name: Resolve tag
-        id: resolve
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-            ref="refs/tags/$tag"
-          else
-            tag="${GITHUB_REF#refs/tags/}"
-            ref="$GITHUB_REF"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ steps.resolve.outputs.ref }}
-
-      # Flutter plugin (pubspec pins `sdk: flutter`), so `dart pub`
-      # can't resolve — pub reports:
-      #   "Because simple_sms_native requires the Flutter SDK,
-      #    version solving failed. Flutter users should use
-      #    `flutter pub` instead of `dart pub`."
-      # Use the Flutter toolchain, which bundles Dart, and call
-      # `flutter pub ...` throughout. pub.dev's OIDC publish flow
-      # works identically through `flutter pub publish`.
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          channel: stable
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Verify pubspec version matches tag
-        run: |
-          tag="${{ steps.resolve.outputs.tag }}"
-          expected="${tag#simple_sms_native-v}"
-          actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
-          if [ "$expected" != "$actual" ]; then
-            echo "::error::Tag ${tag} does not match pubspec version ${actual} (expected ${expected})"
-            exit 1
-          fi
-
-      - name: Publish
-        # 2-minute cap. A healthy OIDC-backed publish finishes in
-        # 10-30 s; anything much longer means pub fell back to the
-        # interactive OAuth flow (which happens if the OIDC token's
-        # `ref` claim doesn't match pub.dev's configured tag
-        # pattern — e.g. the workflow was dispatched from `main`
-        # instead of from the tag ref). Better to fail fast than
-        # sit on the runner for 40 minutes waiting for someone to
-        # click a browser link that will never arrive.
-        timeout-minutes: 2
-        # --force skips the interactive "publish this?" prompt.
-        # --skip-validation skips the local pre-flight checks (file
-        # listing, pubspec lint, override hints, version-progression
-        # hint). Validation already ran at CI time on the PR; re-running
-        # it here just adds noise (the `pubspec_overrides.yaml` hint
-        # always fires during pre-publish dev) and never blocks because
-        # hints don't fail validation. pub.dev's server still enforces
-        # ownership, version monotonicity, and OIDC binding regardless
-        # of what the local CLI does.
-        run: flutter pub publish --force --skip-validation
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      working-directory: .
