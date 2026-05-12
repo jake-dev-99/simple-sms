@@ -22,6 +22,12 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # Also run on direct pushes to main so release.yml's commit
+  # (which lands directly via deploy-key bypass, skipping the PR
+  # gate) still goes through analyze + test before any subsequent
+  # tag fires publish.yml.
+  push:
+    branches: [main]
 
 jobs:
   analyze-and-test:
