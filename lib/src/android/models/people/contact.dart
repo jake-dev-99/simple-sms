@@ -1,5 +1,4 @@
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/contact_enums.dart';
 
 /// A contact row read from Android's Contacts content provider
@@ -18,10 +17,8 @@ import '../enums/contact_enums.dart';
 /// remaining fields (presence, chat capability, custom-ringtone URI,
 /// carrier status metadata, etc.) flow through for round-trip fidelity
 /// with the provider.
-class AndroidContact implements ModelInterface {
-  @override
+class AndroidContact {
   final int id;
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final DisplayNameSource? displayNameSource;
@@ -132,12 +129,12 @@ class AndroidContact implements ModelInterface {
 
   // == App-style JSON (camelCase) ==
   factory AndroidContact.fromJson(Map<String, dynamic> json) => AndroidContact(
-    id: FieldHelper.asInt(json['id'])!,
+    id: FieldHelper.primaryKey(json),
     sourceMap: json,
     displayName: json['displayName'] ?? '',
     displayNameAlt: json['displayNameAlt'] ?? '',
     displayNameReverse: json['displayNameReverse'] ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       json['displayNameSource'],
     ),
@@ -196,7 +193,7 @@ class AndroidContact implements ModelInterface {
     'displayName': displayName,
     'displayNameAlt': displayNameAlt,
     'displayNameReverse': displayNameReverse,
-    'displayNameSource': displayNameSource?.toInt,
+    'displayNameSource': displayNameSource?.value,
     'hasEmail': hasEmail,
     'hasPhoneNumber': hasPhoneNumber,
     'inDefaultDirectory': inDefaultDirectory,
@@ -247,63 +244,69 @@ class AndroidContact implements ModelInterface {
 
   // == Android/DB-style (raw, snake_case) ==
   factory AndroidContact.fromRaw(Map<String, dynamic> raw) => AndroidContact(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    // Telephony contacts PK is `_id` (BaseColumns). `raw['id']` is a test-only
+    // legacy shim; 0 is the last-resort default.
+    id: FieldHelper.primaryKey(raw),
     sourceMap: raw,
-    displayName: raw['display_name'] ?? '',
-    displayNameAlt: raw['display_name_alt'] ?? '',
-    displayNameReverse: raw['display_name_reverse'] ?? '',
-    displayNameSource: FieldHelper.enumFromValue(
+    displayName: raw['display_name']?.toString() ?? '',
+    displayNameAlt: raw['display_name_alt']?.toString() ?? '',
+    displayNameReverse: raw['display_name_reverse']?.toString() ?? '',
+    displayNameSource: FieldHelper.enumFromValueOrNull(
       DisplayNameSource.values,
       raw['display_name_source'],
     ),
-    hasEmail: (raw['has_email'] ?? 0) == 1,
-    hasPhoneNumber: (raw['has_phone_number'] ?? 0) == 1,
-    inDefaultDirectory: (raw['in_default_directory'] ?? 0) == 1,
-    inVisibleGroup: (raw['in_visible_group'] ?? 0) == 1,
-    isPrivate: (raw['is_private'] ?? 0) == 1,
-    isUserProfile: (raw['is_user_profile'] ?? 0) == 1,
-    lastTimeContacted: raw['last_time_contacted'] ?? 0,
-    link: raw['link'] ?? '',
-    linkCount: raw['link_count'] ?? 0,
-    linkType1: raw['link_type1'] ?? '',
-    lookup: raw['lookup'] ?? '',
+    // Flag columns: ContactsContract int columns that occasionally
+    // surface as stringified ints on OEM builds; coerce via asInt before
+    // the `== 1` test so a String "1" still lands as `true`.
+    hasEmail: FieldHelper.asInt(raw['has_email']) == 1,
+    hasPhoneNumber: FieldHelper.asInt(raw['has_phone_number']) == 1,
+    inDefaultDirectory: FieldHelper.asInt(raw['in_default_directory']) == 1,
+    inVisibleGroup: FieldHelper.asInt(raw['in_visible_group']) == 1,
+    isPrivate: FieldHelper.asInt(raw['is_private']) == 1,
+    isUserProfile: FieldHelper.asInt(raw['is_user_profile']) == 1,
+    lastTimeContacted: FieldHelper.asInt(raw['last_time_contacted']) ?? 0,
+    link: raw['link']?.toString() ?? '',
+    linkCount: FieldHelper.asInt(raw['link_count']) ?? 0,
+    linkType1: raw['link_type1']?.toString() ?? '',
+    lookup: raw['lookup']?.toString() ?? '',
     nameRawContactId: FieldHelper.asInt(raw['name_raw_contact_id']) ?? 0,
-    phonebookBucket: raw['phonebook_bucket'] ?? 0,
-    phonebookBucketAlt: raw['phonebook_bucket_alt'] ?? 0,
-    phonebookLabel: raw['phonebook_label'] ?? '',
-    phonebookLabelAlt: raw['phonebook_label_alt'] ?? '',
-    phoneticName: raw['phonetic_name'] ?? '',
-    phoneticNameStyle: raw['phonetic_name_style'] ?? '0',
+    phonebookBucket: FieldHelper.asInt(raw['phonebook_bucket']) ?? 0,
+    phonebookBucketAlt: FieldHelper.asInt(raw['phonebook_bucket_alt']) ?? 0,
+    phonebookLabel: raw['phonebook_label']?.toString() ?? '',
+    phonebookLabelAlt: raw['phonebook_label_alt']?.toString() ?? '',
+    phoneticName: raw['phonetic_name']?.toString() ?? '',
+    phoneticNameStyle: raw['phonetic_name_style']?.toString() ?? '0',
     photoFileId: FieldHelper.asInt(raw['photo_file_id']) ?? 0,
     photoId: FieldHelper.asInt(raw['photo_id']) ?? 0,
-    photoThumbUri: raw['photo_thumb_uri'] ?? '',
-    photoUri: raw['photo_uri'] ?? '',
-    pinned: (raw['pinned'] ?? 0) == 1,
-    secCallBackground: raw['sec_call_background'] ?? '',
-    secCustomAlert: raw['sec_custom_alert'] ?? '',
-    secCustomVibration: raw['sec_custom_vibration'] ?? '',
-    secLed: raw['sec_led'] ?? '',
-    secPreferredSim: raw['sec_preferred_sim'] ?? '',
+    photoThumbUri: raw['photo_thumb_uri']?.toString() ?? '',
+    photoUri: raw['photo_uri']?.toString() ?? '',
+    pinned: FieldHelper.asInt(raw['pinned']) == 1,
+    secCallBackground: raw['sec_call_background']?.toString() ?? '',
+    secCustomAlert: raw['sec_custom_alert']?.toString() ?? '',
+    secCustomVibration: raw['sec_custom_vibration']?.toString() ?? '',
+    secLed: raw['sec_led']?.toString() ?? '',
+    secPreferredSim: raw['sec_preferred_sim']?.toString() ?? '',
     secPreferredVideoCallAccountId:
         FieldHelper.asInt(raw['sec_preferred_video_call_account_id']) ?? 0,
     secPreferredVideoCallAccountName:
-        raw['sec_preferred_video_call_account_name'] ?? '',
-    sendToVoicemail: (raw['send_to_voicemail'] ?? 0) == 1,
-    sortKey: raw['sort_key'] ?? '',
-    sortKeyAlt: raw['sort_key_alt'] ?? '',
-    starred: (raw['starred'] ?? 0) == 1,
-    timesContacted: raw['times_contacted'] ?? 0,
-    customRingtone: raw['custom_ringtone'] ?? '',
-    contactStatusTs: raw['contact_status_ts'] ?? '',
-    contactStatusResPackage: raw['contact_status_res_package'] ?? '',
-    contactStatusLabel: raw['contact_status_label'] ?? '',
-    contactLastUpdatedTimestamp: raw['contact_last_updated_timestamp'] ?? 0,
-    contactPresence: raw['contact_presence'] ?? '',
-    contactStatus: raw['contact_status'] ?? '',
-    contactStatusIcon: raw['contact_status_icon'] ?? '',
-    contactChatCapability: raw['contact_chat_capability'] ?? '',
-    dirtyContact: raw['dirty_contact'] ?? 0,
-    snippet: raw['snippet'],
+        raw['sec_preferred_video_call_account_name']?.toString() ?? '',
+    sendToVoicemail: FieldHelper.asInt(raw['send_to_voicemail']) == 1,
+    sortKey: raw['sort_key']?.toString() ?? '',
+    sortKeyAlt: raw['sort_key_alt']?.toString() ?? '',
+    starred: FieldHelper.asInt(raw['starred']) == 1,
+    timesContacted: FieldHelper.asInt(raw['times_contacted']) ?? 0,
+    customRingtone: raw['custom_ringtone']?.toString() ?? '',
+    contactStatusTs: raw['contact_status_ts']?.toString() ?? '',
+    contactStatusResPackage: raw['contact_status_res_package']?.toString() ?? '',
+    contactStatusLabel: raw['contact_status_label']?.toString() ?? '',
+    contactLastUpdatedTimestamp:
+        FieldHelper.asInt(raw['contact_last_updated_timestamp']) ?? 0,
+    contactPresence: raw['contact_presence']?.toString() ?? '',
+    contactStatus: raw['contact_status']?.toString() ?? '',
+    contactStatusIcon: raw['contact_status_icon']?.toString() ?? '',
+    contactChatCapability: raw['contact_chat_capability']?.toString() ?? '',
+    dirtyContact: FieldHelper.asInt(raw['dirty_contact']) ?? 0,
+    snippet: raw['snippet']?.toString(),
   );
 
   Map<String, dynamic> toRaw() => {
@@ -311,7 +314,7 @@ class AndroidContact implements ModelInterface {
     'display_name': displayName,
     'display_name_alt': displayNameAlt,
     'display_name_reverse': displayNameReverse,
-    'display_name_source': displayNameSource?.toInt,
+    'display_name_source': displayNameSource?.value,
     'has_email': hasEmail ? 1 : 0,
     'has_phone_number': hasPhoneNumber ? 1 : 0,
     'in_default_directory': inDefaultDirectory ? 1 : 0,

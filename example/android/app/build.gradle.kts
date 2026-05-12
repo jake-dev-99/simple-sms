@@ -8,16 +8,16 @@ plugins {
 
 android {
     namespace = "com.example.simple_sms_example"
-    compileSdk = 35
-    ndkVersion = "28.0.13004108"
+    compileSdk = 36
+    ndkVersion = "30.0.14904198"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     defaultConfig {

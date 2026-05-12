@@ -1,7 +1,6 @@
 import 'dart:core';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
 import '../enums/sms_mms_enums.dart';
 
 /// An SMS message record read from the Android telephony content provider.
@@ -25,12 +24,10 @@ import '../enums/sms_mms_enums.dart';
 /// Use [Sms.fromJson] / [toJson] for app-layer round-trips (e.g. cached
 /// records) and [Sms.fromRaw] / [toRaw] when interacting with the raw
 /// platform-channel payload.
-class Sms implements ModelInterface {
-  @override
+class Sms {
   final int id;
   final int threadId;
 
-  @override
   final Map<String, dynamic>? sourceMap;
 
   final String? address;
@@ -38,6 +35,9 @@ class Sms implements ModelInterface {
   final int? announcementsSubtype;
   final int? appId;
   final int? binInfo;
+  /// Samsung OEM column `block_filtered_status` — unset on stock Android.
+  /// Surfaces on device as an int flag for Samsung's block-filter pipeline.
+  final int? blockFilteredStatus;
   final String? body;
   final String? callbackNumber;
   final String? cmcProp;
@@ -45,13 +45,35 @@ class Sms implements ModelInterface {
   final String? creator;
   final DateTime date;
   final DateTime? dateSent;
+  /// Samsung OEM column `decorate_bubble_value` — chat-bubble styling
+  /// payload. Free-form; we pass it through unchanged.
+  final String? decorateBubbleValue;
   final bool? deletable;
   final DateTime? deliveryDate;
   final int? deliveryReportCount;
   final String? deviceName;
   final int? errorCode;
   final bool? favorite;
-  final String? rawSender;
+  /// Samsung OEM column `group_cotag` — group-SMS correlation tag on some
+  /// Samsung carrier builds.
+  final String? groupCotag;
+  /// Samsung OEM column `is_satellite` — true on T-Mobile/Verizon satellite
+  /// roaming SMS.
+  final bool? isSatellite;
+  /// Samsung OEM column `re_count_info_custom_reaction` — JSON blob for
+  /// emoji-reaction metadata on RCS-over-SMS threads.
+  final String? reCountInfoCustomReaction;
+  /// Samsung OEM column `spam_type` — spam-classification flag.
+  final int? spamType;
+  /// Carrier-reported originating address on this row (SMS `from_address`
+  /// column). Usually redundant with [address] for inbound SMS; on
+  /// outbound rows it's the sender's MSISDN as the SMSC saw it.
+  final String? fromAddress;
+
+  /// Deprecated alias for [fromAddress]. Removed in a future major.
+  @Deprecated('Renamed to fromAddress in v0.5; maps to `from_address` column.')
+  String? get rawSender => fromAddress;
+
   final String? groupId;
   final String? groupType;
   final bool? hidden;
@@ -102,6 +124,7 @@ class Sms implements ModelInterface {
     this.announcementsSubtype,
     this.appId,
     this.binInfo,
+    this.blockFilteredStatus,
     this.body,
     this.callbackNumber,
     this.cmcProp,
@@ -109,13 +132,18 @@ class Sms implements ModelInterface {
     this.creator,
     required this.date,
     this.dateSent,
+    this.decorateBubbleValue,
     this.deletable,
     this.deliveryDate,
     this.deliveryReportCount,
     this.deviceName,
     this.errorCode,
     this.favorite,
-    this.rawSender,
+    this.groupCotag,
+    this.isSatellite,
+    this.reCountInfoCustomReaction,
+    this.spamType,
+    this.fromAddress,
     this.groupId,
     this.groupType,
     this.hidden,
@@ -159,12 +187,15 @@ class Sms implements ModelInterface {
 
   // ---- JSON (App/Server) ----
   factory Sms.fromJson(Map<String, dynamic> json) => Sms(
-    id: FieldHelper.asInt(json["id"])!,
+    // `primaryKey` throws when neither `_id` nor `id` parses — see
+    // helper docstring for why a silent `?? 0` here corrupts joins.
+    id: FieldHelper.primaryKey(json),
     address: json["address"],
     announcementsScenarioId: json["announcementsScenarioId"],
-    announcementsSubtype: json["announcementsSubtype"],
-    appId: json["appId"],
-    binInfo: json["binInfo"],
+    announcementsSubtype: FieldHelper.asInt(json["announcementsSubtype"]),
+    appId: FieldHelper.asInt(json["appId"]),
+    binInfo: FieldHelper.asInt(json["binInfo"]),
+    blockFilteredStatus: FieldHelper.asInt(json["blockFilteredStatus"]),
     body: json["body"],
     callbackNumber: json["callbackNumber"],
     cmcProp: json["cmcProp"],
@@ -172,34 +203,42 @@ class Sms implements ModelInterface {
     creator: json["creator"],
     date:
         json["date"] != null
-            ? FieldHelper.asDateTime(json["date"])!
+            ? (FieldHelper.asDateTime(json["date"]) ??
+                DateTime.fromMillisecondsSinceEpoch(0))
             : DateTime.fromMillisecondsSinceEpoch(0),
     dateSent: FieldHelper.asDateTime(json["dateSent"]),
+    decorateBubbleValue: json["decorateBubbleValue"]?.toString(),
     deletable: FieldHelper.asBool(json["deletable"]),
     deliveryDate: FieldHelper.asDateTime(json["deliveryDate"]),
-    deliveryReportCount: json["deliveryReportCount"],
+    deliveryReportCount: FieldHelper.asInt(json["deliveryReportCount"]),
     deviceName: json["deviceName"],
-    errorCode: json["errorCode"],
+    errorCode: FieldHelper.asInt(json["errorCode"]),
     favorite: FieldHelper.asBool(json["favorite"]),
-    rawSender: json["fromAddress"],
+    groupCotag: json["groupCotag"]?.toString(),
+    isSatellite: FieldHelper.asBool(json["isSatellite"]),
+    reCountInfoCustomReaction: json["reCountInfoCustomReaction"]?.toString(),
+    spamType: FieldHelper.asInt(json["spamType"]),
+    fromAddress: json["fromAddress"],
     groupId: json["groupId"],
     groupType: json["groupType"],
     hidden: FieldHelper.asBool(json["hidden"]),
     linkUrl: json["linkUrl"],
     locked: FieldHelper.asBool(json["locked"]),
-    messageId: json["messageId"],
+    // Coerce stringified IDs too — some providers emit msg_id as a
+    // stringified long, and cached round-trips preserve whatever
+    // shape the provider produced originally.
+    messageId: FieldHelper.asInt(json["messageId"]),
     objectId: json["objectId"],
     person: json["person"],
-    priority: FieldHelper.enumFromValue(
+    priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       json["priority"],
     ),
     protocol: FieldHelper.asInt(json["protocol"]),
     read: FieldHelper.asBool(json["read"]),
     reBody: json["reBody"],
-    reContentType: FieldHelper.enumFromValue(
-      ContentType.values,
-      json["reContentType"],
+    reContentType: ContentType.fromMimeOrNull(
+      json["reContentType"]?.toString(),
     ),
     reContentUri: json["reContentUri"],
     reCountInfo: json["reCountInfo"],
@@ -209,32 +248,47 @@ class Sms implements ModelInterface {
     replyPathPresent: FieldHelper.asBool(json["replyPathPresent"]),
     reRecipientAddress: json["reRecipientAddress"],
     reserved: FieldHelper.asBool(json["reserved"]),
-    reType: FieldHelper.enumFromValue(SmsMessageType.values, json["reType"]),
+    reType: FieldHelper.enumFromValueOrNull(
+      SmsMessageType.values,
+      json["reType"],
+    ),
     roamPending: FieldHelper.asBool(json["roamPending"]),
     safeMessage: FieldHelper.asBool(json["safeMessage"]),
     secretMode: FieldHelper.asBool(json["secretMode"]),
     seen: FieldHelper.asBool(json["seen"]),
     serviceCenter: json["serviceCenter"],
-    serviceCommand: json["serviceCommand"],
+    serviceCommand: FieldHelper.asInt(json["serviceCommand"]),
     serviceCommandContent: json["serviceCommandContent"],
     simImsi: json["simImsi"],
-    simSlot: json["simSlot"],
+    simSlot: FieldHelper.asInt(json["simSlot"]),
     sourceLabel: json["sourceLabel"],
     spamReport: FieldHelper.asBool(json["spamReport"]),
-    status:
-        FieldHelper.enumFromValue(
-          AndroidMessageStatus.values,
-          json["status"],
-        ) ??
-        AndroidMessageStatus.retrieved,
+    // Status is the SMS delivery state — if unknown, null is the
+    // honest answer. Pre-fix this fell back to `AndroidMessageStatus.retrieved`,
+    // which silently marked messages as "delivered" when the provider
+    // returned an unrecognized status code. That's actively harmful
+    // (user thinks message was delivered when it might have failed).
+    status: FieldHelper.enumFromValueOrNull(
+      AndroidMessageStatus.values,
+      json["status"],
+    ),
     subject: json["subject"],
-    subscriptionId: json["subscriptionId"],
-    teleserviceId: json["teleserviceId"],
-    threadId: json["threadId"],
-    type: FieldHelper.enumFromValue(SmsMessageType.values, json["type"])!,
-    usingMode:
-        FieldHelper.enumFromValue(UsingMode.values, json["usingMode"]) ??
-        UsingMode.normal,
+    subscriptionId: FieldHelper.asInt(json["subscriptionId"]),
+    teleserviceId: FieldHelper.asInt(json["teleserviceId"]),
+    threadId: FieldHelper.asInt(json["threadId"]) ?? 0,
+    // REQUIRED — drives SMS direction (inbox / sent / draft).
+    type: FieldHelper.enumFromValueOrThrow(
+      SmsMessageType.values,
+      json["type"],
+      fieldName: 'Sms.type',
+    ),
+    // OrNull — usingMode is optional metadata. Pre-fix this fell back
+    // to `UsingMode.normal` on unrecognized input, masking provider
+    // schema additions.
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      json["usingMode"],
+    ),
     sourceMap: json,
   );
 
@@ -245,6 +299,7 @@ class Sms implements ModelInterface {
     "announcementsSubtype": announcementsSubtype,
     "appId": appId,
     "binInfo": binInfo,
+    "blockFilteredStatus": blockFilteredStatus,
     "body": body,
     "callbackNumber": callbackNumber,
     "cmcProp": cmcProp,
@@ -252,13 +307,18 @@ class Sms implements ModelInterface {
     "creator": creator,
     "date": date.toIso8601String(),
     "dateSent": dateSent?.toIso8601String(),
+    "decorateBubbleValue": decorateBubbleValue,
     "deletable": deletable,
     "deliveryDate": deliveryDate?.toIso8601String(),
     "deliveryReportCount": deliveryReportCount,
     "deviceName": deviceName,
     "errorCode": errorCode,
     "favorite": favorite,
-    "fromAddress": rawSender,
+    "groupCotag": groupCotag,
+    "isSatellite": isSatellite,
+    "reCountInfoCustomReaction": reCountInfoCustomReaction,
+    "spamType": spamType,
+    "fromAddress": fromAddress,
     "groupId": groupId,
     "groupType": groupType,
     "hidden": hidden,
@@ -303,12 +363,17 @@ class Sms implements ModelInterface {
 
   // ---- Android/Raw ----
   factory Sms.fromRaw(Map<String, dynamic> raw) => Sms(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
+    // Telephony.Sms PK per BaseColumns is `_id`. The fallback to `id` is a
+    // legacy shim preserved only for unit tests that mock rows without `_id`;
+    // real provider rows always have `_id`. Zero is a last-resort default
+    // that matches the "unparseable row" behaviour used elsewhere.
+    id: FieldHelper.primaryKey(raw),
     address: raw["address"],
     announcementsScenarioId: raw["announcements_scenario_id"],
-    announcementsSubtype: raw["announcements_subtype"],
-    appId: raw["app_id"],
-    binInfo: raw["bin_info"],
+    announcementsSubtype: FieldHelper.asInt(raw["announcements_subtype"]),
+    appId: FieldHelper.asInt(raw["app_id"]),
+    binInfo: FieldHelper.asInt(raw["bin_info"]),
+    blockFilteredStatus: FieldHelper.asInt(raw["block_filtered_status"]),
     body: raw["body"],
     callbackNumber: raw["callback_number"],
     cmcProp: raw["cmc_prop"],
@@ -316,31 +381,39 @@ class Sms implements ModelInterface {
     creator: raw["creator"],
     date:
         raw["date"] != null
-            ? FieldHelper.asDateTime(raw["date"]!)!
+            ? (FieldHelper.asDateTime(raw["date"]!) ??
+                DateTime.fromMillisecondsSinceEpoch(0))
             : DateTime.fromMillisecondsSinceEpoch(0),
     dateSent: FieldHelper.asDateTime(raw["date_sent"]),
+    decorateBubbleValue: raw["decorate_bubble_value"]?.toString(),
     deletable: FieldHelper.asBool(raw["deletable"]),
     deliveryDate: FieldHelper.asDateTime(raw["delivery_date"]),
-    deliveryReportCount: raw["d_rpt_cnt"],
+    deliveryReportCount: FieldHelper.asInt(raw["d_rpt_cnt"]),
     deviceName: raw["device_name"],
-    errorCode: raw["error_code"],
+    errorCode: FieldHelper.asInt(raw["error_code"]),
     favorite: FieldHelper.asBool(raw["favorite"]),
-    rawSender: raw["from_address"],
+    groupCotag: raw["group_cotag"],
+    isSatellite: FieldHelper.asBool(raw["is_satellite"]),
+    reCountInfoCustomReaction: raw["re_count_info_custom_reaction"]?.toString(),
+    spamType: FieldHelper.asInt(raw["spam_type"]),
+    fromAddress: raw["from_address"],
     groupId: raw["group_id"],
     groupType: raw["group_type"],
     hidden: FieldHelper.asBool(raw["hidden"]),
     linkUrl: raw["link_url"],
     locked: FieldHelper.asBool(raw["locked"]),
-    messageId: raw["msg_id"],
+    messageId: FieldHelper.asInt(raw["msg_id"]),
     objectId: raw["object_id"],
     person: raw["person"],
-    priority: FieldHelper.enumFromValue(MessagePriority.values, raw["pri"]),
+    priority: FieldHelper.enumFromValueOrNull(
+      MessagePriority.values,
+      FieldHelper.asInt(raw["pri"]),
+    ),
     protocol: FieldHelper.asInt(raw["protocol"]),
     read: FieldHelper.asBool(raw["read"]),
     reBody: raw["re_body"],
-    reContentType: FieldHelper.enumFromValue(
-      ContentType.values,
-      raw["re_content_type"],
+    reContentType: ContentType.fromMimeOrNull(
+      raw["re_content_type"]?.toString(),
     ),
     reContentUri: raw["re_content_uri"],
     reCountInfo: raw["re_count_info"],
@@ -350,28 +423,39 @@ class Sms implements ModelInterface {
     replyPathPresent: FieldHelper.asBool(raw["reply_path_present"]),
     reRecipientAddress: raw["re_recipient_address"],
     reserved: FieldHelper.asBool(raw["reserved"]),
-    reType: FieldHelper.enumFromValue(SmsMessageType.values, raw["re_type"]),
+    reType: FieldHelper.enumFromValueOrNull(
+      SmsMessageType.values,
+      FieldHelper.asInt(raw["re_type"]),
+    ),
     roamPending: FieldHelper.asBool(raw["roam_pending"]),
     safeMessage: FieldHelper.asBool(raw["safe_message"]),
     secretMode: FieldHelper.asBool(raw["secret_mode"]),
     seen: FieldHelper.asBool(raw["seen"]),
     serviceCenter: raw["service_center"],
-    serviceCommand: raw["svc_cmd"],
+    serviceCommand: FieldHelper.asInt(raw["svc_cmd"]),
     serviceCommandContent: raw["svc_cmd_content"],
     simImsi: raw["sim_imsi"],
-    simSlot: raw["sim_slot"],
+    simSlot: FieldHelper.asInt(raw["sim_slot"]),
     sourceLabel: raw["sourceLabel"],
     spamReport: FieldHelper.asBool(raw["spam_report"]),
-    status: FieldHelper.enumFromValue(
+    status: FieldHelper.enumFromValueOrNull(
       AndroidMessageStatus.values,
-      raw["status"],
+      FieldHelper.asInt(raw["status"]),
     ),
     subject: raw["subject"],
-    subscriptionId: raw["sub_id"],
-    teleserviceId: raw["teleservice_id"],
-    threadId: raw["thread_id"],
-    type: FieldHelper.enumFromValue(SmsMessageType.values, raw["type"]),
-    usingMode: FieldHelper.enumFromValue(UsingMode.values, raw["using_mode"]),
+    subscriptionId: FieldHelper.asInt(raw["sub_id"]),
+    teleserviceId: FieldHelper.asInt(raw["teleservice_id"]),
+    threadId: FieldHelper.asInt(raw["thread_id"]) ?? 0,
+    // REQUIRED — drives SMS direction (inbox / sent / draft).
+    type: FieldHelper.enumFromValueOrThrow(
+      SmsMessageType.values,
+      FieldHelper.asInt(raw["type"]),
+      fieldName: 'Sms.type',
+    ),
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      FieldHelper.asInt(raw["using_mode"]),
+    ),
     sourceMap: raw,
   );
 
@@ -382,6 +466,7 @@ class Sms implements ModelInterface {
     "announcements_subtype": announcementsSubtype,
     "app_id": appId,
     "bin_info": binInfo,
+    "block_filtered_status": blockFilteredStatus,
     "body": body,
     "callback_number": callbackNumber,
     "cmc_prop": cmcProp,
@@ -389,13 +474,21 @@ class Sms implements ModelInterface {
     "creator": creator,
     "date": date.millisecondsSinceEpoch,
     "date_sent": dateSent?.millisecondsSinceEpoch,
+    "decorate_bubble_value": decorateBubbleValue,
     "deletable": FieldHelper.boolToInt(deletable),
-    "delivery_date": deliveryDate?.millisecondsSinceEpoch.toString(),
+    // Emit as int millis so fromRaw's FieldHelper.asDateTime picks it
+    // up on round-trip (previously serialized as a numeric String that
+    // only parsed via the now-hardened asDateTime String→int fallback).
+    "delivery_date": deliveryDate?.millisecondsSinceEpoch,
     "d_rpt_cnt": deliveryReportCount,
     "device_name": deviceName,
     "error_code": errorCode,
     "favorite": FieldHelper.boolToInt(favorite),
-    "from_address": rawSender,
+    "group_cotag": groupCotag,
+    "is_satellite": FieldHelper.boolToInt(isSatellite),
+    "re_count_info_custom_reaction": reCountInfoCustomReaction,
+    "spam_type": spamType,
+    "from_address": fromAddress,
     "group_id": groupId,
     "group_type": groupType,
     "hidden": FieldHelper.boolToInt(hidden),

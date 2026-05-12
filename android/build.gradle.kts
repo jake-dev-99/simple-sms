@@ -37,12 +37,12 @@ android {
     namespace = "io.simplezen.simple_sms"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     defaultConfig {
@@ -60,9 +60,9 @@ android {
 //        getByName("androidTest").java.srcDirs("src/androidTest/kotlin")
 //        getByName("test").java.srcDirs("src/test/kotlin")
     }
-    compileSdk = 35
+    compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "30.0.14904198"
 }
 
 dependencies {
@@ -84,7 +84,14 @@ dependencies {
     // Same plugin-loader pattern as simple_permissions_android above.
     implementation(project(":simple_query_android"))
 
-    implementation(project(":google_apps_messaging_core"))
+    // `google_apps_messaging_core` removed in the inbound-MMS port.
+    // Its `MmsUtils.insertReceivedMmsMessage` was the canonical reference
+    // we ported into `InboundMmsPersister.kt`; with that port complete,
+    // nothing in this module's runtime code calls into Bugle anymore.
+    // PduPersister + the Klinker send_message tree under
+    // `src/main/java/com/{google,android,klinker}/...` remain — those
+    // are still used directly by inbound (PduPersister) and outbound
+    // (Klinker Transaction). Their removal is a separate follow-up.
     implementation(project(":google_i18n_libphonenumber"))
     implementation(project(":google_chips"))
     implementation(project(":google_photoviewer"))

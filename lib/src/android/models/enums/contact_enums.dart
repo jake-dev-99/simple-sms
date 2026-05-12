@@ -20,6 +20,4 @@ enum DisplayNameSource {
 
   final int value;
   const DisplayNameSource(this.value);
-
-  int get toInt => value;
 }

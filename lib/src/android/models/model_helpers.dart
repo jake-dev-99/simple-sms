@@ -15,20 +15,24 @@ class FieldHelper {
   }
 
   static int? asInt(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-    if (value is String) {
-      return null;
-    }
+    if (value == null) return null;
+    if (value is int) return value;
     if (value is Uint8List) {
       throw Exception('Uint8List is not supported - $value');
     }
-    if (value is int) {
-      return value;
-    } else {
-      return int.tryParse(value);
-    }
+    // Android ContentProviders commonly surface numeric columns as Strings
+    // (the `sub_id` / `thread_id` / `seq` fields show up stringified on some
+    // OEMs). `int.tryParse` handles both decimal and whitespace-trimmed
+    // numerics, and returns null for non-numeric junk — which matches our
+    // nullable return contract.
+    if (value is String) return int.tryParse(value.trim());
+    // `double.nan.toInt()` and `double.infinity.toInt()` both throw
+    // `UnsupportedError`, which breaks this helper's "null for bad input"
+    // contract. Rare from a ContentProvider cursor, but `fromJson` paths
+    // can deserialize non-finite doubles from server payloads, so guard.
+    if (value is double) return value.isFinite ? value.toInt() : null;
+    if (value is bool) return value ? 1 : 0;
+    return null;
   }
 
   static Uint8List? asUInt8List(dynamic value) {
@@ -45,23 +49,95 @@ class FieldHelper {
   /// store timestamps as seconds (MMS) or milliseconds (SMS).
   static const int _secondsVsMillisThreshold = 1000000000000;
 
+  /// Maximum `millisecondsSinceEpoch` accepted by `DateTime` (≈ year 275760).
+  /// Android ContentProviders occasionally surface sentinel values like
+  /// `Long.MAX_VALUE` (9223372036854775807) in columns such as `exp`/`d_tm`
+  /// to mean "unset"; these blow past Dart's DateTime range and throw
+  /// `RangeError` from `DateTime.fromMillisecondsSinceEpoch`. Clamp to null
+  /// so an unset sentinel reads as absent instead of crashing the parse.
+  static const int _maxDartMillis = 8640000000000000;
+
   static DateTime? asDateTime(dynamic value) {
     if (value == null) return null;
     if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      // Try ISO-8601 first (how app-layer JSON round-trips carry dates),
+      // then fall back to stringified-int epochs (how some ContentProvider
+      // columns surface — `toRaw()` round-trips pre-fix, OEM quirks, etc.).
+      final iso = DateTime.tryParse(trimmed);
+      if (iso != null) return iso;
+      final asInt = int.tryParse(trimmed);
+      if (asInt != null) return asDateTime(asInt);
+      return null;
+    }
     if (value is int) {
-      return value < _secondsVsMillisThreshold
-          ? DateTime.fromMillisecondsSinceEpoch(value * 1000)
-          : DateTime.fromMillisecondsSinceEpoch(value);
+      // Bail out on pathological sentinels before multiplying by 1000 —
+      // a huge negative seconds value wraps on 64-bit Dart native and
+      // could produce an in-range `millis` that looks like a valid
+      // (garbage) date. We only accept seconds whose millisecond-
+      // equivalent fits Dart's DateTime range.
+      if (value.abs() > _maxDartMillis) return null;
+      final millis =
+          value.abs() < _secondsVsMillisThreshold ? value * 1000 : value;
+      if (millis.abs() > _maxDartMillis) return null;
+      return DateTime.fromMillisecondsSinceEpoch(millis);
     }
     return null;
   }
 
-  static T? enumFromValue<T>(Iterable<T> values, dynamic raw) =>
-      raw == null
-          ? null
-          : values.cast<T?>().firstWhere(
-            (v) => (v as dynamic).value == raw,
-            orElse: () => null,
-          );
+  /// Coerces an empty String to null, preserving any other String value.
+  /// Useful for Samsung provider columns (`retr_txt_cs`, `st`, `d_tm`, …)
+  /// that surface `""` as a "unset" sentinel rather than a real absence,
+  /// and would otherwise leak through typed String? fields as
+  /// empty-string markers.
+  static String? emptyToNull(dynamic value) {
+    if (value is String && value.isEmpty) return null;
+    return value as String?;
+  }
+
+  /// Reads a primary-key int from a raw provider row, trying `_id` first
+  /// (the BaseColumns PK every Android provider uses) then `id` (legacy
+  /// test-fixture shape). Throws [StateError] when neither parses —
+  /// rows without a usable PK collide downstream in
+  /// `HiveSearch.byExternalId` lookups, so silently returning `0` (the
+  /// previous behaviour) corrupts joins instead of failing loudly.
+  static int primaryKey(Map<String, dynamic> raw) {
+    final id = asInt(raw['_id']) ?? asInt(raw['id']);
+    if (id != null) return id;
+    throw StateError(
+      'Row has no parseable primary key (_id or id). Keys: ${raw.keys.toList()}',
+    );
+  }
+
+  /// Lenient enum lookup. Returns `null` for both `raw == null` and
+  /// any non-null value not in [values]. Use only for genuinely
+  /// optional fields where null means "absent or unknown, both fine".
+  static T? enumFromValueOrNull<T>(Iterable<T> values, dynamic raw) {
+    if (raw == null) return null;
+    for (final v in values) {
+      if ((v as dynamic).value == raw) return v;
+    }
+    return null;
+  }
+
+  /// Strict enum lookup. Returns `null` only when [raw] is null
+  /// (field absent). Throws [StateError] when [raw] is present but
+  /// not in [values] — surfaces in crashlytics with [fieldName] and
+  /// the offending value, so missing enum entries get fixed at the
+  /// source instead of silently corrupting downstream data.
+  static T? enumFromValueOrThrow<T>(
+    Iterable<T> values,
+    dynamic raw, {
+    required String fieldName,
+  }) {
+    if (raw == null) return null;
+    for (final v in values) {
+      if ((v as dynamic).value == raw) return v;
+    }
+    throw StateError(
+      'Unknown $fieldName value: $raw (${raw.runtimeType})',
+    );
+  }
 }

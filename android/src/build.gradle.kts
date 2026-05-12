@@ -12,9 +12,9 @@ plugins {
 
 android {
     namespace = group.toString()
-    compileSdk = 35
+    compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "30.0.14904198"
 
 //     Flutter's CI installs the NDK at a non-standard path.
 //     This non-standard structure is initially created by
@@ -25,8 +25,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     defaultConfig {
@@ -35,7 +35,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     sourceSets {
@@ -47,7 +47,9 @@ android {
     }
 
     dependencies {
-        implementation(project(":google_apps_messaging_core"))
+        // google_apps_messaging_core removed; its only call into our
+        // tree was the canonical MmsUtils.insertReceivedMmsMessage
+        // reference, now ported to InboundMmsPersister.kt.
         implementation(libs.androidx.exifinterface)
         implementation(libs.androidx.annotation)
         implementation(libs.guava)

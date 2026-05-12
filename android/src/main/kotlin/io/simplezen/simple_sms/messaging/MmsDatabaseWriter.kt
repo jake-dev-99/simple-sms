@@ -8,7 +8,11 @@ import android.net.Uri
 import android.provider.BaseColumns
 import android.provider.Telephony
 import android.provider.Telephony.Mms
-import android.support.mms.pdu.PduHeaders
+// Was: `android.support.mms.pdu.PduHeaders`, which lived inside the
+// vendored `google_apps_messaging_core` Bugle module. That module has
+// been removed; switch to the equivalent constants in our own vendored
+// AOSP MMS PDU library at `com.google.android.mms.pdu_alt`.
+import com.google.android.mms.pdu_alt.PduHeaders
 import android.util.Log
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler.MessageRequestDetails
 import io.simplezen.simple_sms.models.MmsAddr
@@ -49,20 +53,24 @@ object MmsDatabaseWriter {
     ): List<Map<String, Any?>> {
         val addrs = mutableListOf<MmsAddr>().apply {
 
+            // formatNumber returns null for non-parseable inputs
+            // (shortcodes, alphanumeric senders). Preserve the raw
+            // string in that case — it's still a valid display value
+            // and downstream comparisons handle both forms.
             // Add Sender
             if(sender.isNotEmpty())
-                add(MmsAddr(address = formatNumber(context, sender), type = PduHeaders.FROM, msgId = msgId, charset = charset))
+                add(MmsAddr(address = formatNumber(context, sender) ?: sender, type = PduHeaders.FROM, msgId = msgId, charset = charset))
 
             // Add CC
             if(ccList.isNotEmpty())
                 addAll(ccList.map { cc ->
-                    MmsAddr(address = formatNumber(context, cc), type = PduHeaders.CC, msgId = msgId, charset = charset)
+                    MmsAddr(address = formatNumber(context, cc) ?: cc, type = PduHeaders.CC, msgId = msgId, charset = charset)
                 })
 
             // Add Recipients
             if(toList.isNotEmpty())
                 addAll(toList.map { addr ->
-                    MmsAddr(address = formatNumber(context, addr), type = PduHeaders.TO, msgId = msgId, charset = charset)
+                    MmsAddr(address = formatNumber(context, addr) ?: addr, type = PduHeaders.TO, msgId = msgId, charset = charset)
                 })
         }
 
@@ -129,24 +137,42 @@ object MmsDatabaseWriter {
         parts: List<MmsPart>,
     ): MutableList<Map<String, Any?>> {
 
-        // Write MMS parts (text, image, etc.)
+        // Write MMS parts (text, image, etc.).
+        //
+        // The previous structure wrapped BOTH the `_data` blob write and the
+        // `finalParts.add(...)` in the same `!mimeType.contains("text")` guard,
+        // which silently dropped text/* parts from the list returned to Dart.
+        // The text rows were still inserted into the provider, but the
+        // realtime payload sent over `transferInboundMessage` had zero text
+        // parts — so Dart-side `_extractTextBody` returned null, and inbound
+        // MMS persisted with empty body until the next ContentResolver sync
+        // re-queried the parts table.
+        //
+        // The blob write IS conditional (text parts carry their content in the
+        // TEXT column via `MmsPart.contentValues`, not a file-backed `_data`).
+        // The `finalParts.add` is NOT — every successfully-inserted part must
+        // make it back to Dart.
         val mmsPartsUri = Mms.Part.getPartUriForMessage(newMsgId.toString())
         val finalParts: MutableList<Map<String, Any?>> = mutableListOf ()
         for (part in parts) {
-            var newUri = context.contentResolver.insert(mmsPartsUri, part.contentValues)
+            val newUri = context.contentResolver.insert(mmsPartsUri, part.contentValues)
+            if (newUri == null) {
+                Log.e(
+                    TAG,
+                    "Failed to insert MMS part: " +
+                        "mime=${part.mimeType} cid=${part.contentId} cl=${part.contentLocation}"
+                )
+                continue
+            }
 
-            // If data is not empty, write to the Uri
-            if(newUri != null && !part.mimeType.contains("text") && part.data.isNotEmpty()) {
+            if (!part.mimeType.contains("text") && part.data.isNotEmpty()) {
                 try {
-                    // Write the part data to the Uri
                     context.contentResolver.openOutputStream(newUri)?.use { out ->
                         out.write(part.data)
-                    } ?: run {
-                        Log.e(
-                            TAG,
-                            "Failed to open output stream for $newUri - data will be null"
-                        )
-                    }
+                    } ?: Log.e(
+                        TAG,
+                        "Failed to open output stream for $newUri - data will be null"
+                    )
                 } catch (e: IOException) {
                     Log.e(TAG, "Failed to write MMS part data")
                     Log.e(TAG, " >>> ${part.contentId}")
@@ -154,13 +180,18 @@ object MmsDatabaseWriter {
                     Log.e(TAG, " >>> ${part.mimeType}")
                     Log.e(TAG, " >>> $e")
                 }
-
-                val newPart = Query(context).query(QueryObj(contentUri = newUri.toString())).first().toMutableMap().apply {
-                        put("uri", newUri)
-                    }
-                finalParts.add(newPart)
-                Log.d(TAG, "Inserted MMS part with ID: ${newPart[Mms.Part._ID]}")
             }
+
+            val queried = Query(context)
+                .query(QueryObj(contentUri = newUri.toString()))
+                .firstOrNull()
+            if (queried == null) {
+                Log.e(TAG, "Inserted MMS part at $newUri but re-query returned no row")
+                continue
+            }
+            val newPart = queried.toMutableMap().apply { put("uri", newUri) }
+            finalParts.add(newPart)
+            Log.d(TAG, "Inserted MMS part with ID: ${newPart[Mms.Part._ID]} mime=${part.mimeType}")
         }
         return finalParts
     }

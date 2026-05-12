@@ -1,6 +1,5 @@
+import 'package:flutter/foundation.dart';
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
-import '../../../interfaces/models_interface.dart';
-import '../enums/conversation_enums.dart';
 import '../enums/sms_mms_enums.dart';
 import '../messages/mms.dart';
 import '../messages/sms.dart';
@@ -16,10 +15,8 @@ import '../people/contactables.dart';
 /// final smsList = await service.getSmsByThread(conversation.id);
 /// final mmsList = await service.getMmsByThread(conversation.id);
 /// ```
-class AndroidSimpleConversation implements ModelInterface {
-  @override
+class AndroidSimpleConversation {
   final Map<String, dynamic>? sourceMap;
-  @override
   final int id;
   final int threadId;
   final String parentId;
@@ -31,7 +28,12 @@ class AndroidSimpleConversation implements ModelInterface {
   final bool? isPinned;
   final bool? isRead;
   final bool? isSafeMessage;
-  final ChatType? chatType;
+  /// Thread-level chat-type flag the Samsung provider surfaces on
+  /// `simple=true` rows (`chat_type` column). Values are provider-defined
+  /// and carrier-specific, so this is exposed as a raw `int?` rather
+  /// than a closed enum; consumers that need to branch on it should
+  /// compare against the real device values they observe.
+  final int? chatType;
   final SmsMmsType? smsMmsType;
   final List<String> recipientIds;
   final MessageBox? type;
@@ -41,13 +43,19 @@ class AndroidSimpleConversation implements ModelInterface {
   final String? snippet;
   final List<String>? displayRecipientIds;
   final String? translateMode;
-  final dynamic snippetType;
+  /// Samsung `snippet_type` column — int classifier for the snippet's
+  /// content (0 = plain text; Samsung reserves higher values for its
+  /// rich-messaging variants). Nothing in the monorepo reads this; kept
+  /// as pass-through for round-trip fidelity.
+  final int? snippetType;
   final int? binStatus;
   final int? hasAttachment;
   final int? paThread;
   final int? error;
   final int? alertExpired;
-  final dynamic snippetCs;
+  /// Samsung `snippet_cs` column — charset id (CharSet table) for the
+  /// snippet's text encoding. Nullable int pass-through.
+  final int? snippetCs;
   final int? archived;
   final int? unreadCount;
   final int? isMute;
@@ -199,55 +207,157 @@ class AndroidSimpleConversation implements ModelInterface {
 
   factory AndroidSimpleConversation.fromRaw(
     Map<String, dynamic> raw,
+  ) {
+    final result = _fromRawImpl(raw);
+    // One log line per parsed row. `simple=true` exposes `_id` as the
+    // thread id (AOSP, no `thread_id` column on the cursor), so this
+    // line is the canonical spot to catch column-mapping drift after an
+    // OEM/Android update.
+    //
+    // Also surfaces the raw `recipient_ids` cell (escaped for whitespace
+    // visibility) right alongside the post-split list so misrouting that
+    // traces to the splitter — wrong delimiter, embedded quotes, leading
+    // junk — is unambiguous in the log.
+    final rawRecipientIds = raw['recipient_ids'];
+    final rawRecipientIdsEscaped = rawRecipientIds?.toString().replaceAllMapped(
+          RegExp(r'\s'),
+          (m) => m[0] == ' ' ? '·' : '⎵',
+        );
+    debugPrint(
+      '[diag][simple-sms] AndroidSimpleConversation.fromRaw '
+      'simpleId=${result.id} threadId=${result.threadId} '
+      'rawRecipientIds="$rawRecipientIdsEscaped" '
+      'parsedRecipientIds=${result.recipientIds.join("|")} '
+      'parsedCount=${result.recipientIds.length} '
+      'rawHasThreadIdCol=${raw.containsKey("thread_id")} '
+      'rawHasIdCol=${raw.containsKey("_id")}',
+    );
+    return result;
+  }
+
+  static AndroidSimpleConversation _fromRawImpl(
+    Map<String, dynamic> raw,
   ) => AndroidSimpleConversation(
-    id: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
-    threadId: FieldHelper.asInt(raw['_id']) ?? FieldHelper.asInt(raw['id'])!,
-    alertExpired: raw["alert_expired"],
-    archived: raw["archived"],
-    binStatus: raw["bin_status"],
-    chatType: FieldHelper.enumFromValue(ChatType.values, raw["chat_type"]),
-    classification: raw["classification"],
+    // The `content://mms-sms/conversations?simple=true` view is a
+    // stripped projection in AOSP: it exposes one row per thread keyed
+    // on `_id`, with no `thread_id` column. So `_id` IS the thread id
+    // here. Confirmed from the Prospector dump header
+    //   `…,"recipient_ids","pa_uuid","secret_mode","_id","pa_ownnumber"`
+    // and from row content (numerically dense small ints, sequential
+    // with the thread sequence — message ids would be in the
+    // thousands).
+    //
+    // The fallback chain stays in this order so the parser also
+    // works for callers that build an `AndroidSimpleConversation`
+    // from a non-simple `mms-sms/conversations` row (joined view,
+    // one-per-message), where `thread_id` exists and `_id` is a
+    // message id. Real `simple=true` rows take the second arm.
+    id: FieldHelper.primaryKey(raw),
+    threadId: FieldHelper.asInt(raw['thread_id']) ??
+        FieldHelper.asInt(raw['_id']) ??
+        FieldHelper.asInt(raw['id']) ??
+        0,
+    // Every raw field goes through FieldHelper coercion: Samsung's
+    // mms-sms/conversations?simple=true returns Strings for several int
+    // columns (e.g. "archived", "has_attachment", "read") and a single
+    // stringified-int for `recipient_ids`. A direct `raw[x]` assignment
+    // to a typed nullable slot would throw TypeError and sink the whole
+    // page inside LookupService's outer try/catch.
+    alertExpired: FieldHelper.asInt(raw["alert_expired"]),
+    archived: FieldHelper.asInt(raw["archived"]),
+    binStatus: FieldHelper.asInt(raw["bin_status"]),
+    chatType: FieldHelper.asInt(raw["chat_type"]),
+    classification: FieldHelper.asInt(raw["classification"]),
     date: FieldHelper.asDateTime(raw["date"]),
-    displayRecipientIds: raw["display_recipient_ids"]?.split(' ') ?? <String>[],
-    error: raw["error"],
-    fromAddress: raw["from_address"],
-    groupSnippet: raw["group_snippet"],
-    hasAttachment: raw["has_attachment"],
-    isMute: raw["is_mute"],
-    menustring: raw["menustring"],
-    messageCount: raw["message_count"],
-    messageDate: raw["message_date"],
-    smsMmsType: FieldHelper.enumFromValue(SmsMmsType.values, raw["smsMmsType"]),
-    paOwnnumber: raw["pa_ownnumber"],
-    paThread: raw["pa_thread"],
-    paUuid: raw["pa_uuid"],
-    pinToTop: raw["pin_to_top"],
-    read: raw["read"],
-    recipientIds: raw["recipient_ids"]?.split(' ') ?? <String>[],
-    replyAll: raw["reply_all"],
+    displayRecipientIds: _splitIds(raw["display_recipient_ids"]),
+    error: FieldHelper.asInt(raw["error"]),
+    fromAddress: raw["from_address"]?.toString(),
+    groupSnippet: raw["group_snippet"]?.toString(),
+    hasAttachment: FieldHelper.asInt(raw["has_attachment"]),
+    isMute: FieldHelper.asInt(raw["is_mute"]),
+    menustring: raw["menustring"]?.toString(),
+    messageCount: FieldHelper.asInt(raw["message_count"]),
+    messageDate: raw["message_date"]?.toString(),
+    // OrNull — `smsMmsType` only appears on Samsung's variant of the
+    // simple-conversations view; it is genuinely absent on AOSP.
+    smsMmsType: FieldHelper.enumFromValueOrNull(
+      SmsMmsType.values,
+      raw["smsMmsType"],
+    ),
+    paOwnnumber: raw["pa_ownnumber"]?.toString(),
+    paThread: FieldHelper.asInt(raw["pa_thread"]),
+    paUuid: raw["pa_uuid"]?.toString(),
+    pinToTop: FieldHelper.asInt(raw["pin_to_top"]),
+    read: FieldHelper.asInt(raw["read"]),
+    recipientIds: _splitIds(raw["recipient_ids"]),
+    replyAll: FieldHelper.asInt(raw["reply_all"]),
     safeMessage: FieldHelper.asBool(raw["safe_message"]),
-    secretMode: raw["secret_mode"],
-    snippet: raw["snippet"],
-    snippetCs: raw["snippet_cs"],
-    snippetType: raw["snippet_type"],
-    sourceLabel: raw["sourceLabel"],
-    translateMode: raw["translate_mode"],
-    type: FieldHelper.enumFromValue(MessageBox.values, raw["type"]),
-    unreadCount: raw["unread_count"],
-    usingMode: FieldHelper.enumFromValue(UsingMode.values, raw["using_mode"]),
+    secretMode: FieldHelper.asInt(raw["secret_mode"]),
+    snippet: raw["snippet"]?.toString(),
+    snippetCs: FieldHelper.asInt(raw["snippet_cs"]),
+    snippetType: FieldHelper.asInt(raw["snippet_type"]),
+    sourceLabel: raw["sourceLabel"]?.toString(),
+    translateMode: raw["translate_mode"]?.toString(),
+    // OrNull — `type` is absent in the simple-conversations view on
+    // AOSP / Samsung; the column only surfaces on Pixel-variant
+    // builds. `null` here is the honest answer for "field genuinely
+    // missing", and downstream code defaults to inbox for absent
+    // values.
+    type: FieldHelper.enumFromValueOrNull(MessageBox.values, raw["type"]),
+    unreadCount: FieldHelper.asInt(raw["unread_count"]),
+    usingMode: FieldHelper.enumFromValueOrNull(
+      UsingMode.values,
+      raw["using_mode"],
+    ),
   );
 
+  /// Parses a whitespace-separated id column (e.g. `recipient_ids` = "1 2 3")
+  /// into a list of non-empty id strings, tolerating ints or null.
+  ///
+  /// Splits on `\s+` rather than a single ' ' so the parser tolerates
+  /// double-spaces, tab, and non-breaking-space (some OEM cursors and
+  /// platform-channel serializers normalize whitespace differently). AOSP
+  /// canonically writes single ASCII spaces; the regex is purely defensive.
+  ///
+  /// Also drops any token that isn't all decimal digits — e.g. a stray
+  /// quote, comma, or empty-after-split — so a malformed cell never feeds
+  /// `resolveCanonicalAddress` an invalid recipient id and silently
+  /// poisons participant resolution.
+  static List<String> _splitIds(dynamic raw) {
+    if (raw == null) return const <String>[];
+    final s = raw.toString().trim();
+    if (s.isEmpty) return const <String>[];
+    final tokens = s.split(RegExp(r'\s+'));
+    final cleaned = tokens
+        .where((p) => p.isNotEmpty && RegExp(r'^\d+$').hasMatch(p))
+        .toList(growable: false);
+    final dropped = tokens.length - cleaned.length;
+    if (dropped > 0) {
+      debugPrint(
+        '[diag][simple-sms] _splitIds dropped $dropped non-numeric token(s) '
+        'from "$s" — kept=${cleaned.join("|")}',
+      );
+    }
+    return cleaned;
+  }
+
   Map<String, dynamic> toRaw() => {
+    // Platform-channel payload: enums emit as their int `.value`,
+    // DateTime emits as millis-since-epoch (matching how the provider
+    // surfaces `date`), and id-list columns emit as space-separated
+    // Strings — symmetric with `_splitIds` in fromRaw.
+    "_id": id,
+    "thread_id": threadId,
     "sourceLabel": sourceLabel,
-    "date": date,
+    "date": date?.millisecondsSinceEpoch,
     "snippet": snippet,
-    "display_recipient_ids": displayRecipientIds,
+    "display_recipient_ids": displayRecipientIds?.join(' '),
     "translate_mode": translateMode,
     "snippet_type": snippetType,
     "bin_status": binStatus,
     "has_attachment": hasAttachment,
     "pa_thread": paThread,
-    "type": type,
+    "type": type?.value,
     "error": error,
     "alert_expired": alertExpired,
     "snippet_cs": snippetCs,
@@ -260,17 +370,16 @@ class AndroidSimpleConversation implements ModelInterface {
     "menustring": menustring,
     "pin_to_top": pinToTop,
     "reply_all": replyAll,
-    "safe_message": safeMessage,
-    "smsMmsType": smsMmsType,
+    "safe_message": FieldHelper.boolToInt(safeMessage),
+    "smsMmsType": smsMmsType?.index,
     "classification": classification,
     "message_count": messageCount,
     "group_snippet": groupSnippet,
-    "using_mode": usingMode,
+    "using_mode": usingMode?.value,
     "message_date": messageDate,
-    "recipient_ids": recipientIds,
+    "recipient_ids": recipientIds.join(' '),
     "pa_uuid": paUuid,
     "secret_mode": secretMode,
-    "_id": id,
     "pa_ownnumber": paOwnnumber,
   };
 }

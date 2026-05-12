@@ -1,3 +1,43 @@
+## 0.1.0
+
+### First pub.dev release
+
+`simple_sms_native` has never reached pub.dev — earlier git tags
+(0.4.0 / 0.4.1 / 0.4.3) and pubspec versions (up through 0.5.0)
+were authored ahead of the first publish. Tag history has been
+pruned and the version reset to 0.1.0 so the published series
+starts with semver storytelling that aligns with what users can
+actually `flutter pub get`.
+
+This entry stands in for everything previously developed under
+the orphan tags. Notable surface as of 0.1.0:
+
+- Typed SMS / MMS / participant / conversation models with
+  `fromRaw` / `toRaw` golden-tested against Samsung Android 16
+  ContentProvider shape, including OEM-extension columns and
+  empty-string sentinel handling.
+- Inbound + outbound messaging with cursor (`idAfter`) and
+  offset pagination on `SmsFilter`, `MmsFilter`,
+  `ConversationFilter`, `ContactFilter`.
+- `LookupService` for thread-id-by-recipients (now de-duped),
+  canonical-address-by-recipient-id, and per-MMS address rows.
+- Permissions + default-SMS-app role delegated to
+  `simple_permissions_native ^1.8.0`; provider queries via
+  `simple_query ^0.6.0`.
+
+## 0.5.0
+
+### Coordinated release
+
+Coordinated minor bump to align with the v1 publish-unblock
+sequence across the simple_* federation. Dependency constraints
+re-pinned to the freshly-coordinated cross-repo versions:
+
+- `simple_query: ^0.3.0` → `^0.6.0`
+- `simple_permissions_native: ^1.3.0` → `^1.8.0`
+
+No source changes — version bump + constraint tightening only.
+
 ## 0.4.3
 
 ### Added
@@ -103,7 +143,13 @@
   `simple_query_android` 0.2.1 (with the updated permissions pin) is
   published.
 
-## 0.1.0
+## 0.1.0 (legacy unpublished)
+
+> Note: this 0.1.0 entry predates the pub.dev publish series and is
+> retained here for archival reference only. The `## 0.1.0` heading
+> at the top of this file describes the actual first published
+> release. The work below was developed under git tags 0.1.x — 0.4.x
+> that never reached pub.dev and have since been deleted from origin.
 
 ### Added
 * `LookupService.listSms({filter, sort, limit, offset})` — typed list query for SMS, replacing raw content-URI queries from consumers. `SmsFilter` / `SmsSort` / `SortDirection` value types exposed from the top-level import.
