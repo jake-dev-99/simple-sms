@@ -84,10 +84,14 @@ class MessageLookup {
   /// set. Mirrors `Telephony.Threads.getOrCreateThreadId`. Returns
   /// null when [addresses] is empty or no row comes back.
   Future<int?> resolveThreadIdByAddresses(Iterable<String> addresses) async {
-    final cleaned = addresses
-        .map((a) => a.trim())
-        .where((a) => a.isNotEmpty)
-        .toList(growable: false);
+    // Dedupe in addition to trim/empty-filter — Telephony.Threads treats
+    // a recipient set as a *set*, so passing the same address twice would
+    // either no-op or (on some OEMs) cause a duplicate-recipient row to
+    // be allocated, splitting threads that should converge.
+    final cleaned = <String>{
+      for (final raw in addresses)
+        if (raw.trim().isNotEmpty) raw.trim(),
+    }.toList(growable: false);
     if (cleaned.isEmpty) return null;
     final params = cleaned
         .map((a) => 'recipient=${Uri.encodeQueryComponent(a)}')
