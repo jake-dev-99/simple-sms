@@ -9,9 +9,25 @@ name: CI
 # are relative (`../simple-permissions`, ...), so CI lays out
 # the sibling checkouts alongside this repo under the workspace
 # for `flutter pub get` to resolve.
+#
+# External GitHub Actions are pinned to a full commit SHA rather
+# than a floating tag (`@v4`, `@v2`). Floating tags can be
+# rewritten by the action's repo owner OR by a compromised
+# maintainer account, silently swapping in malicious code mid-CI.
+# The trailing `# v4.3.1` style comment shows the human-readable
+# version the SHA corresponds to so contributors don't have to
+# reverse-look-up the hash. Bump the pin (and the comment) in a
+# dedicated PR. SonarQube rule `githubactions:S7637` enforces
+# this gate.
 on:
   pull_request:
-    branches: [develop, staging, main]
+    branches: [main]
+  # Also run on direct pushes to main so release.yml's commit
+  # (which lands directly via deploy-key bypass, skipping the PR
+  # gate) still goes through analyze + test before any subsequent
+  # tag fires publish.yml.
+  push:
+    branches: [main]
 
 jobs:
   analyze-and-test:
@@ -20,25 +36,25 @@ jobs:
 
     steps:
       - name: Checkout simple-sms
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           path: simple-sms
 
       - name: Checkout simple-permissions (sibling dep)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: jake-dev-99/simple-permissions
           ref: main
           path: simple-permissions
 
       - name: Checkout simple-query (sibling dep)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: jake-dev-99/simple-query
           ref: main
           path: simple-query
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
@@ -58,3 +74,10 @@ jobs:
         working-directory: simple-sms
         run: flutter test
 
+      # Note: lint scripts (./scripts/lint_silent_defaults.sh,
+      # ./scripts/lint_silent_catches.sh) and validate-publishability
+      # dry-run are intentionally omitted in this Phase A revision.
+      # Both depend on develop-only files (the scripts don't exist on
+      # main yet; pubspec.yaml on main has path-deps that pub publish
+      # rejects). They land via the develop→main bridge merge in
+      # Phase B and the steps come back automatically.

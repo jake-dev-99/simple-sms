@@ -1,0 +1,151 @@
+name: Cut Release
+
+# Manual workflow that bumps the package's pubspec version, generates
+# a CHANGELOG entry from git log since the last tag, commits the bump
+# + entry, tags the commit, and pushes both. The tag push triggers
+# `publish.yml` which runs the canonical pub.dev OIDC publish flow.
+#
+# Replaces the old `auto-tag.yml`. Tags only exist now when a human
+# deliberately invokes this workflow.
+#
+# Single-package repo, so the `package` input is fixed. The shape
+# matches the multi-package siblings' release.yml for consistency.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Semver bump'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Compute next version + CHANGELOG without pushing'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  cut-release:
+    name: Cut release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.AUTO_TAG_DEPLOY_KEY }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Cut release
+        env:
+          BUMP: ${{ inputs.bump }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          pkg="simple_sms_native"
+          dir="."
+          pubspec="pubspec.yaml"
+          changelog="CHANGELOG.md"
+
+          bump_version() {
+            local v="$1" mode="$2"
+            local base="${v%%-*}"
+            IFS='.' read -r major minor patch <<< "$base"
+            case "$mode" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *) echo "::error::unknown bump: $mode"; exit 1 ;;
+            esac
+            echo "${major}.${minor}.${patch}"
+          }
+
+          current="$(grep '^version:' "$pubspec" | sed 's/version:[[:space:]]*//' | tr -d '\r')"
+          next="$(bump_version "$current" "$BUMP")"
+          tag="${pkg}-v${next}"
+
+          prev_tag="$(git tag --list "${pkg}-v*" | sort -V | tail -1 || true)"
+
+          if [ -n "$prev_tag" ]; then
+            entries="$(git log "${prev_tag}..HEAD" --pretty=format:'- %s' 2>/dev/null || true)"
+            range_label="${prev_tag}..HEAD"
+          else
+            entries="$(git log HEAD --pretty=format:'- %s' 2>/dev/null | head -50 || true)"
+            range_label="initial release (last 50 commits)"
+          fi
+          [ -z "$entries" ] && entries="- (no commits since ${prev_tag:-repo init})"
+
+          entry_block="## ${next}
+
+${entries}
+"
+
+          echo "==================== Release plan ===================="
+          echo "package:  ${pkg}"
+          echo "current:  ${current}"
+          echo "next:     ${next}"
+          echo "tag:      ${tag}"
+          echo "range:    ${range_label}"
+          echo ""
+          echo "${entries}"
+          echo "======================================================"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::Dry run — no commits, no tags, no push."
+            exit 0
+          fi
+
+          sed -i -E "s/^version:[[:space:]]*.*$/version: ${next}/" "$pubspec"
+          git add "$pubspec"
+
+          if [ -f "$changelog" ]; then
+            { printf '%s\n' "$entry_block"; cat "$changelog"; } > "${changelog}.new"
+            mv "${changelog}.new" "$changelog"
+          else
+            printf '%s\n' "$entry_block" > "$changelog"
+          fi
+          git add "$changelog"
+
+          # Defensive: if no staged changes, something went wrong upstream
+          # (file write failed, package already at the bumped version, etc.).
+          # Aborting before tag creation prevents tags pointing at a stale
+          # commit that has nothing to do with the release.
+          if git diff --cached --quiet; then
+            echo "::error::No staged changes after bump — release.yml ran but no version updates were applied. Aborting before tag creation."
+            exit 1
+          fi
+
+          git commit -m "chore(release): cut ${tag}"
+
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag already exists locally — abort"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag already exists on origin — abort"
+            exit 1
+          fi
+          git tag -a "$tag" -m "Release $tag"
+
+          git push --atomic origin HEAD:main "$tag"
+
+          echo "::notice::Pushed commit + tag $tag. publish.yml will fire."
