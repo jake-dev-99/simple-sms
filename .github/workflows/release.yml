@@ -95,10 +95,12 @@ jobs:
           fi
           [ -z "$entries" ] && entries="- (no commits since ${prev_tag:-repo init})"
 
-          entry_block="## ${next}
-
-${entries}
-"
+          # Build the CHANGELOG entry via printf rather than a multi-
+          # line bash literal — a literal with an unindented line (e.g.
+          # the trailing `"` at column 1) breaks the YAML `run: |`
+          # block-scalar indent contract and the workflow fails to
+          # parse before it can run.
+          entry_block=$(printf '## %s\n\n%s\n' "$next" "$entries")
 
           echo "==================== Release plan ===================="
           echo "package:  ${pkg}"
