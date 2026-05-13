@@ -1,0 +1,110 @@
+name: Deploy
+
+# Deploys the tagged release to pub.dev. Tags are created by the
+# "Cut Release" workflow (workflow_dispatch). There is no auto-tag
+# step; tags only exist when a human deliberately cuts one. This
+# eliminates the orphan-tag drift class that plagued the previous
+# auto-tag flow.
+#
+# subosito/flutter-action + flutter pub publish --force
+# --skip-validation. `--skip-validation` lets pub publish work for
+# Flutter packages (skips resolution which trips on `sdk: flutter`);
+# pub.dev's server still enforces version monotonicity, ownership,
+# and OIDC binding.
+
+on:
+  push:
+    tags:
+      - 'simple_sms_native-v*'
+  # Manual re-fire for an existing tag — e.g. transient pub.dev
+  # outage swallowed the original tag-push run, or an OIDC config
+  # was fixed and the publish needs to be retried against the same
+  # tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re-)deploy (e.g. simple_sms_native-v0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  # Resolve the effective tag name regardless of trigger:
+  #   push:tags         → github.ref_name
+  #   workflow_dispatch → inputs.tag
+  resolve-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - name: Resolve tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$INPUT_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$INPUT_GITHUB_REF_NAME"
+          fi
+          if ! [[ "$tag" =~ ^simple_sms_native-v ]]; then
+            echo "::error::Tag '$tag' does not match expected simple_sms_native-v* prefix."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/tags/$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice::Resolved deploy tag: $tag"
+
+  publish:
+    needs: resolve-tag
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.resolve-tag.outputs.ref }}
+          fetch-depth: 0  # full history for the ancestry check
+
+      - name: Verify tag commit is on main
+        # `on.push.tags` is not branch-scoped — a tag from any branch
+        # would otherwise trigger publish. The "Cut Release" workflow
+        # normally only tags from main, but verify independently.
+        env:
+          RESOLVED_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag $RESOLVED_TAG does not point to a commit on origin/main. Aborting publish."
+            exit 1
+          fi
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Verify pubspec version matches tag
+        env:
+          RESOLVED_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          expected="${RESOLVED_TAG#simple_sms_native-v}"
+          actual="$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::Tag ${RESOLVED_TAG} does not match pubspec version ${actual} (expected ${expected})"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Publish
+        timeout-minutes: 2
+        run: flutter pub publish --force --skip-validation

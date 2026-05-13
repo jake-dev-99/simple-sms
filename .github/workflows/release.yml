@@ -148,4 +148,4 @@ ${entries}
 
           git push --atomic origin HEAD:main "$tag"
 
-          echo "::notice::Pushed commit + tag $tag. publish.yml will fire."
+          echo "::notice::Pushed commit + tag $tag. the Deploy workflow will fire."
