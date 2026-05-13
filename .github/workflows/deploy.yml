@@ -20,6 +20,15 @@ on:
   # outage swallowed the original tag-push run, or an OIDC config
   # was fixed and the publish needs to be retried against the same
   # tag.
+  #
+  # Caveat: workflow_dispatch's OIDC token claims `ref` as the
+  # branch the workflow was launched from (typically `main`), not
+  # the tag. pub.dev's automated-publishing binding validates the
+  # `ref` claim against the configured tag pattern, so a manual
+  # re-fire MAY be rejected at the OIDC handshake even though the
+  # checkout step operates on the tag. If a re-fire fails with
+  # OAuth-fallback, the path forward is to delete + re-cut the tag
+  # via the "Cut Release" workflow rather than re-firing this manually.
   workflow_dispatch:
     inputs:
       tag:
@@ -53,8 +62,20 @@ jobs:
           else
             tag="$INPUT_GITHUB_REF_NAME"
           fi
-          if ! [[ "$tag" =~ ^simple_sms_native-v ]]; then
-            echo "::error::Tag '$tag' does not match expected simple_sms_native-v* prefix."
+          # Reject control characters (newlines, CR, etc.) outright.
+          # An attacker-controlled workflow_dispatch tag value with
+          # an embedded newline could append further key=value lines
+          # to $GITHUB_OUTPUT and override the resolved ref the
+          # checkout step uses. Belt-and-suspenders alongside the
+          # full-shape regex below.
+          if [[ "$tag" =~ [[:cntrl:]] ]]; then
+            echo "::error::Tag input contains control characters; rejected."
+            exit 1
+          fi
+          # Tag must match the package prefix AND a plausible version
+          # suffix. Anchored at both ends.
+          if ! [[ "$tag" =~ ^simple_sms_native-v[0-9A-Za-z._+-]+$ ]]; then
+            echo "::error::Tag '$tag' does not match expected simple_sms_native-v<version> shape."
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
