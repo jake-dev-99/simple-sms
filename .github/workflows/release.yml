@@ -3,7 +3,8 @@ name: Cut Release
 # Manual workflow that bumps the package's pubspec version, generates
 # a CHANGELOG entry from git log since the last tag, commits the bump
 # + entry, tags the commit, and pushes both. The tag push triggers
-# `publish.yml` which runs the canonical pub.dev OIDC publish flow.
+# the "Deploy" workflow which runs the canonical pub.dev OIDC
+# publish flow.
 #
 # Replaces the old `auto-tag.yml`. Tags only exist now when a human
 # deliberately invokes this workflow.
@@ -148,4 +149,4 @@ ${entries}
 
           git push --atomic origin HEAD:main "$tag"
 
-          echo "::notice::Pushed commit + tag $tag. publish.yml will fire."
+          echo "::notice::Pushed commit + tag $tag. The Deploy workflow will fire."
