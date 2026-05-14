@@ -163,6 +163,12 @@ jobs:
           fi
           git tag -a "$tag" -m "Release $tag"
 
-          git push --atomic origin HEAD:main "$tag"
+          # Push commit first, then tag separately. Separate pushes
+          # are required so the tag push fires a distinct `push`
+          # webhook event — the Deploy workflow's `on: push: tags:`
+          # trigger keys off that event. App-token pushes (unlike
+          # GITHUB_TOKEN) DO trigger downstream workflows.
+          git push origin HEAD:main
+          git push origin "$tag"
 
           echo "::notice::Pushed commit + tag $tag. The Deploy workflow will fire."
