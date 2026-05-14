@@ -99,8 +99,15 @@ jobs:
           # line bash literal — a literal with an unindented line (e.g.
           # the trailing `"` at column 1) breaks the YAML `run: |`
           # block-scalar indent contract and the workflow fails to
-          # parse before it can run.
-          entry_block=$(printf '## %s\n\n%s\n' "$next" "$entries")
+          # parse before it can run. `$(...)` strips trailing newlines,
+          # so append a sentinel, then remove it after capture to keep
+          # the blank line that should separate this entry from any
+          # existing CHANGELOG content.
+          entry_block="$(
+            printf '## %s\n\n%s\n\n' "$next" "$entries"
+            printf '_'
+          )"
+          entry_block="${entry_block%_}"
 
           echo "==================== Release plan ===================="
           echo "package:  ${pkg}"
