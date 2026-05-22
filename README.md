@@ -2,6 +2,8 @@
 
 A modern SMS / MMS plugin for Android that provides comprehensive messaging functionality for Flutter applications.
 
+> **Contributing / agents:** see [`AGENTS.md`](AGENTS.md) for build·test·verify, the four-package layering contract, and the "What NOT to do" rulings (Claude Code reads it via [`CLAUDE.md`](CLAUDE.md); durable rules in [`docs/memory/`](docs/memory/)). Governed by the Simple Zen SOP family (Notion).
+
 ## Features
 
 - Send and receive SMS and MMS messages
