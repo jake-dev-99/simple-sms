@@ -1,3 +1,4 @@
 - [simple-permissions exclusivity](feedback_simple_permissions_exclusivity.md) — all permission checks/requests + default-SMS-app role go through `simple_permissions_native`; never call `checkSelfPermission`/`requestPermissions`/`RoleManager` directly
 - [simple-query exclusivity](feedback_simple_query_exclusivity.md) — all Android ContentProvider reads route through `simple_query`; never drop to raw `ContentResolver` (binary bytes stream is the one exception)
 - [Correct provider per mission](feedback_correct_provider_per_mission.md) — verify URI + join columns + value shapes against real device-provider data before coding; watch `thread_id` vs `_id`, `mid`, `msg_id`, `contact_id`
+- [Release-candidate branch workflow](feedback_release_workflow.md) — release hardening on a `release/*` branch off `main`: one commit per change, no per-change PRs, a single roll-up PR into `main` is the review surface; tagging `main` triggers CD

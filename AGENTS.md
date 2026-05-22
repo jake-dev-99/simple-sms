@@ -57,13 +57,16 @@ flutter pub publish --dry-run     # keep it publishable
 
 ## Git workflow
 
-`main`-only with git tags for releases, per the Simple Zen Toolchain
-Architecture SOP (no `develop`/`staging`). One short-lived branch per work
-item; PRs target `main`. Releases are cut via `.github/workflows/release.yml`;
-see [`docs/runbooks/`](docs/runbooks/).
+`main`-only with git tags for CD releases, per the Simple Zen Toolchain
+Architecture SOP (no `develop`/`staging`). Normal work: one short-lived
+branch off `main` per work item; PRs target `main`.
 
-> **Note:** this repo historically used a `release/* → develop` flow. That
-> predates the Simple Zen standard and is being reconciled to main-only.
+**Release hardening** uses a **release-candidate branch off `main`** (e.g.
+`release/vX.Y.Z-rc.N`): granular one-commit-per-fix, **no per-change PRs**,
+and a **single roll-up PR into `main`** as the review surface. After it
+merges, **tagging `main` triggers CD** (`cut_release` / `release.yml` +
+`deploy.yml`). See [`docs/memory/feedback_release_workflow.md`](docs/memory/feedback_release_workflow.md)
+and [`docs/runbooks/`](docs/runbooks/).
 
 ## What NOT to do (binding rulings)
 
