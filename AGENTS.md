@@ -24,11 +24,12 @@ concerns — it does not reimplement them. See "What NOT to do."
 ## Layout
 
 ```
-lib/        # Dart API
+lib/         # Dart API
 android/     # Kotlin implementation (the real work — Android-only plugin)
 example/     # example app
 test/        # tests
-tool/ scripts/   # repo tooling
+tool/        # repo tooling (one-off scripts)
+scripts/     # lint scripts run by CI + the verify gate
 ```
 
 Single-package plugin (not federated). Dart `^3.7.0`, Flutter `>=3.27.0`.
@@ -65,8 +66,7 @@ branch off `main` per work item; PRs target `main`.
 `release/vX.Y.Z-rc.N`): granular one-commit-per-fix, **no per-change PRs**,
 and a **single roll-up PR into `main`** as the review surface. After it
 merges, **tagging `main` triggers CD** (`cut_release` / `release.yml` +
-`deploy.yml`). See [`docs/memory/feedback_release_workflow.md`](docs/memory/feedback_release_workflow.md)
-and [`docs/runbooks/`](docs/runbooks/).
+`deploy.yml`). See [`docs/runbooks/`](docs/runbooks/).
 
 ## What NOT to do (binding rulings)
 
@@ -78,20 +78,17 @@ and [`docs/runbooks/`](docs/runbooks/).
   permission-*aware* (documents what each method needs, surfaces
   `SecurityException`/empty results) but never *requests*. Activity/permission
   result listeners on `SimpleSmsPlugin` decline (`return false`) so
-  simple_permissions handles them. See
-  [`docs/memory/feedback_simple_permissions_exclusivity.md`](docs/memory/feedback_simple_permissions_exclusivity.md).
+  `simple_permissions_native` handles them.
 - **Don't read ContentProviders directly.** Every Android read routes
   through **`simple_query`** (Dart `SimpleQuery.instance.query(...)`; Kotlin
   `io.simplezen.simple_query.ContentQuery.query(...)`). Never drop to
   `ContentResolver.query` or bespoke cursor reads. The one documented
   exception is the **binary bytes stream** (`openInputStream` on a part) —
-  and only the bytes, not the content-type probe. See
-  [`docs/memory/feedback_simple_query_exclusivity.md`](docs/memory/feedback_simple_query_exclusivity.md).
+  and only the bytes, not the content-type probe.
 - **Don't guess provider column semantics.** Verify URI + join columns +
   value shapes against real device-provider data before coding (watch
   `thread_id` vs `_id`, `mid`, `msg_id`, `contact_id`; `?simple=true` row
-  shapes; Samsung OEM columns/types). See
-  [`docs/memory/feedback_correct_provider_per_mission.md`](docs/memory/feedback_correct_provider_per_mission.md).
+  shapes; Samsung OEM columns/types).
 - **Don't break the public Dart API without a semver-appropriate bump** —
   Unify Messages+ and pub.dev consumers depend on it.
 - **Don't push without the verify gate green.** CI is a backstop, not
