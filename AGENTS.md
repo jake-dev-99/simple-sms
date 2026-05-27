@@ -15,15 +15,22 @@ As `Type = Plugin`, the App-only gates (Linear project, Figma, consumer
 Category, GTM/brand) do **not** apply; code-quality, semver/API-stability,
 tests, and docs do.
 
-It is one of **four sister packages** under a deliberate **layering
-contract**: `simple-sms` (messaging) · `simple-permissions` (permissions +
-default-SMS role) · `simple-query` (ContentProvider reads) ·
-`simple-telephony` (calls). simple-sms depends on the other three for those
-concerns — it does not reimplement them. See "What NOT to do."
+It is one of **four sister repos** under a deliberate **layering
+contract**: **simple-sms** (messaging, pub package `simple_sms_native`) ·
+**simple-permissions** (permissions + default-SMS role, pub package
+`simple_permissions_native`) · **simple-query** (ContentProvider reads,
+pub package `simple_query`) · **simple-telephony** (calls, pub package
+`simple_telephony_native`). simple-sms depends on the other three for
+those concerns — it does not reimplement them. See "What NOT to do."
+
+> **Naming convention used in this doc:** hyphenated names refer to the
+> **repo** (`simple-sms`, GitHub); underscored names refer to the
+> **pub package** the repo publishes (`simple_sms_native`, pub.dev).
+> Imports and `pubspec.yaml` dependencies use the underscored form.
 
 ## Layout
 
-```
+```text
 lib/         # Dart API
 android/     # Kotlin implementation (the real work — Android-only plugin)
 example/     # example app
@@ -32,7 +39,10 @@ tool/        # repo tooling (one-off scripts)
 scripts/     # lint scripts run by CI + the verify gate
 ```
 
-Single-package plugin (not federated). Dart `^3.7.0`, Flutter `>=3.27.0`.
+Single-package plugin (not federated — the four sister repos above are
+each their own published package; "federation" here describes the
+inter-package layering contract, not Flutter's federated-plugin
+mechanism). Dart `^3.7.0`, Flutter `>=3.27.0`.
 
 ## Build · test · verify
 
@@ -65,8 +75,10 @@ branch off `main` per work item; PRs target `main`.
 **Release hardening** uses a **release-candidate branch off `main`** (e.g.
 `release/vX.Y.Z-rc.N`): granular one-commit-per-fix, **no per-change PRs**,
 and a **single roll-up PR into `main`** as the review surface. After it
-merges, **tagging `main` triggers CD** (`cut_release` / `release.yml` +
-`deploy.yml`). See [`docs/runbooks/`](docs/runbooks/).
+merges, the **Cut Release** workflow ([`release.yml`](.github/workflows/release.yml),
+manual `workflow_dispatch`) tags the commit, and the resulting tag push
+fires [`deploy.yml`](.github/workflows/deploy.yml) (OIDC pub.dev publish).
+See [`docs/runbooks/`](docs/runbooks/) and [`doc/RELEASE.md`](doc/RELEASE.md).
 
 ## What NOT to do (binding rulings)
 
