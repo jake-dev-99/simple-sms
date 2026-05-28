@@ -1,6 +1,8 @@
-# simple_sms
+# simple_sms_native
 
 A modern SMS / MMS plugin for Android that provides comprehensive messaging functionality for Flutter applications.
+
+> **Contributing / agents:** see [`AGENTS.md`](AGENTS.md) for build·test·verify, the four-package layering contract, and the "What NOT to do" rulings (Claude Code reads it via [`CLAUDE.md`](CLAUDE.md)). Governed by the Simple Zen SOP family (Notion).
 
 ## Features
 
@@ -25,7 +27,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  simple_sms: ^0.0.1
+  simple_sms_native: ^0.1.0
 ```
 
 ### Permissions
@@ -77,7 +79,7 @@ final observer = SimplePermissionsNative.instance.observe(const [
 ### Initialize
 
 ```dart
-import 'package:simple_sms/simple_sms.dart';
+import 'package:simple_sms_native/simple_sms_native.dart';
 
 void main() {
   Android.initialize(
@@ -97,7 +99,7 @@ void main() {
 ```dart
 final result = await Android.instance.messaging.sendMessage(
   message: OutboundMessage(
-    body: 'Hello from simple_sms!',
+    body: 'Hello from simple_sms_native!',
     addresses: {'+15551234567'},
     attachmentPaths: null,
   ),
