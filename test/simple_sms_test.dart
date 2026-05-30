@@ -295,6 +295,55 @@ void main() {
       expect(missingAttachments.attachmentPaths, isNull);
       expect(missingAttachments.addresses, {'+15559999999'});
     });
+
+    test('subscriptionId round-trips through toJson/fromJson', () {
+      // SIM-606: the picker chooses which SIM a multi-SIM send originates
+      // from. `OutboundMessagingHandler` reads `message["subscriptionId"]`
+      // to build an SmsManager.createForSubscriptionId(...); the Dart field
+      // is what lets a caller actually set it.
+      final message = OutboundMessage(
+        body: 'from SIM 2',
+        addresses: {'+15551234567'},
+        attachmentPaths: null,
+        subscriptionId: 7,
+      );
+
+      final json = message.toJson();
+      expect(json['subscriptionId'], 7);
+
+      final restored = OutboundMessage.fromJson(json);
+      expect(restored.subscriptionId, 7);
+    });
+
+    test('subscriptionId defaults to null (system default SMS SIM)', () {
+      final message = OutboundMessage(
+        body: 'default sim',
+        addresses: {'+15551234567'},
+        attachmentPaths: null,
+      );
+      expect(message.subscriptionId, isNull);
+      // Key is still emitted (explicit null) so the native side reads a
+      // present-but-null value rather than a missing key.
+      expect(message.toJson().containsKey('subscriptionId'), isTrue);
+      expect(message.toJson()['subscriptionId'], isNull);
+    });
+
+    test('fromJson coerces a JSON num subscriptionId to int', () {
+      // jsonDecode surfaces numbers as either int or double depending on
+      // the encoder; `(num?).toInt()` normalises both without throwing.
+      final fromDouble = OutboundMessage.fromJson({
+        'body': 'x',
+        'recipients': ['+15551234567'],
+        'subscriptionId': 3.0,
+      });
+      expect(fromDouble.subscriptionId, 3);
+
+      final missing = OutboundMessage.fromJson({
+        'body': 'x',
+        'recipients': ['+15551234567'],
+      });
+      expect(missing.subscriptionId, isNull);
+    });
   });
 
   group('FieldHelper (via Sms.fromRaw)', () {

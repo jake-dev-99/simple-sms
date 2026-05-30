@@ -28,11 +28,23 @@ class OutboundMessage {
   /// When non-null and non-empty, forces MMS delivery.
   final Set<String>? attachmentPaths;
 
+  /// Telephony subscription (SIM) to send from — the `subscriptionId` of a
+  /// `SimCard` as enumerated by `simple_telephony_native.listSimCards()`.
+  ///
+  /// When null, the native layer falls back to
+  /// `SmsManager.getDefaultSmsSubscriptionId()` (the system default SMS
+  /// SIM), preserving single-SIM behaviour. On a multi-SIM device, set
+  /// this to route the send through a specific line:
+  /// `OutboundMessagingHandler` reads it and builds an
+  /// `SmsManager.createForSubscriptionId(...)`.
+  final int? subscriptionId;
+
   OutboundMessage({
     required this.body,
     required this.addresses,
     required this.attachmentPaths,
     this.conversationId,
+    this.subscriptionId,
   });
 
   /// Creates an [OutboundMessage] from a JSON map.
@@ -46,6 +58,7 @@ class OutboundMessage {
     attachmentPaths: _asStringSet(json['attachmentPaths']),
     addresses: _asStringSet(json['recipients']) ?? const <String>{},
     conversationId: json['conversationId']?.toString(),
+    subscriptionId: (json['subscriptionId'] as num?)?.toInt(),
   );
 
   /// Converts this message to a JSON map for platform channel transport.
@@ -59,6 +72,7 @@ class OutboundMessage {
     'attachmentPaths': attachmentPaths?.toList(),
     'recipients': addresses.toList(),
     'conversationId': conversationId,
+    'subscriptionId': subscriptionId,
   };
 
   /// Coerces an on-wire collection into a `Set<String>`, tolerating nulls,
