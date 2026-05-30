@@ -1,3 +1,19 @@
+## 0.2.0
+
+### Added
+
+- `OutboundMessage.subscriptionId` (`int?`) — selects which telephony
+  subscription (SIM) an outbound SMS/MMS is sent from. The native
+  `OutboundMessagingHandler` already read `message["subscriptionId"]` to
+  build `SmsManager.createForSubscriptionId(...)`; this exposes the Dart
+  field so callers can actually set it. When null, behaviour is unchanged
+  (system default SMS SIM via `SmsManager.getDefaultSmsSubscriptionId()`).
+
+  SIM *enumeration* for a send picker is intentionally **not** added here —
+  that lives in `simple_telephony_native.listSimCards()` (see the
+  "enumeration moved out" note in `android.dart`). This plugin owns the
+  outbound send; it takes the chosen `subscriptionId` as input.
+
 ## 0.1.0
 
 ### First pub.dev release
