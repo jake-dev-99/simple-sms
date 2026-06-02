@@ -8,6 +8,7 @@ import com.google.android.mms.pdu_alt.PduComposer
 import com.google.android.mms.pdu_alt.PduParser
 import com.google.android.mms.pdu_alt.PduPart
 import com.google.android.mms.pdu_alt.SendReq
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,6 +63,25 @@ class PduCodecHarnessTest {
         assertTrue(
             "expected SendReq from the round-trip, got ${parsed?.javaClass?.simpleName}",
             parsed is SendReq,
+        )
+
+        // Beyond the type check, assert a few fields survive the
+        // compose -> parse pipeline so a subtle codec regression is caught —
+        // without promoting this into a full byte-for-byte golden (that's L2).
+        parsed as SendReq
+        assertEquals(
+            "recipient should round-trip",
+            "+15555550100",
+            parsed.to?.firstOrNull()?.string,
+        )
+        assertEquals("subject should round-trip", "golden-harness", parsed.subject?.string)
+        val parsedBody = parsed.body
+        assertNotNull("parsed SendReq should carry a body", parsedBody)
+        assertEquals("body should have one part", 1, parsedBody!!.partsNum)
+        assertEquals(
+            "part content-type should round-trip",
+            "text/plain",
+            parsedBody.getPart(0).contentType?.let { String(it) },
         )
     }
 }
