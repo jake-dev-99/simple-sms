@@ -38,6 +38,7 @@ class OutboundErrorMappingTest {
         assertEquals(ERR_ATTACHMENT_UNREADABLE, code)
         assertTrue("message names the path", message.contains("/sdcard/p.jpg"))
         // details carry the path + underlying cause for the Dart side.
+        assertTrue("details should be a map", details is Map<*, *>)
         val map = details as Map<*, *>
         assertEquals("/sdcard/p.jpg", map["attachmentPath"])
         assertEquals("disk gone", map["cause"])
