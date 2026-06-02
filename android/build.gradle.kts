@@ -63,6 +63,18 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "30.0.14904198"
+
+    // Phase 1 safety net (UNFY-118): JVM unit tests via Robolectric so the
+    // pdu_alt codec + first-party handlers can be exercised in CI without an
+    // emulator. `isIncludeAndroidResources` lets Robolectric load the merged
+    // manifest/resources; `isReturnDefaultValues` stubs un-shadowed framework
+    // calls.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -137,6 +149,16 @@ dependencies {
 
     // Apache Commons Codec
     implementation("commons-codec:commons-codec:1.18.0")
+
+    // ── Phase 1 native unit-test net (UNFY-118) ──────────────────────────
+    // Robolectric runs the pdu_alt codec + handler logic on a plain JVM
+    // (PduParser needs android.util.Log; PduComposer needs Context/TextUtils
+    // — all Robolectric-shadowed). mockk is for the handler leaves (L4/L5)
+    // mocking ContentResolver / SmsManager / the Flutter MethodChannel.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("io.mockk:mockk:1.13.13")
 }
 
 // Java compilation is enabled only for the Klinker package path specified in sourceSets above.
