@@ -63,6 +63,20 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "30.0.14904198"
+
+    // Phase 1 safety net (UNFY-118): JVM unit tests via Robolectric so the
+    // pdu_alt codec + first-party handlers can be exercised on a plain JVM,
+    // no emulator. CI wiring to actually run these is L6 (UNFY-149).
+    // `isIncludeAndroidResources` lets Robolectric load the merged
+    // manifest/resources. (Deliberately no `isReturnDefaultValues` — that
+    // governs the non-Robolectric mockable-android.jar path; under
+    // RobolectricTestRunner un-shadowed framework calls should fail loudly
+    // rather than silently return defaults.)
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -137,6 +151,15 @@ dependencies {
 
     // Apache Commons Codec
     implementation("commons-codec:commons-codec:1.18.0")
+
+    // ── Phase 1 native unit-test net (UNFY-118) ──────────────────────────
+    // Robolectric runs the pdu_alt codec + handler logic on a plain JVM
+    // (PduParser needs android.util.Log; PduComposer needs Context/TextUtils
+    // — all Robolectric-shadowed). Mocking libs (mockk) are added by the
+    // handler leaves L4/L5 when first used, so declared == used per PR.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
 }
 
 // Java compilation is enabled only for the Klinker package path specified in sourceSets above.
