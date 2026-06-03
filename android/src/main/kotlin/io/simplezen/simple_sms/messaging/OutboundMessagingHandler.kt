@@ -106,6 +106,33 @@ internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when
     )
 }
 
+/** Whether an outbound message is dispatched as SMS or MMS. */
+internal enum class OutboundRoute { SMS, MMS }
+
+/**
+ * Decide the dispatch route for an outbound message.
+ *
+ * MMS when the message carries attachments OR has multiple recipients;
+ * otherwise SMS. Single-recipient text-only sends (any length) go SMS —
+ * [sendSms] is multipart-aware via `divideMessage`, so long bodies stay on the
+ * SMS path and our [OutboundMessagingReceiver] hears the result.
+ *
+ * (Pre-fix, `body.length >= 160` was also routed through MMS, which Klinker
+ * then internally demoted back to SMS using its OWN sent-intent action rather
+ * than our `SENTSMS_ACTION` — so the result broadcast was never heard and the
+ * message hung on "Sending…", plus orphan empty MMS rows were written. Keeping
+ * the SMS/MMS decision here length-independent is what fixed that.)
+ */
+internal fun routeMessage(hasAttachments: Boolean, recipientCount: Int): OutboundRoute =
+    if (hasAttachments || recipientCount > 1) OutboundRoute.MMS else OutboundRoute.SMS
+
+/**
+ * The subscription id to send on (Android S+): the caller's explicit choice
+ * when provided, else the system default-SMS subscription via [default].
+ */
+internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
+    explicit ?: default()
+
 class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     private lateinit var context: Context // Use application context for receivers
     private var messageStatusReceiver: OutboundMessagingReceiver? = null
@@ -174,58 +201,42 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 val smsManager: SmsManager =
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val subIdToUse =
-                                    requestDetails.subscriptionId
-                                            ?: SmsManager.getDefaultSmsSubscriptionId()
+                                    selectSubscriptionId(
+                                            requestDetails.subscriptionId,
+                                            SmsManager::getDefaultSmsSubscriptionId,
+                                    )
                             context.getSystemService(SmsManager::class.java)
                                     .createForSubscriptionId(subIdToUse)
                         } else {
                             @Suppress("DEPRECATION") SmsManager.getDefault()
                         }
 
-                // Store details with the Flutter result callback.
+                // SMS-vs-MMS routing lives in [routeMessage] (the long-body
+                // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
+                // hang + orphan-MMS-rows bug — is documented there).
                 //
-                // Routing:
-                //   - Has attachments OR multiple recipients     → MMS
-                //   - Single recipient + text-only (any length)  → SMS (multipart-aware)
-                //
-                // Pre-fix the second branch routed `body.length >= 160`
-                // through MMS too. That dispatched to Klinker
-                // `Transaction.sendNewMessage`, which then internally
-                // demoted text-only single-recipient sends back to SMS
-                // — using Klinker's OWN sentPI action
-                // (`<package>.SMS_SENT`), not our
-                // `SENTSMS_ACTION = "com.simplezen.simple_sms.SMS_SENT"`.
-                // The SMS sent successfully but our
-                // [OutboundMessagingReceiver] never heard the result,
-                // so the message stayed stuck on "Sending…" forever.
-                // Plus Klinker's pre-prep wrote orphan MMS rows to
-                // the provider for sends that ultimately went out as
-                // SMS (visible as empty `MMS-NNN` rows in the
-                // converter's "persisted EMPTY" warnings).
-                //
-                // [sendSms] now uses `divideMessage` + the multipart
-                // SmsManager API for bodies that exceed a single
-                // segment, so long single-recipient text bypasses
-                // Klinker entirely and our receiver fires correctly.
-                // Send-path error routing: sendSms / sendMms throw on
-                // failure (no Boolean return — exceptions are the sole
-                // failure channel). The single catch + mapSendException
-                // helper translates each typed exception into the
-                // matching ERR_* code. Add new error codes by extending
-                // mapSendException, NOT by adding catch arms here.
+                // Send-path error routing: sendSms / sendMms throw on failure
+                // (no Boolean return — exceptions are the sole failure channel).
+                // The single catch + mapSendException helper translates each
+                // typed exception into the matching ERR_* code. Add new error
+                // codes by extending mapSendException, NOT by adding catch arms
+                // here.
                 //
                 // Successful sends are ACKed asynchronously by the
-                // OutboundMessagingReceiver broadcast handler, which
-                // reads channelResultMap[msgId].flutterResult.
+                // OutboundMessagingReceiver broadcast handler, which reads
+                // channelResultMap[msgId].flutterResult.
                 try {
-                    if (requestDetails.attachmentPaths != null &&
-                            requestDetails.attachmentPaths.isNotEmpty()
-                    ) {
-                        sendMms(smsManager = smsManager, requestDetails = requestDetails)
-                    } else if (requestDetails.addresses.size > 1) {
-                        sendMms(smsManager = smsManager, requestDetails = requestDetails)
-                    } else {
-                        sendSms(smsManager = smsManager, requestDetails = requestDetails)
+                    val route =
+                            routeMessage(
+                                    hasAttachments =
+                                            !requestDetails.attachmentPaths.isNullOrEmpty(),
+                                    recipientCount = requestDetails.addresses.size,
+                            )
+                    when (route) {
+                        OutboundRoute.MMS ->
+                                sendMms(smsManager = smsManager, requestDetails = requestDetails)
+                        OutboundRoute.SMS ->
+                                sendSms(smsManager = smsManager, requestDetails = requestDetails)
                     }
                 } catch (e: Exception) {
                     channelResultMap.remove(msgId)
