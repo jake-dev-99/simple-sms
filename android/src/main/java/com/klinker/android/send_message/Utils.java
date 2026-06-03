@@ -1,13 +1,11 @@
 package com.klinker.android.send_message;
 
 import android.Manifest;
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.ConnectivityManager;
-import android.net.Network;
 import android.net.Uri;
 import android.os.Build;
 import android.preference.PreferenceManager;
@@ -23,8 +21,6 @@ import android.util.Log;
 import androidx.annotation.RequiresPermission;
 import androidx.core.app.ActivityCompat;
 
-import com.android.mms.service_alt.MmsNetworkManager;
-import com.android.mms.service_alt.exception.MmsNetworkException;
 import com.google.android.mms.util_alt.SqliteWrapper;
 
 import java.io.IOException;
@@ -96,51 +92,8 @@ public class Utils {
     }
 
     public static <T> T ensureRouteToMmsNetwork(Context context, String url, String proxy, Task<T> task) throws IOException {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            return ensureRouteToMmsNetworkMarshmallow(context, task);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            return ensureRouteToMmsNetworkLollipop(context, task);
-        } else {
-            ensureRouteToHost(context, url, proxy);
-            return task.run();
-        }
-    }
-
-    @TargetApi(Build.VERSION_CODES.M)
-    private static <T> T ensureRouteToMmsNetworkMarshmallow(Context context, Task<T> task) throws IOException {
-        final MmsNetworkManager networkManager = new MmsNetworkManager(context.getApplicationContext(), Utils.getDefaultSubscriptionId());
-        final ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        Network network = null;
-        try {
-            network = networkManager.acquireNetwork();
-            connectivityManager.bindProcessToNetwork(network);
-            return task.run();
-        } catch (MmsNetworkException e) {
-            throw new IOException(e);
-        } finally {
-            if (network != null) {
-                connectivityManager.bindProcessToNetwork(null);
-            }
-            networkManager.releaseNetwork();
-        }
-    }
-
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private static <T> T ensureRouteToMmsNetworkLollipop(Context context, Task<T> task) throws IOException {
-        final MmsNetworkManager networkManager = new MmsNetworkManager(context.getApplicationContext(), Utils.getDefaultSubscriptionId());
-        Network network = null;
-        try {
-            network = networkManager.acquireNetwork();
-            ConnectivityManager.setProcessDefaultNetwork(network);
-            return task.run();
-        } catch (MmsNetworkException e) {
-            throw new IOException(e);
-        } finally {
-            if (network != null) {
-                ConnectivityManager.setProcessDefaultNetwork(null);
-            }
-            networkManager.releaseNetwork();
-        }
+        ensureRouteToHost(context, url, proxy);
+        return task.run();
     }
 
     /**

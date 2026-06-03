@@ -74,7 +74,6 @@ public class Transaction {
 
     public static String NOTIFY_SMS_FAILURE = ".NOTIFY_SMS_FAILURE";
     public static final String MMS_ERROR = "com.klinker.android.send_message.MMS_ERROR";
-    public static final String REFRESH = "com.klinker.android.send_message.REFRESH";
     public static final String NOTIFY_OF_DELIVERY = "com.klinker.android.send_message.NOTIFY_DELIVERY";
     public static final String NOTIFY_OF_MMS = "com.klinker.android.messaging.NEW_MMS_DOWNLOADED";
 
