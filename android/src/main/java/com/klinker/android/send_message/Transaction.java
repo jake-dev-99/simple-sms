@@ -460,6 +460,16 @@ public class Transaction {
         sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri);
     }
 
+    /**
+     * @deprecated Dead since the Phase-3 outbound port (Linear UNFY-120)
+     *     removed its only callers — the pre-Lollipop and {@code service_alt}
+     *     send branches in {@link #sendMmsMessage}. The live outbound path
+     *     composes its own PDU in {@code sendMmsThroughSystem}/{@code buildPdu}.
+     *     Scheduled for removal in the UNFY-120 dead-method sweep (together with
+     *     {@code insert} and the {@code MMS_PROGRESS}/{@code REFRESH} constants).
+     *     Do not add new callers.
+     */
+    @Deprecated
     public static MessageInfo getBytes(Context context, boolean saveMessage, String fromAddress,
                                        String[] recipients, MMSPart[] parts, String subject)
                 throws MmsException {
@@ -777,6 +787,8 @@ public class Transaction {
         return returnArray;
     }
 
+    // Dead since the Phase-3 outbound port (UNFY-120): reachable only from the
+    // now-deprecated getBytes. Scheduled for removal in the dead-method sweep.
     private static Uri insert(Context context, String[] to, MMSPart[] parts, String subject) {
         try {
             Uri destUri = Uri.parse("content://mms");
