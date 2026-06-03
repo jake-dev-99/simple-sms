@@ -32,16 +32,11 @@ import android.telephony.SmsMessage;
 import android.text.TextUtils;
 
 import com.android.mms.MmsConfig;
-import com.android.mms.service_alt.MmsNetworkManager;
-import com.android.mms.service_alt.MmsRequestManager;
-import com.android.mms.service_alt.SendRequest;
 import com.google.android.mms.util_alt.SqliteWrapper;
 
 import android.util.Log;
 import android.widget.Toast;
 import com.android.mms.dom.smil.parser.SmilXmlSerializer;
-import com.android.mms.transaction.MmsMessageSender;
-import com.android.mms.transaction.ProgressCallbackEntity;
 import com.android.mms.util.DownloadManager;
 import com.android.mms.util.RateController;
 import com.google.android.mms.*;
@@ -416,15 +411,6 @@ public class Transaction {
 
     private void sendMmsMessage(String text, String fromAddress, String[] addresses, Bitmap[] image,
                                 String[] imageNames, List<Message.Part> parts, String subject, boolean save, Uri messageUri) {
-        // merge the string[] of addresses into a single string so they can be inserted into the database easier
-        String address = "";
-
-        for (int i = 0; i < addresses.length; i++) {
-            address += addresses[i] + " ";
-        }
-
-        address = address.trim();
-
         // create the parts to send
         ArrayList<MMSPart> data = new ArrayList<MMSPart>();
 
@@ -464,72 +450,14 @@ public class Transaction {
             data.add(part);
         }
 
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {
-            MessageInfo info = null;
-
-            try {
-                info = getBytes(context, saveMessage, fromAddress, address.split(" "),
-                        data.toArray(new MMSPart[data.size()]), subject);
-                MmsMessageSender sender = new MmsMessageSender(context, info.location, info.bytes.length);
-                sender.sendMessage(info.token);
-
-                IntentFilter filter = new IntentFilter();
-                filter.addAction(ProgressCallbackEntity.PROGRESS_STATUS_ACTION);
-                BroadcastReceiver receiver = new BroadcastReceiver() {
-
-                    @Override
-                    public void onReceive(Context context, Intent intent) {
-                        int progress = intent.getIntExtra("progress", -3);
-                        Log.v("sending_mms_library", "progress: " + progress);
-
-                        // send progress broadcast to update ui if desired...
-                        Intent progressIntent = new Intent(MMS_PROGRESS);
-                        progressIntent.putExtra("progress", progress);
-                        BroadcastUtils.sendExplicitBroadcast(context, progressIntent, MMS_PROGRESS);
-
-                        if (progress == ProgressCallbackEntity.PROGRESS_COMPLETE) {
-                            BroadcastUtils.sendExplicitBroadcast(context, new Intent(), REFRESH);
-
-                            try {
-                                context.unregisterReceiver(this);
-                            } catch (Exception e) {
-                                // TODO fix me
-                                // receiver is not registered force close error... hmm.
-                            }
-                        } else if (progress == ProgressCallbackEntity.PROGRESS_ABORT) {
-                            // This seems to get called only after the progress has reached 100 and
-                            // then something else goes wrong, so here we will try and send again
-                            // and see if it works
-                            Log.v("sending_mms_library", "sending aborted for some reason...");
-                        }
-                    }
-
-                };
-
-                context.registerReceiver(receiver, filter);
-            } catch (Throwable e) {
-                Log.e(TAG, "exception thrown", e);
-            }
-        } else {
-            Log.v(TAG, "using lollipop method for sending sms");
-
-            if (settings.getUseSystemSending()) {
-                Log.v(TAG, "using system method for sending");
-                sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri);
-            } else {
-                try {
-                    MessageInfo info = getBytes(context, saveMessage, fromAddress, address.split(" "),
-                            data.toArray(new MMSPart[data.size()]), subject);
-                    MmsRequestManager requestManager = new MmsRequestManager(context, info.bytes);
-                    SendRequest request = new SendRequest(requestManager, Utils.getDefaultSubscriptionId(),
-                            info.location, null, null, null, null);
-                    MmsNetworkManager manager = new MmsNetworkManager(context, Utils.getDefaultSubscriptionId());
-                    request.execute(context, manager);
-                } catch (Exception e) {
-                    Log.e(TAG, "error sending mms", e);
-                }
-            }
-        }
+        // minSdk is 30 and the simple-sms handler forces
+        // Settings.useSystemSending = true, so the only reachable outbound
+        // path is the platform SmsManager send. The Phase-3 outbound port
+        // removed the two dead branches that used to wrap this call:
+        //   - the pre-Lollipop (<= KITKAT) MmsMessageSender path, and
+        //   - the legacy service_alt non-system transport path
+        // (both unreachable). Only sendMmsThroughSystem remains.
+        sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri);
     }
 
     public static MessageInfo getBytes(Context context, boolean saveMessage, String fromAddress,
