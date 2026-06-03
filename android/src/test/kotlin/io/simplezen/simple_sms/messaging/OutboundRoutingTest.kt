@@ -3,9 +3,6 @@ package io.simplezen.simple_sms.messaging
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 /**
  * Phase 3 (outbound port) — pins the SMS-vs-MMS routing and multi-SIM
@@ -14,9 +11,11 @@ import org.robolectric.annotation.Config
  * previously inline and untestable (entangled with static SmsManager/Telephony
  * + the Flutter Result); pinning them is the outbound net for the live
  * Transaction.java trim that follows (deferred L4 piece, UNFY-147 / UNFY-120).
+ *
+ * Plain JUnit (no Robolectric): both functions are pure Kotlin with no Android
+ * dependencies, and they live alongside `const val` error codes that inline at
+ * compile time — so loading them needs no Android runtime.
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
 class OutboundRoutingTest {
 
     @Test
