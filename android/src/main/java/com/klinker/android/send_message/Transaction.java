@@ -455,8 +455,18 @@ public class Transaction {
         // path is the platform SmsManager send. The Phase-3 outbound port
         // removed the two dead branches that used to wrap this call:
         //   - the pre-Lollipop (<= KITKAT) MmsMessageSender path, and
-        //   - the legacy service_alt non-system transport path
-        // (both unreachable). Only sendMmsThroughSystem remains.
+        //   - the legacy service_alt non-system transport path.
+        //
+        // The non-system transport is gone, so useSystemSending=false can no
+        // longer be honored. Fail fast rather than silently routing through the
+        // system transport anyway — that would let the removed capability drift
+        // into a surprising no-op for a direct Transaction caller. (In practice
+        // the simple-sms handler always sets it true, so this never throws.)
+        if (!settings.getUseSystemSending()) {
+            throw new UnsupportedOperationException(
+                    "Non-system MMS sending was removed in the Phase-3 outbound port; "
+                            + "Settings.useSystemSending=false is no longer supported.");
+        }
         sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri);
     }
 
