@@ -38,7 +38,6 @@
         tools:ignore="UnusedAttribute" />
 
     <application>
-        <service android:name="com.android.mms.transaction.TransactionService"/>
 
         <receiver
             android:name="io.simplezen.simple_sms.messaging.OutboundMessagingReceiver"
