@@ -150,10 +150,22 @@ class PduComposeGoldenTest {
             String(body.getPart(0).contentType, Charsets.UTF_8),
         )
         // The text and image parts survive with their content-types.
-        val contentTypes =
-            (0 until body.partsNum).map { String(body.getPart(it).contentType, Charsets.UTF_8) }
+        val parts = (0 until body.partsNum).map { body.getPart(it) }
+        val contentTypes = parts.map { String(it.contentType, Charsets.UTF_8) }
         assertTrue("text/plain part present", contentTypes.contains("text/plain"))
         assertTrue("image/jpeg part present", contentTypes.contains("image/jpeg"))
+
+        // Part payloads survive the parse path too — extends coverage beyond
+        // structure/content-type to the parser's data decode (catches a
+        // parse-side data regression the byte-exact compose golden would miss).
+        val textPart = parts.first { String(it.contentType, Charsets.UTF_8) == "text/plain" }
+        assertEquals("text payload preserved", "hello golden", String(textPart.data, Charsets.UTF_8))
+        val imgPart = parts.first { String(it.contentType, Charsets.UTF_8) == "image/jpeg" }
+        assertArrayEquals(
+            "image bytes preserved",
+            byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()),
+            imgPart.data,
+        )
     }
 
     private fun hexToBytes(hex: String): ByteArray {
