@@ -128,7 +128,10 @@ class PduComposeGoldenTest {
         parsed as SendReq
 
         assertEquals("message-type", PduHeaders.MESSAGE_TYPE_SEND_REQ, parsed.messageType)
-        assertEquals("transaction-id", fixedTransactionId, String(parsed.transactionId))
+        // Decode with an explicit charset — String(ByteArray) on the JVM would
+        // otherwise use the platform default; the wire fields are ASCII so the
+        // bytes are unaffected, but pinning UTF-8 keeps the test environment-proof.
+        assertEquals("transaction-id", fixedTransactionId, String(parsed.transactionId, Charsets.UTF_8))
         assertEquals("date", fixedDateSeconds, parsed.date)
         assertEquals("subject", "golden-compose", parsed.subject?.string)
         assertEquals(
@@ -144,16 +147,20 @@ class PduComposeGoldenTest {
         assertEquals(
             "part 0 is the SMIL document",
             ContentType.APP_SMIL,
-            String(body.getPart(0).contentType),
+            String(body.getPart(0).contentType, Charsets.UTF_8),
         )
         // The text and image parts survive with their content-types.
-        val contentTypes = (0 until body.partsNum).map { String(body.getPart(it).contentType) }
+        val contentTypes =
+            (0 until body.partsNum).map { String(body.getPart(it).contentType, Charsets.UTF_8) }
         assertTrue("text/plain part present", contentTypes.contains("text/plain"))
         assertTrue("image/jpeg part present", contentTypes.contains("image/jpeg"))
     }
 
     private fun hexToBytes(hex: String): ByteArray {
         val clean = hex.filter { !it.isWhitespace() }
+        require(clean.length % 2 == 0) {
+            "GOLDEN_HEX must be an even number of hex digits, got ${clean.length}"
+        }
         return ByteArray(clean.length / 2) {
             clean.substring(it * 2, it * 2 + 2).toInt(16).toByte()
         }
