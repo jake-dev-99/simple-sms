@@ -40,11 +40,13 @@ jobs:
       - name: Checkout simple-sms
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           path: simple-sms
 
       - name: Checkout simple-permissions (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           repository: jake-dev-99/simple-permissions
           ref: main
           path: simple-permissions
@@ -52,6 +54,7 @@ jobs:
       - name: Checkout simple-query (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           repository: jake-dev-99/simple-query
           ref: main
           path: simple-query
@@ -105,11 +108,13 @@ jobs:
       - name: Checkout simple-sms
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           path: simple-sms
 
       - name: Checkout simple-permissions (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           repository: jake-dev-99/simple-permissions
           ref: main
           path: simple-permissions
@@ -117,6 +122,7 @@ jobs:
       - name: Checkout simple-query (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
           repository: jake-dev-99/simple-query
           ref: main
           path: simple-query
