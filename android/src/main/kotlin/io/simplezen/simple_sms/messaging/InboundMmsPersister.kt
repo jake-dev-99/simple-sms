@@ -27,13 +27,17 @@ import io.simplezen.simple_sms.queries.QueryObj
  *
  * Arg order matters: `MESSAGE_TYPE` is first (binds the leading `m_type=?`),
  * then the optional `tr_id` / `m_id` args in predicate order. At least one of
- * [transactionId] / [messageId] must be non-null — the caller guards this; an
- * empty predicate list would yield invalid `AND ()` SQL.
+ * [transactionId] / [messageId] must be non-null — enforced by `require` below
+ * (the caller also guards it); an empty predicate list would otherwise yield
+ * invalid `m_type=? AND ()` SQL.
  */
 internal fun buildOrphanNotificationIndSelection(
     transactionId: String?,
     messageId: String?,
 ): Pair<String, Array<String>> {
+    require(transactionId != null || messageId != null) {
+        "buildOrphanNotificationIndSelection needs at least one of transactionId/messageId"
+    }
     val predicates = mutableListOf<String>()
     val args = mutableListOf<String>()
     args += PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND.toString()

@@ -50,6 +50,13 @@ class OrphanCleanupSelectionTest {
         assertEquals(listOf(mType, "MID-1"), args.toList())
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun bothNull_failsFast_ratherThanEmittingInvalidSql() {
+        // internal + reusable: enforce the precondition loudly rather than
+        // emit `m_type=? AND ()` (invalid SQL). The call site also guards this.
+        buildOrphanNotificationIndSelection(null, null)
+    }
+
     @Test
     fun alwaysConstrainedToNotificationInd_soRetrieveConfIsNeverDeleted() {
         // The leading m_type arg pins m_type=130 (NotificationInd); the freshly
