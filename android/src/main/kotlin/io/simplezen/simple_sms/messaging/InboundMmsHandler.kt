@@ -18,6 +18,32 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
+ * Fill in Verizon's *template* MMSC content-location.
+ *
+ * Verizon's MMSC sends a NotificationInd whose `contentLocation` ends with an
+ * empty `?message-id=` query parameter the client is expected to fill in, e.g.
+ * `http://63.59.x.x/servlets/mms?message-id=`. Without a value the MMSC returns
+ * an error (or never produces a result broadcast on some Android versions). We
+ * append the WAP-PUSH `transactionId` — the only message-unique token our PDU
+ * surface exposes (NotificationInd carries no X-Mms-Message-ID header in
+ * `pdu_alt`); Verizon parses the query loosely and uses any unique value to
+ * disambiguate pending downloads.
+ *
+ * Narrow heuristic: only touch URLs that look like a Verizon template (end with
+ * `?message-id=`, or a bare `=`). Carriers that send a complete URL (T-Mobile,
+ * AT&T, Google Fi) are unaffected — they either don't match, or their MMSC
+ * ignores the trailing token. (Removing this concat — audit S0 #2 / PR #59, on
+ * the theoretical grounds it would corrupt T-Mobile — empirically broke Verizon
+ * inbound MMS; this is the restored, scoped form.)
+ */
+internal fun resolveVerizonDownloadUrl(contentLocation: String, transactionId: String): String =
+    if (contentLocation.endsWith("?message-id=") || contentLocation.endsWith("=")) {
+        contentLocation + transactionId
+    } else {
+        contentLocation
+    }
+
+/**
  * WAP_PUSH receiver for inbound MMS.
  *
  * Lifecycle (mirrors AOSP `ReceiveMmsMessageAction`):
@@ -125,40 +151,9 @@ class InboundMmsHandler() : BroadcastReceiver() {
         // can kill the process between onReceive() returning and the
         // executor's task running, dropping the carrier ack window.
         val pendingResult = goAsync()
-        // Verizon's MMSC sends a *template* contentLocation in the
-        // NotificationInd, ending with an empty `?message-id=` query
-        // parameter that the client is expected to fill in:
-        //
-        //   http://63.59.x.x/servlets/mms?message-id=
-        //
-        // Without filling in a value, the MMSC returns an error (or
-        // never produces a result broadcast at all on some Android
-        // versions). The pre-port simple-sms code unconditionally
-        // appended `transactionIdStr`, which produces a syntactically
-        // valid URL on Verizon and is silently tolerated by carriers
-        // (T-Mobile, AT&T, Google Fi) that send a complete URL —
-        // those MMSCs ignore the trailing characters in the query.
-        //
-        // Audit S0 #2 / PR #59 removed this concat on the (theoretical)
-        // grounds that it would corrupt T-Mobile MMSC requests, but
-        // there was no empirical breakage; the audit reasoning was
-        // wrong. Removing it broke Verizon empirically. Restore the
-        // concat behind a narrow heuristic so we only touch the URL
-        // when it actually looks like a Verizon template.
-        //
-        // The semantic mismatch (`message-id` parameter receiving a
-        // transaction-id value) is intentional: NotificationInd PDUs
-        // don't carry an X-Mms-Message-ID header in our PDU library
-        // surface, so `transactionIdStr` is the only message-unique
-        // value we have. Verizon's MMSC accepts it because it parses
-        // the query loosely and uses the value to disambiguate
-        // pending downloads — any unique-per-WAP-PUSH token works.
-        val downloadContentUri =
-            if (contentUri.endsWith("?message-id=") || contentUri.endsWith("=")) {
-                contentUri + transactionIdStr
-            } else {
-                contentUri
-            }
+        // Fill in Verizon's template MMSC URL (carrier rationale +
+        // heuristic documented on resolveVerizonDownloadUrl).
+        val downloadContentUri = resolveVerizonDownloadUrl(contentUri, transactionIdStr)
 
         sharedExecutor.execute {
             try {
