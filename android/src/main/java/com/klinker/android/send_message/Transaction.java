@@ -36,14 +36,12 @@ import com.google.android.mms.util_alt.SqliteWrapper;
 
 import android.util.Log;
 import android.widget.Toast;
-import com.android.mms.dom.smil.parser.SmilXmlSerializer;
 import com.android.mms.util.DownloadManager;
 import com.android.mms.util.RateController;
 import com.google.android.mms.*;
 import com.google.android.mms.pdu_alt.*;
-import com.google.android.mms.smil.SmilHelper;
+import io.simplezen.simple_sms.codec.SmilPresentationBuilder;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -582,14 +580,13 @@ public class Transaction {
             size += addTextPart(body, part, i);
         }
 
-        // add a SMIL document for compatibility
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        SmilXmlSerializer.serialize(SmilHelper.createSmilDocument(body), out);
+        // add a SMIL document for compatibility (first-party Kotlin builder,
+        // replacing the vendored SmilHelper/SmilXmlSerializer DOM stack)
         PduPart smilPart = new PduPart();
         smilPart.setContentId("smil".getBytes());
         smilPart.setContentLocation("smil.xml".getBytes());
         smilPart.setContentType(ContentType.APP_SMIL.getBytes());
-        smilPart.setData(out.toByteArray());
+        smilPart.setData(SmilPresentationBuilder.build(body));
         body.addPart(0, smilPart);
 
         req.setBody(body);
