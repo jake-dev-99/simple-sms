@@ -86,6 +86,8 @@ jobs:
     name: Native build + unit tests (pre-publish gate)
     needs: resolve-tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # checkout only; least-privilege to match resolve-tag/publish (zizmor)
     # The full native Android compile + JVM (Robolectric) unit tests —
     # the half of the codebase `flutter test` (Dart-only) never touches.
     # This deliberately runs ONLY here, at tag/deploy time, as a gate
