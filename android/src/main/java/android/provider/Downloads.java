@@ -18,7 +18,6 @@ package android.provider;
 
 import android.app.DownloadManager;
 import android.content.Context;
-import android.net.NetworkPolicyManager;
 import android.net.Uri;
 
 /**
@@ -711,7 +710,7 @@ public final class Downloads {
 
         /**
          * This download has failed because requesting application has been
-         * blocked by {@link NetworkPolicyManager}.
+         * blocked by NetworkPolicyManager (removed).
          *
          * @hide
          * @deprecated since behavior now uses
