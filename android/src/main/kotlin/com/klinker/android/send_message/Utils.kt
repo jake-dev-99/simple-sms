@@ -183,8 +183,22 @@ object Utils {
         // contract (Rule 1: reads route through simple-query). ContentQuery does
         // the underlying ContentResolver.query, so the allocation side-effect is
         // preserved, and it manages the cursor.
-        val rows = Query(context).query(QueryObj(contentUri = uri.toString(), projection = listOf("_id")))
-        val id = (rows.firstOrNull()?.get("_id") as? Number)?.toLong()
+        //
+        // Read the single projected column positionally (by value, not a
+        // hard-coded "_id" key) and coerce Number-or-String — matching the
+        // vendored `cursor.getLong(0)`, which is column-name-agnostic and parses
+        // a TEXT-typed id. Guards the OEM column-aliasing/typing footgun
+        // (AGENTS.md: thread_id vs _id, Samsung OEM columns/types); without it a
+        // provider returning the id under a different column name or as text
+        // would fall through to the Random() fallback and fragment the thread.
+        val raw = Query(context)
+            .query(QueryObj(contentUri = uri.toString(), projection = listOf("_id")))
+            .firstOrNull()?.values?.firstOrNull()
+        val id = when (raw) {
+            is Number -> raw.toLong()
+            is String -> raw.toLongOrNull()
+            else -> null
+        }
         if (id != null) {
             return id
         }
