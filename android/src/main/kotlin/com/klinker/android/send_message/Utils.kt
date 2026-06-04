@@ -13,7 +13,8 @@ import android.telephony.TelephonyManager
 import android.text.TextUtils
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import com.google.android.mms.util_alt.SqliteWrapper
+import io.simplezen.simple_sms.queries.Query
+import io.simplezen.simple_sms.queries.QueryObj
 import java.lang.reflect.Method
 import java.util.Random
 import java.util.regex.Pattern
@@ -22,13 +23,11 @@ import java.util.regex.Pattern
  * Common helpers for data connectivity / sending messages. First-party Kotlin
  * port of the vendored Klinker `Utils.java`; behaviour preserved.
  *
- * NOTE — layering debt (carried over from the vendored source, tracked for a
- * follow-up): [getOrCreateThreadId] and [doesThreadIdExist] read the
- * `mms-sms` provider directly via `ContentResolver`/`SqliteWrapper`. The repo's
- * layering contract says reads should route through `simple_query`; re-routing
- * the thread-id allocation is behaviour-sensitive (the `thread_id` footgun) so
- * it's deliberately left as a separate, reviewed change rather than folded into
- * this fidelity port. Marked with TODOs below.
+ * Provider reads route through `simple_query` (`Query`/`QueryObj` →
+ * `ContentQuery`) per the layering contract: [getOrCreateThreadId] (the
+ * `mms-sms/threadID` allocation read) and [doesThreadIdExist]. The thread-id
+ * allocation side-effect is preserved (ContentQuery still performs the
+ * underlying `ContentResolver.query`).
  */
 object Utils {
     /** Characters to compare against when checking 160-char (GSM-7) compatibility. */
@@ -180,29 +179,14 @@ object Utils {
             uriBuilder.appendQueryParameter("recipient", recipient)
         }
         val uri = uriBuilder.build()
-        // TODO(layering): direct mms-sms provider read carried over from the
-        //   vendored source — route through simple_query (ContentQuery) in the
-        //   tracked layering-compliance follow-up. Behaviour-sensitive (thread
-        //   id allocation), so left as a separate reviewed change.
-        val cursor = SqliteWrapper.query(
-            context,
-            context.contentResolver,
-            uri,
-            arrayOf("_id"),
-            null,
-            null,
-            null,
-        )
-        if (cursor != null) {
-            try {
-                if (cursor.moveToFirst()) {
-                    val id = cursor.getLong(0)
-                    cursor.close()
-                    return id
-                }
-            } finally {
-                cursor.close()
-            }
+        // Read (which allocates the thread id) via simple_query per the layering
+        // contract (Rule 1: reads route through simple-query). ContentQuery does
+        // the underlying ContentResolver.query, so the allocation side-effect is
+        // preserved, and it manages the cursor.
+        val rows = Query(context).query(QueryObj(contentUri = uri.toString(), projection = listOf("_id")))
+        val id = (rows.firstOrNull()?.get("_id") as? Number)?.toLong()
+        if (id != null) {
+            return id
         }
         return Random().nextLong()
     }
@@ -210,15 +194,10 @@ object Utils {
     @JvmStatic
     fun doesThreadIdExist(context: Context, threadId: Long): Boolean {
         val uri = Uri.parse("content://mms-sms/conversations/$threadId/")
-        // TODO(layering): direct ContentResolver read carried over; route via
-        //   simple_query in the layering-compliance follow-up.
-        val cursor = context.contentResolver.query(uri, arrayOf("_id"), null, null, null)
-        return if (cursor != null && cursor.moveToFirst()) {
-            cursor.close()
-            true
-        } else {
-            false
-        }
+        // Existence check via simple_query (Rule 1); ContentQuery manages the cursor.
+        return Query(context).query(
+            QueryObj(contentUri = uri.toString(), projection = listOf("_id")),
+        ).isNotEmpty()
     }
 
     private fun isEmailAddress(address: String?): Boolean {
