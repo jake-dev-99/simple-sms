@@ -62,7 +62,7 @@ android {
     }
     compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "30.0.14904198"
+    ndkVersion = "28.2.13676358"
 
     // Phase 1 safety net (UNFY-118): JVM unit tests via Robolectric so the
     // pdu_alt codec + first-party handlers can be exercised on a plain JVM,
