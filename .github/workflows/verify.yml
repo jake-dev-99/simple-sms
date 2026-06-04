@@ -83,3 +83,71 @@ jobs:
       # main yet; pubspec.yaml on main has path-deps that pub publish
       # rejects). They land via the develop→main bridge merge in
       # Phase B and the steps come back automatically.
+
+  native:
+    name: Native build + unit tests
+    runs-on: ubuntu-latest
+    # Compiles the Android/Kotlin side and runs the JVM (Robolectric)
+    # unit tests — the half of the codebase `flutter test` (Dart-only)
+    # never touches. Safety-net backstop for the MMS migration
+    # (Linear UNFY-149 / Phase 1 · L6).
+    #
+    # Must run through the *example app's* Gradle: a bare
+    # `:simple_sms_native` Gradle invocation can't configure —
+    # settings.gradle.kts requires `flutter.sdk` in local.properties,
+    # and the sibling plugin modules (:simple_permissions_android,
+    # :simple_query_android) resolve only via Flutter's plugin-loader,
+    # applied in the app's settings, not the plugin's. So we let
+    # `flutter build apk` inject the gitignored gradlew wrapper +
+    # local.properties and compile the native side, then run the unit
+    # tests against that already-configured build.
+    steps:
+      - name: Checkout simple-sms
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          path: simple-sms
+
+      - name: Checkout simple-permissions (sibling dep)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: jake-dev-99/simple-permissions
+          ref: main
+          path: simple-permissions
+
+      - name: Checkout simple-query (sibling dep)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: jake-dev-99/simple-query
+          ref: main
+          path: simple-query
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Install Android SDK packages (compileSdk 36 + build-tools)
+        # cmdline-tools live under $ANDROID_HOME on the runner and are NOT on
+        # PATH — invoke sdkmanager by absolute path (bare `sdkmanager` exits
+        # 127). `yes |` accepts per-package licenses; output is not suppressed
+        # so a genuine failure surfaces instead of being swallowed.
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Resolve example app deps
+        working-directory: simple-sms/example
+        run: flutter pub get
+
+      - name: Compile native side (debug APK)
+        working-directory: simple-sms/example
+        # JDK 21 to match android/build.gradle.kts (sourceCompatibility =
+        # VERSION_21); JAVA_HOME_21_X64 is preinstalled on the ubuntu image.
+        # This step also injects the gradlew wrapper + local.properties
+        # consumed by the unit-test step below.
+        run: |
+          export JAVA_HOME="${JAVA_HOME_21_X64:?JDK 21 (JAVA_HOME_21_X64) not present on runner}"
+          flutter build apk --debug
+
+      - name: Run native JVM unit tests
+        working-directory: simple-sms/example/android
+        run: |
+          export JAVA_HOME="${JAVA_HOME_21_X64:?JDK 21 (JAVA_HOME_21_X64) not present on runner}"
+          ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
