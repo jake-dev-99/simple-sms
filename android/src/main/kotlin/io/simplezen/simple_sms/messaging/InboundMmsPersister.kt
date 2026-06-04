@@ -14,6 +14,46 @@ import io.simplezen.simple_sms.queries.Query
 import io.simplezen.simple_sms.queries.QueryObj
 
 /**
+ * Builds the `(selection, selectionArgs)` for deleting the orphan
+ * `NotificationInd` placeholder row(s) left behind after a RetrieveConf is
+ * persisted.
+ *
+ * The system MMS service writes a `NotificationInd` (`m_type=130`) row when the
+ * WAP-push arrives; once we persist the downloaded RetrieveConf (`m_type=132`)
+ * that placeholder is an orphan. We match it by transaction-id and/or
+ * message-id — OEMs stamp one or the other (or both), so we OR whichever are
+ * present — and always constrain to `m_type=130` so the fresh RetrieveConf
+ * (and transport-only siblings) are never at risk.
+ *
+ * Arg order matters: `MESSAGE_TYPE` is first (binds the leading `m_type=?`),
+ * then the optional `tr_id` / `m_id` args in predicate order. At least one of
+ * [transactionId] / [messageId] must be non-null — enforced by `require` below
+ * (the caller also guards it); an empty predicate list would otherwise yield
+ * invalid `m_type=? AND ()` SQL.
+ */
+internal fun buildOrphanNotificationIndSelection(
+    transactionId: String?,
+    messageId: String?,
+): Pair<String, Array<String>> {
+    require(transactionId != null || messageId != null) {
+        "buildOrphanNotificationIndSelection needs at least one of transactionId/messageId"
+    }
+    val predicates = mutableListOf<String>()
+    val args = mutableListOf<String>()
+    args += PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND.toString()
+    if (transactionId != null) {
+        predicates += "${Mms.TRANSACTION_ID}=?"
+        args += transactionId
+    }
+    if (messageId != null) {
+        predicates += "${Mms.MESSAGE_ID}=?"
+        args += messageId
+    }
+    val selection = "${Mms.MESSAGE_TYPE}=? AND (${predicates.joinToString(" OR ")})"
+    return selection to args.toTypedArray()
+}
+
+/**
  * Persists an inbound RetrieveConf PDU to the Telephony provider, then
  * shapes the resulting rows for delivery over the inbound bridge.
  *
@@ -172,19 +212,8 @@ object InboundMmsPersister {
         val cleanupTransactionId = transactionId.takeIf { it.isNotBlank() }
         if (cleanupTransactionId != null || pduMessageId != null) {
             try {
-                val predicates = mutableListOf<String>()
-                val args = mutableListOf<String>()
-                args += PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND.toString()
-                if (cleanupTransactionId != null) {
-                    predicates += "${Mms.TRANSACTION_ID}=?"
-                    args += cleanupTransactionId
-                }
-                if (pduMessageId != null) {
-                    predicates += "${Mms.MESSAGE_ID}=?"
-                    args += pduMessageId
-                }
-                val selection =
-                    "${Mms.MESSAGE_TYPE}=? AND (${predicates.joinToString(" OR ")})"
+                val (selection, selectionArgs) =
+                    buildOrphanNotificationIndSelection(cleanupTransactionId, pduMessageId)
                 // Scoped to `Mms.Inbox.CONTENT_URI` rather than the
                 // top-level `Mms.CONTENT_URI`. NotificationInd rows
                 // only exist in inbox by spec; narrowing to inbox
@@ -193,7 +222,7 @@ object InboundMmsPersister {
                 val deleted = context.contentResolver.delete(
                     Mms.Inbox.CONTENT_URI,
                     selection,
-                    args.toTypedArray(),
+                    selectionArgs,
                 )
                 if (deleted > 0) {
                     Log.d(
