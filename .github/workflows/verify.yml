@@ -148,6 +148,11 @@ jobs:
 
       - name: Run native JVM unit tests
         working-directory: simple-sms/example/android
+        # --no-daemon: this is a throwaway CI runner, so a persistent
+        # Gradle daemon buys nothing and just lingers/consumes resources.
+        # --stacktrace: surface a full trace on failure instead of the
+        # one-line summary (matches the repo's fail-loud, no-silent-error
+        # stance). Both per Sourcery review on PR #139.
         run: |
           export JAVA_HOME="${JAVA_HOME_21_X64:?JDK 21 (JAVA_HOME_21_X64) not present on runner}"
-          ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
+          ./gradlew :simple_sms_native:testDebugUnitTest --console=plain --no-daemon --stacktrace
