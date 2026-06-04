@@ -106,6 +106,42 @@ class OutboundSmilGoldenTest {
     }
 
     @Test
+    fun audioOnly_usesAudioTag() {
+        val body = PduBody().apply { addPart(part("a.mp3", "audio/mpeg")) }
+        assertEquals(
+            header + "<par dur=\"8000ms\"><audio src=\"a.mp3\"/></par>" + footer,
+            smil(body),
+        )
+    }
+
+    @Test
+    fun videoOnly_usesVideoTag() {
+        val body = PduBody().apply { addPart(part("v.mp4", "video/mp4")) }
+        assertEquals(
+            header + "<par dur=\"8000ms\"><video src=\"v.mp4\"/></par>" + footer,
+            smil(body),
+        )
+    }
+
+    @Test
+    fun vcardCountsAsMedia_forParGrouping() {
+        // vcard sets hasMedia (not hasText) in SmilHelper, so text+vcard fill
+        // one <par> and a following text starts a new one.
+        val body = PduBody().apply {
+            addPart(part("a.txt", "text/plain"))
+            addPart(part("contact.vcf", "text/x-vCard"))
+            addPart(part("b.txt", "text/plain"))
+        }
+        assertEquals(
+            header +
+                "<par dur=\"8000ms\"><text src=\"a.txt\"/><vcard src=\"contact.vcf\"/></par>" +
+                "<par dur=\"8000ms\"><text src=\"b.txt\"/></par>" +
+                footer,
+            smil(body),
+        )
+    }
+
+    @Test
     fun srcWithXmlMetacharacters_isEscaped() {
         val body = PduBody().apply { addPart(part("a&b<c>\"d'e.txt", "text/plain")) }
         assertEquals(
