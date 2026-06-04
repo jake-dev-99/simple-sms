@@ -7,6 +7,16 @@ name: Verify
 # releases are cut via the "Cut Release" workflow which tags +
 # triggers the "Deploy" workflow.
 #
+# Scope of this gate is deliberately LIGHTWEIGHT — analyze + Dart
+# tests only. It is a fast gut-check on every PR/push, not a full
+# build. The expensive native Android compile (`flutter build apk`
+# + JVM/Robolectric unit tests, which downloads the Android SDK +
+# NDK and runs a full Gradle build) is NOT run here: a throwaway
+# APK build on every comment-tweak push is pure CI cost for no
+# benefit. That build runs once, where it actually matters — as a
+# pre-publish gate in the tag-triggered "Deploy" workflow
+# (.github/workflows/deploy.yml). See Linear UNFY-149 / UNFY-153.
+#
 # simple-sms has path-dep references to sibling plugin repos
 # (simple-permissions for PermissionGuards, simple-query for
 # ContentQuery) via pubspec_overrides.yaml. The override paths
@@ -86,97 +96,3 @@ jobs:
       # main yet; pubspec.yaml on main has path-deps that pub publish
       # rejects). They land via the develop→main bridge merge in
       # Phase B and the steps come back automatically.
-
-  native:
-    name: Native build + unit tests
-    runs-on: ubuntu-latest
-    # Compiles the Android/Kotlin side and runs the JVM (Robolectric)
-    # unit tests — the half of the codebase `flutter test` (Dart-only)
-    # never touches. Safety-net backstop for the MMS migration
-    # (Linear UNFY-149 / Phase 1 · L6).
-    #
-    # Must run through the *example app's* Gradle: a bare
-    # `:simple_sms_native` Gradle invocation can't configure —
-    # settings.gradle.kts requires `flutter.sdk` in local.properties,
-    # and the sibling plugin modules (:simple_permissions_android,
-    # :simple_query_android) resolve only via Flutter's plugin-loader,
-    # applied in the app's settings, not the plugin's. So we let
-    # `flutter build apk` inject the gitignored gradlew wrapper +
-    # local.properties and compile the native side, then run the unit
-    # tests against that already-configured build.
-    steps:
-      - name: Checkout simple-sms
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
-          path: simple-sms
-
-      - name: Checkout simple-permissions (sibling dep)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
-          repository: jake-dev-99/simple-permissions
-          ref: main
-          path: simple-permissions
-
-      - name: Checkout simple-query (sibling dep)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false  # don't leave the checkout token in .git/config for later steps (zizmor artipacked); no later step does authenticated git ops
-          repository: jake-dev-99/simple-query
-          ref: main
-          path: simple-query
-
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          channel: stable
-
-      - name: Set up JDK 21 (Temurin)
-        # Provision JDK 21 explicitly instead of leaning on the runner's
-        # preinstalled $JAVA_HOME_21_X64, which is brittle across runner
-        # images (flagged in review). setup-java exports JAVA_HOME for the
-        # build + test steps below. Version matches android/build.gradle.kts
-        # (sourceCompatibility = VERSION_21).
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Install Android SDK packages (compileSdk 36 + build-tools + NDK)
-        # cmdline-tools live under $ANDROID_HOME on the runner and are NOT on
-        # PATH — invoke sdkmanager by absolute path (bare `sdkmanager` exits
-        # 127). Feed a bounded `printf` of license acceptances rather than
-        # `yes |`: under the runner's `-o pipefail` shell, infinite `yes`
-        # dies by SIGPIPE (141) when sdkmanager stops reading, and pipefail
-        # would surface that 141 as a step failure even on a clean install.
-        # The bounded printf's small write fits the pipe buffer and exits 0,
-        # so the pipeline status is sdkmanager's real status. Output is not
-        # suppressed, so a genuine failure still surfaces.
-        #
-        # NDK is pinned explicitly (matches android/build.gradle.kts
-        # ndkVersion) rather than relying on whatever NDK the runner image
-        # happens to bundle — an implicit dependency that could break on an
-        # image bump. AGP would otherwise fetch this same NDK mid-build, so
-        # installing it here is near cost-neutral and makes it visible.
-        run: printf 'y\n%.0s' $(seq 50) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.14904198"
-
-      - name: Resolve example app deps
-        working-directory: simple-sms/example
-        run: flutter pub get
-
-      - name: Compile native side (debug APK)
-        working-directory: simple-sms/example
-        # JAVA_HOME comes from the setup-java step above (JDK 21, matching
-        # android/build.gradle.kts sourceCompatibility = VERSION_21). This
-        # step also injects the gradlew wrapper + local.properties consumed
-        # by the unit-test step below.
-        run: flutter build apk --debug
-
-      - name: Run native JVM unit tests
-        working-directory: simple-sms/example/android
-        # --no-daemon: this is a throwaway CI runner, so a persistent
-        # Gradle daemon buys nothing and just lingers/consumes resources.
-        # --stacktrace: surface a full trace on failure instead of the
-        # one-line summary (matches the repo's fail-loud, no-silent-error
-        # stance). Both per Sourcery review on PR #139.
-        run: ./gradlew :simple_sms_native:testDebugUnitTest --console=plain --no-daemon --stacktrace
