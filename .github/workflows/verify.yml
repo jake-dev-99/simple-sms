@@ -128,9 +128,14 @@ jobs:
       - name: Install Android SDK packages (compileSdk 36 + build-tools)
         # cmdline-tools live under $ANDROID_HOME on the runner and are NOT on
         # PATH — invoke sdkmanager by absolute path (bare `sdkmanager` exits
-        # 127). `yes |` accepts per-package licenses; output is not suppressed
-        # so a genuine failure surfaces instead of being swallowed.
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+        # 127). Feed a bounded `printf` of license acceptances rather than
+        # `yes |`: under the runner's `-o pipefail` shell, infinite `yes`
+        # dies by SIGPIPE (141) when sdkmanager stops reading, and pipefail
+        # would surface that 141 as a step failure even on a clean install.
+        # The bounded printf's small write fits the pipe buffer and exits 0,
+        # so the pipeline status is sdkmanager's real status. Output is not
+        # suppressed, so a genuine failure still surfaces.
+        run: printf 'y\n%.0s' $(seq 50) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Resolve example app deps
         working-directory: simple-sms/example
