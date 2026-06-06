@@ -81,6 +81,11 @@ class PduPartTest {
         PduPart().setContentId(ByteArray(0))
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun setContentId_nullThrows() {
+        PduPart().setContentId(null)
+    }
+
     @Test(expected = NullPointerException::class)
     fun setContentType_nullThrows() {
         PduPart().setContentType(null)
@@ -140,6 +145,7 @@ class PduPartTest {
         assertEquals("base64", PduPart.P_BASE64)
         assertEquals("Content-Transfer-Encoding", PduPart.CONTENT_TRANSFER_ENCODING)
         assertArrayEquals(bytes("from-data"), PduPart.DISPOSITION_FROM_DATA)
+        assertArrayEquals(bytes("attachment"), PduPart.DISPOSITION_ATTACHMENT)
         assertArrayEquals(bytes("inline"), PduPart.DISPOSITION_INLINE)
     }
 }

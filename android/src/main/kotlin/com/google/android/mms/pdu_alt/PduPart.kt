@@ -119,7 +119,7 @@ class PduPart {
      * Set Content-id value
      *
      * @param contentId the content-id value
-     * @throws NullPointerException if the value is null.
+     * @throws IllegalArgumentException if the value is null or empty.
      */
     fun setContentId(contentId: ByteArray?) {
         if ((contentId == null) || (contentId.isEmpty())) {
