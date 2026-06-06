@@ -15,27 +15,28 @@
  * limitations under the License.
  */
 
-package com.google.android.mms;
+package com.google.android.mms
 
 /**
  * Thrown when an invalid header value was set.
+ *
+ * First-party Kotlin port of the vendored `InvalidHeaderValueException`;
+ * behaviour preserved 1:1 (the two constructors and the `serialVersionUID`).
  */
-public class InvalidHeaderValueException extends MmsException {
-    private static final long serialVersionUID = -2053384496042052262L;
-
+class InvalidHeaderValueException : MmsException {
     /**
      * Constructs an InvalidHeaderValueException with no detailed message.
      */
-    public InvalidHeaderValueException() {
-        super();
-    }
+    constructor() : super()
 
     /**
      * Constructs an InvalidHeaderValueException with the specified detailed message.
      *
      * @param message the detailed message.
      */
-    public InvalidHeaderValueException(String message) {
-        super(message);
+    constructor(message: String?) : super(message)
+
+    companion object {
+        private const val serialVersionUID = -2053384496042052262L
     }
 }

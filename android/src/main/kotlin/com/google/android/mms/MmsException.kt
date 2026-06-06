@@ -15,38 +15,35 @@
  * limitations under the License.
  */
 
-package com.google.android.mms;
+package com.google.android.mms
 
 /**
  * A generic exception that is thrown by the Mms client.
+ *
+ * First-party Kotlin port of the vendored `MmsException`; behaviour preserved
+ * 1:1, including the four constructors and the `serialVersionUID`. `open` so the
+ * (still-Java) codec can both subclass it (`InvalidHeaderValueException`) and
+ * throw/catch it.
  */
-public class MmsException extends Exception {
-    private static final long serialVersionUID = -7323249827281485390L;
-
+open class MmsException : Exception {
     /**
      * Creates a new MmsException.
      */
-    public MmsException() {
-        super();
-    }
+    constructor() : super()
 
     /**
      * Creates a new MmsException with the specified detail message.
      *
      * @param message the detail message.
      */
-    public MmsException(String message) {
-        super(message);
-    }
+    constructor(message: String?) : super(message)
 
     /**
      * Creates a new MmsException with the specified cause.
      *
      * @param cause the cause.
      */
-    public MmsException(Throwable cause) {
-        super(cause);
-    }
+    constructor(cause: Throwable?) : super(cause)
 
     /**
      * Creates a new MmsException with the specified detail message and cause.
@@ -54,7 +51,9 @@ public class MmsException extends Exception {
      * @param message the detail message.
      * @param cause the cause.
      */
-    public MmsException(String message, Throwable cause) {
-        super(message, cause);
+    constructor(message: String?, cause: Throwable?) : super(message, cause)
+
+    companion object {
+        private const val serialVersionUID = -7323249827281485390L
     }
 }
