@@ -663,7 +663,7 @@ class Transaction(private val context: Context, settings: Settings) {
             part.setData(p.Data)
             pb.addPart(part)
 
-            return part.getData().size
+            return part.data!!.size
         }
     }
 }

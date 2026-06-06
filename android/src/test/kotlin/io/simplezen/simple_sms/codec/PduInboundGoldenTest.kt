@@ -154,7 +154,7 @@ class PduInboundGoldenTest {
         val body = parsed.body
         assertEquals("one body part", 1, body.partsNum)
         val part0 = body.getPart(0)
-        assertEquals("part0 content-type", "text/plain", String(part0.contentType))
-        assertEquals("part0 data", "Hello", String(part0.data))
+        assertEquals("part0 content-type", "text/plain", String(part0.contentType!!))
+        assertEquals("part0 data", "Hello", String(part0.data!!))
     }
 }
