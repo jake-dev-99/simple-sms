@@ -52,6 +52,14 @@ class ContentTypeTest {
         assertFalse(ContentType.isSupportedImageType(ContentType.IMAGE_UNSPECIFIED))
         assertTrue(ContentType.isSupportedAudioType(ContentType.AUDIO_AMR))
         assertTrue(ContentType.isSupportedVideoType(ContentType.VIDEO_MP4))
+
+        // AUDIO_OGG is registered in the audio-types list but its value is
+        // "application/ogg", which does NOT match the isAudioType "audio/"
+        // prefix — so isSupportedAudioType returns false for it. This is a
+        // faithful vendored quirk; pinned here so a future "fix" to the
+        // predicate doesn't silently change wire behaviour.
+        assertTrue(ContentType.getAudioTypes().contains(ContentType.AUDIO_OGG))
+        assertFalse(ContentType.isSupportedAudioType(ContentType.AUDIO_OGG))
     }
 
     @Test
