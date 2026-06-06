@@ -386,7 +386,7 @@ class Transaction(private val context: Context, settings: Settings) {
             for (p in parts) {
                 val part = MMSPart()
                 if (p.getName() != null) {
-                    part.Name = p.getName()
+                    part.Name = p.getName()!!
                 } else {
                     part.Name = p.getContentType().split("/").toTypedArray()[0]
                 }
