@@ -90,10 +90,12 @@ class EncodedStringValueTest {
 
     @Test
     fun split_regexAndTrailingEmptyStrip() {
-        val parts = EncodedStringValue("a,b,c").split(",")!!
-        assertEquals(3, parts.size)
+        // Trailing separator: Java's split(regex, 0) strips the trailing empty
+        // segment, so "a,b," yields 2 parts, not 3.
+        val parts = EncodedStringValue("a,b,").split(",")!!
+        assertEquals(2, parts.size)
         assertEquals("a", parts[0].string)
-        assertEquals("c", parts[2].string)
+        assertEquals("b", parts[1].string)
     }
 
     @Test
@@ -126,6 +128,9 @@ class EncodedStringValueTest {
         assertNull(EncodedStringValue.copy(null))
         val esv = EncodedStringValue(CharacterSets.UTF_8, "z".toByteArray(Charsets.UTF_8))
         val c = EncodedStringValue.copy(esv)!!
+        assertEquals("z", c.string)
+        // Deep copy: mutating the source must not affect the copy.
+        esv.setTextString("x".toByteArray(Charsets.UTF_8))
         assertEquals("z", c.string)
     }
 
