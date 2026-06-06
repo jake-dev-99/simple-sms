@@ -99,7 +99,9 @@ object SmilPresentationBuilder {
             }
 
             val part: PduPart = body.getPart(i)
-            val contentType = String(part.contentType)
+            // PduPart.contentType is now properly nullable (was a Java
+            // platform type); preserve the prior NPE-on-null of new String(null).
+            val contentType = String(part.contentType!!)
 
             when {
                 contentType == ContentType.TEXT_PLAIN ||
