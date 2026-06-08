@@ -14,11 +14,21 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
-public class SendConf extends GenericPdu {
+/**
+ * First-party Kotlin port of the vendored `SendConf` (Phase 5 · pdu_alt) — the
+ * M-Send.conf PDU, a [GenericPdu] subclass. Behaviour-faithful 1:1. The
+ * `(PduHeaders)` parse constructor is widened package-private → `public` for the
+ * same-package non-subclass `PduParser`; getters are `val` properties;
+ * `mPduHeaders` is dereferenced with `!!`, mirroring the vendored bare derefs.
+ * (`getTransactionId`'s `@return` keeps the vendored copy-paste
+ * "X-Mms-Report-Allowed" wording verbatim — parked on the codec-modernization
+ * doc pass.)
+ */
+class SendConf : GenericPdu {
     /**
      * Empty constructor.
      * Since the Pdu corresponding to this class is constructed
@@ -27,9 +37,9 @@ public class SendConf extends GenericPdu {
      *
      * @throws InvalidHeaderValueException if error occurs.
      */
-    public SendConf() throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_SEND_CONF);
+    @Throws(InvalidHeaderValueException::class)
+    constructor() : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_SEND_CONF)
     }
 
     /**
@@ -37,18 +47,15 @@ public class SendConf extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    SendConf(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get Message-ID value.
      *
      * @return the value
      */
-    public byte[] getMessageId() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_ID);
-    }
+    val messageId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_ID)
 
     /**
      * Set Message-ID value.
@@ -56,8 +63,8 @@ public class SendConf extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_ID);
+    fun setMessageId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_ID)
     }
 
     /**
@@ -65,9 +72,8 @@ public class SendConf extends GenericPdu {
      *
      * @return the value
      */
-    public int getResponseStatus() {
-        return mPduHeaders.getOctet(PduHeaders.RESPONSE_STATUS);
-    }
+    val responseStatus: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.RESPONSE_STATUS)
 
     /**
      * Set X-Mms-Response-Status.
@@ -75,8 +81,9 @@ public class SendConf extends GenericPdu {
      * @param value the values
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setResponseStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.RESPONSE_STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setResponseStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.RESPONSE_STATUS)
     }
 
     /**
@@ -84,9 +91,8 @@ public class SendConf extends GenericPdu {
      *
      * @return the X-Mms-Report-Allowed value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id field value.
@@ -94,8 +100,8 @@ public class SendConf extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTransactionId(byte[] value) {
-            mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 
     /*
