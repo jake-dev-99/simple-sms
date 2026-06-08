@@ -75,9 +75,12 @@ import java.io.OutputStream
  *   keeping call sites clean. The unreachable `UnsupportedEncodingException`
  *   catches ("Impossible to reach here!") and the disabled-by-default `assert`
  *   in `load` are dropped.
- * - TODO(layering): every provider read/write here goes directly through
- *   `SqliteWrapper` / `ContentResolver`; they route through `simple_query` in the
- *   separate layering re-route change, not in this fidelity port.
+ * - Layering carve-out (UNFY-156): provider access stays direct by design. The
+ *   reads are binary PDU reconstruction — positional column-index
+ *   (`PDU_COLUMN_*`/`PART_COLUMN_*`), BLOB part columns, exact-type accessors,
+ *   and `Cursor.count`/null semantics — which `simple_query`'s name-keyed,
+ *   BLOB-coalescing `ContentQuery` can't represent; writes are out of its
+ *   read-only scope. The layering contract covers lookup reads, not the codec.
  */
 class PduPersister private constructor(private val mContext: Context) {
 

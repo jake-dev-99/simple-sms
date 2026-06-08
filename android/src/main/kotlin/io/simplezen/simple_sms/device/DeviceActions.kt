@@ -10,6 +10,8 @@ import androidx.core.net.toUri
 import io.flutter.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.simplezen.simple_sms.queries.Query
+import io.simplezen.simple_sms.queries.QueryObj
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -140,14 +142,16 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
             val fileName = "mms_${System.currentTimeMillis()}"
 
             var mimeType = "application/octet-stream"
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val mimeTypeIndex = cursor.getColumnIndex(Mms.Part.CONTENT_TYPE)
-                    if (mimeTypeIndex != -1) {
-                        mimeType = cursor.getString(mimeTypeIndex) ?: mimeType
-                    }
-                }
-            }
+            // Content-type probe routes through simple_query (Rule 1). AGENTS.md is
+            // explicit: the bytes stream (openInputStream) is the exception, "not
+            // the content-type probe".
+            val ctRows = Query(context).query(
+                QueryObj(
+                    contentUri = uri.toString(),
+                    projection = listOf(Mms.Part.CONTENT_TYPE),
+                ),
+            )
+            (ctRows.firstOrNull()?.get(Mms.Part.CONTENT_TYPE) as? String)?.let { mimeType = it }
 
             val extension = when {
                 mimeType.startsWith("image/") -> ".jpg"

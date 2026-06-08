@@ -46,9 +46,11 @@ import com.android.mms.logs.LogTag
  *   is the standard Kotlin form for the vendored `Object` monitor calls.
  * - `isLimitSurpassed` keeps the vendored double-`close()` (explicit close before
  *   `return`, plus the `finally` close) — `Cursor.close()` is idempotent.
- * - TODO(layering): the `Rate` provider read/write go directly through
- *   `SqliteWrapper`; they will route through `simple_query` in the separate
- *   layering re-route change, not in this fidelity port.
+ * - Layering carve-out (UNFY-156): the `Rate` provider access stays on
+ *   `SqliteWrapper`/`ContentResolver` by design — the read is a `COUNT(*)`
+ *   aggregate consumed positionally (`getInt(0)`) inside the MMS send-rate
+ *   codec, and the write is out of `simple_query`'s read-only scope. Not a
+ *   lookup read.
  */
 class RateController private constructor(private val mContext: Context) {
 

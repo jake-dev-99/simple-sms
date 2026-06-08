@@ -20,9 +20,11 @@ import com.google.android.mms.util_alt.SqliteWrapper
  * - Java try-with-resources → Kotlin `.use {}`; `Cursor.use` accepts a nullable
  *   receiver and skips `close()` on null, matching the Java resource semantics
  *   exactly (a null query result runs the body with the flag left false).
- * - TODO(layering): this reads a ContentProvider directly via `SqliteWrapper`;
- *   it will route through `simple_query` in the separate layering re-route change
- *   (per the 1:1-port-now / re-route-later decision), not in this fidelity port.
+ * - Layering carve-out (UNFY-156): stays on `SqliteWrapper`/`ContentResolver` by
+ *   design. The probe's correctness depends on the read THROWING
+ *   `SQLiteException` when `Telephony.Mms.SUBSCRIPTION_ID` is absent;
+ *   `simple_query`'s `ContentQuery` would swallow that into an empty result and
+ *   silently flip the flag to always-true. Not a lookup read.
  */
 class SubscriptionIdChecker private constructor() {
     private var mCanUseSubscriptionId = false
@@ -30,7 +32,8 @@ class SubscriptionIdChecker private constructor() {
     // I met a device which does not have Telephony.Mms.SUBSCRIPTION_ID event if it's API Level is 22.
     private fun check(context: Context) {
         try {
-            // TODO(layering): route this provider read through simple_query.
+            // Layering carve-out (UNFY-156): direct by design — the probe relies on
+            // SQLiteException-on-missing-column, which ContentQuery would swallow.
             SqliteWrapper.query(
                 context,
                 context.contentResolver,
