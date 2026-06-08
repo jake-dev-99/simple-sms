@@ -627,8 +627,12 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                         // Address headers – *one* EncodedStringValue per recipient
                         val encoded =
                                 cleanedRecipients.map { EncodedStringValue(it) }.toTypedArray()
-                        to = encoded
-                        date = (System.currentTimeMillis() / 1000L).toLong()
+                        // `to`/`date` are now read-only `val` getters on the Kotlin
+                        // MultimediaMessagePdu base, so set them via the methods (the
+                        // getX/setX pair the Java class exposed) rather than property
+                        // assignment — behaviour-identical (setTo is SendReq's own).
+                        setTo(encoded)
+                        setDate(System.currentTimeMillis() / 1000L)
                     }
 
             val sendSettings = Settings()
