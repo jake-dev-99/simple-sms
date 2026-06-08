@@ -151,7 +151,10 @@ class PduInboundGoldenTest {
         assertEquals("from", "num", parsed.from?.string)
         assertEquals("subject", "Hi", parsed.subject?.string)
 
-        val body = parsed.body
+        // `body` is now nullable on the Kotlin MultimediaMessagePdu base; the
+        // fixture's RetrieveConf always carries a body, so `!!` preserves the
+        // prior platform-type non-null treatment.
+        val body = parsed.body!!
         assertEquals("one body part", 1, body.partsNum)
         val part0 = body.getPart(0)
         assertEquals("part0 content-type", "text/plain", String(part0.contentType!!))
