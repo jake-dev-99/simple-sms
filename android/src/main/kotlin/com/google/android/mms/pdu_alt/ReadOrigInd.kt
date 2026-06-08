@@ -14,11 +14,21 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
-public class ReadOrigInd extends GenericPdu {
+/**
+ * First-party Kotlin port of the vendored `ReadOrigInd` (Phase 5 · pdu_alt), a
+ * [GenericPdu] subclass. Behaviour-faithful 1:1.
+ *
+ * `from`/`setFrom` are `override`s of [GenericPdu]'s `open` `from`/`setFrom`
+ * (the vendored re-declares them with identical bodies). The `(PduHeaders)`
+ * parse constructor is widened package-private → `public` for the same-package
+ * non-subclass `PduParser`; the new getters are `val` properties; `mPduHeaders`
+ * is dereferenced with `!!`, mirroring the vendored bare derefs.
+ */
+class ReadOrigInd : GenericPdu {
     /**
      * Empty constructor.
      * Since the Pdu corresponding to this class is constructed
@@ -27,9 +37,9 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @throws InvalidHeaderValueException if error occurs.
      */
-    public ReadOrigInd() throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_READ_ORIG_IND);
+    @Throws(InvalidHeaderValueException::class)
+    constructor() : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_READ_ORIG_IND)
     }
 
     /**
@@ -37,26 +47,23 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    ReadOrigInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get Date value.
      *
      * @return the value
      */
-    public long getDate() {
-        return mPduHeaders.getLongInteger(PduHeaders.DATE);
-    }
+    val date: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.DATE)
 
     /**
      * Set Date value.
      *
      * @param value the value
      */
-    public void setDate(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.DATE);
+    fun setDate(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.DATE)
     }
 
     /**
@@ -66,9 +73,8 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue getFrom() {
-       return mPduHeaders.getEncodedStringValue(PduHeaders.FROM);
-    }
+    override val from: EncodedStringValue?
+        get() = mPduHeaders!!.getEncodedStringValue(PduHeaders.FROM)
 
     /**
      * Set From value.
@@ -76,8 +82,8 @@ public class ReadOrigInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setFrom(EncodedStringValue value) {
-        mPduHeaders.setEncodedStringValue(value, PduHeaders.FROM);
+    override fun setFrom(value: EncodedStringValue?) {
+        mPduHeaders!!.setEncodedStringValue(value, PduHeaders.FROM)
     }
 
     /**
@@ -85,9 +91,8 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getMessageId() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_ID);
-    }
+    val messageId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_ID)
 
     /**
      * Set Message-ID value.
@@ -95,8 +100,8 @@ public class ReadOrigInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_ID);
+    fun setMessageId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_ID)
     }
 
     /**
@@ -104,9 +109,8 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @return the value
      */
-    public int getReadStatus() {
-        return mPduHeaders.getOctet(PduHeaders.READ_STATUS);
-    }
+    val readStatus: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.READ_STATUS)
 
     /**
      * Set X-MMS-Read-status value.
@@ -114,8 +118,9 @@ public class ReadOrigInd extends GenericPdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setReadStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.READ_STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReadStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.READ_STATUS)
     }
 
     /**
@@ -123,9 +128,8 @@ public class ReadOrigInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue[] getTo() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.TO);
-    }
+    val to: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.TO)
 
     /**
      * Set To value.
@@ -133,8 +137,8 @@ public class ReadOrigInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTo(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.TO);
+    fun setTo(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.TO)
     }
 
     /*
