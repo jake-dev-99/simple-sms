@@ -28,17 +28,3 @@ plugins {
 }
 
 include(":app")
-// Add these lines to include the modules from the main project
-// Path is relative to the example/android directory
-include(":google_apps_messaging_core")
-include(":google_i18n_libphonenumber")
-include(":google_ex")
-include(":google_chips")
-include(":google_photoviewer")
-include(":google_vcard")
-project(":google_apps_messaging_core").projectDir = file("../../android/lib/google_apps_messaging_core")
-project(":google_i18n_libphonenumber").projectDir = file("../../android/lib/google_i18n_libphonenumber")
-project(":google_ex").projectDir = file("../../android/lib/google_ex")
-project(":google_chips").projectDir = file("../../android/lib/google_chips")
-project(":google_photoviewer").projectDir = file("../../android/lib/google_photoviewer")
-project(":google_vcard").projectDir = file("../../android/lib/google_vcard")
