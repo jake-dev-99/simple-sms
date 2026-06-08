@@ -14,14 +14,21 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
 /**
  * M-Delivery.Ind Pdu.
+ *
+ * First-party Kotlin port of the vendored `DeliveryInd` (Phase 5 · pdu_alt), a
+ * [GenericPdu] subclass. Behaviour-faithful 1:1. The `(PduHeaders)` parse
+ * constructor is widened package-private → `public` for the same-package
+ * non-subclass `PduParser` (Kotlin can't express Java package-private);
+ * getters are `val` properties and `mPduHeaders` is dereferenced with `!!`,
+ * mirroring the vendored bare derefs.
  */
-public class DeliveryInd extends GenericPdu {
+class DeliveryInd : GenericPdu {
     /**
      * Empty constructor.
      * Since the Pdu corresponding to this class is constructed
@@ -30,9 +37,9 @@ public class DeliveryInd extends GenericPdu {
      *
      * @throws InvalidHeaderValueException if error occurs.
      */
-    public DeliveryInd() throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_DELIVERY_IND);
+    @Throws(InvalidHeaderValueException::class)
+    constructor() : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_DELIVERY_IND)
     }
 
     /**
@@ -40,26 +47,23 @@ public class DeliveryInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    DeliveryInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get Date value.
      *
      * @return the value
      */
-    public long getDate() {
-        return mPduHeaders.getLongInteger(PduHeaders.DATE);
-    }
+    val date: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.DATE)
 
     /**
      * Set Date value.
      *
      * @param value the value
      */
-    public void setDate(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.DATE);
+    fun setDate(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.DATE)
     }
 
     /**
@@ -67,9 +71,8 @@ public class DeliveryInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getMessageId() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_ID);
-    }
+    val messageId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_ID)
 
     /**
      * Set Message-ID value.
@@ -77,8 +80,8 @@ public class DeliveryInd extends GenericPdu {
      * @param value the value, should not be null
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_ID);
+    fun setMessageId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_ID)
     }
 
     /**
@@ -86,9 +89,8 @@ public class DeliveryInd extends GenericPdu {
      *
      * @return the value
      */
-    public int getStatus() {
-        return mPduHeaders.getOctet(PduHeaders.STATUS);
-    }
+    val status: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.STATUS)
 
     /**
      * Set Status value.
@@ -96,8 +98,9 @@ public class DeliveryInd extends GenericPdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.STATUS)
     }
 
     /**
@@ -105,9 +108,8 @@ public class DeliveryInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue[] getTo() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.TO);
-    }
+    val to: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.TO)
 
     /**
      * set To value.
@@ -115,8 +117,8 @@ public class DeliveryInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTo(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.TO);
+    fun setTo(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.TO)
     }
 
     /*
