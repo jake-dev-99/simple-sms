@@ -25,9 +25,7 @@ import com.google.android.mms.InvalidHeaderValueException
  * [GenericPdu] subclass. Behaviour-faithful 1:1. The `(PduHeaders)` parse
  * constructor is widened package-private → `public` for the same-package
  * non-subclass `PduParser`; getters are `val` properties and `mPduHeaders` is
- * dereferenced with `!!`, mirroring the vendored bare derefs. (The
- * `getTransactionId` `@return` keeps the vendored copy-paste "X-Mms-Report-Allowed"
- * wording verbatim — parked on the codec-modernization doc pass.)
+ * dereferenced with `!!`, mirroring the vendored bare derefs.
  */
 class NotifyRespInd : GenericPdu {
     /**
@@ -98,7 +96,7 @@ class NotifyRespInd : GenericPdu {
     /**
      * Get X-Mms-Transaction-Id field value.
      *
-     * @return the X-Mms-Report-Allowed value
+     * @return the X-Mms-Transaction-Id value
      */
     val transactionId: ByteArray?
         get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)

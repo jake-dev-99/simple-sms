@@ -14,14 +14,25 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
 /**
  * M-Acknowledge.ind PDU.
+ *
+ * First-party Kotlin port of the vendored `AcknowledgeInd` (Phase 5 · pdu_alt),
+ * a [GenericPdu] subclass. Behaviour-faithful 1:1.
+ *
+ * The `(PduHeaders)` parse-constructor (package-private in the vendored Java) is
+ * widened to `public`: its caller `PduParser` is a same-package non-subclass,
+ * and Kotlin can't express Java package-private (`internal` name-mangles out of
+ * Java's reach). The getters are `val` properties (compiling to the vendored
+ * `getReportAllowed()`/`getTransactionId()`); `mPduHeaders` is dereferenced with
+ * `!!`, mirroring the vendored bare derefs.
  */
-public class AcknowledgeInd extends GenericPdu {
+class AcknowledgeInd : GenericPdu {
+
     /**
      * Constructor, used when composing a M-Acknowledge.ind pdu.
      *
@@ -30,13 +41,11 @@ public class AcknowledgeInd extends GenericPdu {
      * @throws InvalidHeaderValueException if parameters are invalid.
      *         NullPointerException if transactionId is null.
      */
-    public AcknowledgeInd(int mmsVersion, byte[] transactionId)
-            throws InvalidHeaderValueException {
-        super();
-
-        setMessageType(PduHeaders.MESSAGE_TYPE_ACKNOWLEDGE_IND);
-        setMmsVersion(mmsVersion);
-        setTransactionId(transactionId);
+    @Throws(InvalidHeaderValueException::class)
+    constructor(mmsVersion: Int, transactionId: ByteArray?) : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_ACKNOWLEDGE_IND)
+        setMmsVersion(mmsVersion)
+        setTransactionId(transactionId)
     }
 
     /**
@@ -44,18 +53,15 @@ public class AcknowledgeInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    AcknowledgeInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get X-Mms-Report-Allowed field value.
      *
      * @return the X-Mms-Report-Allowed value
      */
-    public int getReportAllowed() {
-        return mPduHeaders.getOctet(PduHeaders.REPORT_ALLOWED);
-    }
+    val reportAllowed: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.REPORT_ALLOWED)
 
     /**
      * Set X-Mms-Report-Allowed field value.
@@ -63,18 +69,18 @@ public class AcknowledgeInd extends GenericPdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setReportAllowed(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.REPORT_ALLOWED);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReportAllowed(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.REPORT_ALLOWED)
     }
 
     /**
      * Get X-Mms-Transaction-Id field value.
      *
-     * @return the X-Mms-Report-Allowed value
+     * @return the X-Mms-Transaction-Id value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id field value.
@@ -82,7 +88,7 @@ public class AcknowledgeInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTransactionId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 }
