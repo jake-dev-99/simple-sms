@@ -119,13 +119,17 @@ class InboundMmsHandler() : BroadcastReceiver() {
 
         Log.d(TAG, "Received MMS notification, size=${notification.messageSize}")
 
-        val contentLocationBytes: ByteArray = notification.contentLocation
+        // `contentLocation`/`transactionId` are now explicitly nullable on the
+        // Kotlin NotificationInd (the vendored getters returned platform-type
+        // byte[] that this call site already treated as non-null); `!!`
+        // preserves that prior non-null treatment (same NPE-if-null at runtime).
+        val contentLocationBytes: ByteArray = notification.contentLocation!!
         if (contentLocationBytes.isEmpty()) {
             Log.e(TAG, "No contentLocation in MMS NotificationInd PDU")
             return
         }
 
-        val transactionIdBytes = notification.transactionId
+        val transactionIdBytes = notification.transactionId!!
         if (transactionIdBytes.isEmpty()) {
             Log.e(TAG, "No transactionId in MMS NotificationInd PDU")
             return

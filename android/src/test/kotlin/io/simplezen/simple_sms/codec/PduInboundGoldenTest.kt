@@ -65,13 +65,13 @@ class PduInboundGoldenTest {
             parsed is NotificationInd,
         )
         parsed as NotificationInd
-        assertEquals("transactionId", "T123", String(parsed.transactionId))
-        assertEquals("contentLocation", "http://mmsc.example/abc", String(parsed.contentLocation))
+        assertEquals("transactionId", "T123", String(parsed.transactionId!!))
+        assertEquals("contentLocation", "http://mmsc.example/abc", String(parsed.contentLocation!!))
         assertEquals("messageSize", 1234L, parsed.messageSize)
         // Every header present in the fixture is asserted, so the fixture stays
         // honest as a dead-code oracle (no exercised-but-unpinned decode paths).
         assertEquals("from (insert-address-token)", "insert-address-token", parsed.from?.string)
-        assertEquals("messageClass", "personal", String(parsed.messageClass))
+        assertEquals("messageClass", "personal", String(parsed.messageClass!!))
         // Absolute expiry (token 0x80) decodes verbatim to its epoch-seconds
         // long-integer — deterministic, unlike a relative token which the
         // parser rewrites to now()+delta (PduParser.java:509-515; see below).

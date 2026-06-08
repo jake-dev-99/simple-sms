@@ -14,14 +14,22 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
 /**
  * M-Notification.ind PDU.
+ *
+ * First-party Kotlin port of the vendored `NotificationInd` (Phase 5 · pdu_alt),
+ * a [GenericPdu] subclass. Behaviour-faithful 1:1. `from`/`setFrom` are
+ * `override`s of [GenericPdu]'s `open` `from`/`setFrom` (the vendored re-declares
+ * them with identical bodies). The `(PduHeaders)` parse constructor is widened
+ * package-private → `public` for the same-package non-subclass `PduParser`; the
+ * new getters are `val` properties; `mPduHeaders` is dereferenced with `!!`,
+ * mirroring the vendored bare derefs.
  */
-public class NotificationInd extends GenericPdu {
+class NotificationInd : GenericPdu {
     /**
      * Empty constructor.
      * Since the Pdu corresponding to this class is constructed
@@ -31,9 +39,9 @@ public class NotificationInd extends GenericPdu {
      * @throws InvalidHeaderValueException if error occurs.
      *         RuntimeException if an undeclared error occurs.
      */
-    public NotificationInd() throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND);
+    @Throws(InvalidHeaderValueException::class)
+    constructor() : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_NOTIFICATION_IND)
     }
 
     /**
@@ -41,18 +49,15 @@ public class NotificationInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    NotificationInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get X-Mms-Content-Class Value.
      *
      * @return the value
      */
-    public int getContentClass() {
-        return mPduHeaders.getOctet(PduHeaders.CONTENT_CLASS);
-    }
+    val contentClass: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.CONTENT_CLASS)
 
     /**
      * Set X-Mms-Content-Class Value.
@@ -61,8 +66,9 @@ public class NotificationInd extends GenericPdu {
      * @throws InvalidHeaderValueException if the value is invalid.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setContentClass(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.CONTENT_CLASS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setContentClass(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.CONTENT_CLASS)
     }
 
     /**
@@ -72,9 +78,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getContentLocation() {
-        return mPduHeaders.getTextString(PduHeaders.CONTENT_LOCATION);
-    }
+    val contentLocation: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.CONTENT_LOCATION)
 
     /**
      * Set X-Mms-Content-Location value.
@@ -83,8 +88,8 @@ public class NotificationInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setContentLocation(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.CONTENT_LOCATION);
+    fun setContentLocation(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.CONTENT_LOCATION)
     }
 
     /**
@@ -95,9 +100,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public long getExpiry() {
-        return mPduHeaders.getLongInteger(PduHeaders.EXPIRY);
-    }
+    val expiry: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.EXPIRY)
 
     /**
      * Set X-Mms-Expiry value.
@@ -105,8 +109,8 @@ public class NotificationInd extends GenericPdu {
      * @param value the value
      * @throws RuntimeException if an undeclared error occurs.
      */
-    public void setExpiry(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.EXPIRY);
+    fun setExpiry(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.EXPIRY)
     }
 
     /**
@@ -116,9 +120,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue getFrom() {
-       return mPduHeaders.getEncodedStringValue(PduHeaders.FROM);
-    }
+    override val from: EncodedStringValue?
+        get() = mPduHeaders!!.getEncodedStringValue(PduHeaders.FROM)
 
     /**
      * Set From value.
@@ -127,8 +130,8 @@ public class NotificationInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setFrom(EncodedStringValue value) {
-        mPduHeaders.setEncodedStringValue(value, PduHeaders.FROM);
+    override fun setFrom(value: EncodedStringValue?) {
+        mPduHeaders!!.setEncodedStringValue(value, PduHeaders.FROM)
     }
 
     /**
@@ -138,9 +141,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getMessageClass() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_CLASS);
-    }
+    val messageClass: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_CLASS)
 
     /**
      * Set X-Mms-Message-Class value.
@@ -149,8 +151,8 @@ public class NotificationInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setMessageClass(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_CLASS);
+    fun setMessageClass(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_CLASS)
     }
 
     /**
@@ -159,9 +161,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public long getMessageSize() {
-        return mPduHeaders.getLongInteger(PduHeaders.MESSAGE_SIZE);
-    }
+    val messageSize: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.MESSAGE_SIZE)
 
     /**
      * Set X-Mms-Message-Size value.
@@ -169,8 +170,8 @@ public class NotificationInd extends GenericPdu {
      * @param value the value
      * @throws RuntimeException if an undeclared error occurs.
      */
-    public void setMessageSize(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.MESSAGE_SIZE);
+    fun setMessageSize(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.MESSAGE_SIZE)
     }
 
     /**
@@ -178,9 +179,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue getSubject() {
-        return mPduHeaders.getEncodedStringValue(PduHeaders.SUBJECT);
-    }
+    val subject: EncodedStringValue?
+        get() = mPduHeaders!!.getEncodedStringValue(PduHeaders.SUBJECT)
 
     /**
      * Set subject.
@@ -189,8 +189,8 @@ public class NotificationInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setSubject(EncodedStringValue value) {
-        mPduHeaders.setEncodedStringValue(value, PduHeaders.SUBJECT);
+    fun setSubject(value: EncodedStringValue?) {
+        mPduHeaders!!.setEncodedStringValue(value, PduHeaders.SUBJECT)
     }
 
     /**
@@ -198,9 +198,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id.
@@ -209,8 +208,8 @@ public class NotificationInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setTransactionId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 
     /**
@@ -218,9 +217,8 @@ public class NotificationInd extends GenericPdu {
      *
      * @return the value
      */
-    public int getDeliveryReport() {
-        return mPduHeaders.getOctet(PduHeaders.DELIVERY_REPORT);
-    }
+    val deliveryReport: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.DELIVERY_REPORT)
 
     /**
      * Set X-Mms-Delivery-Report Value.
@@ -229,8 +227,9 @@ public class NotificationInd extends GenericPdu {
      * @throws InvalidHeaderValueException if the value is invalid.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setDeliveryReport(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.DELIVERY_REPORT);
+    @Throws(InvalidHeaderValueException::class)
+    fun setDeliveryReport(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.DELIVERY_REPORT)
     }
 
     /*
