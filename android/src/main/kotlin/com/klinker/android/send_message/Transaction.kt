@@ -519,7 +519,7 @@ class Transaction(private val context: Context, settings: Settings) {
                     val values = ContentValues(1)
                     values.put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_OUTBOX)
                     val rowsUpdated = SqliteWrapper.update(
-                        context, context.contentResolver, messageUri, values,
+                        context, context.contentResolver, messageUri!!, values,
                         null, null,
                     )
                     Log.v(TAG, "rowsUpdated=$rowsUpdated")
