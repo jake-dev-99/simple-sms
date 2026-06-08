@@ -14,14 +14,22 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
 /**
  * M-NofifyResp.ind PDU.
+ *
+ * First-party Kotlin port of the vendored `NotifyRespInd` (Phase 5 · pdu_alt), a
+ * [GenericPdu] subclass. Behaviour-faithful 1:1. The `(PduHeaders)` parse
+ * constructor is widened package-private → `public` for the same-package
+ * non-subclass `PduParser`; getters are `val` properties and `mPduHeaders` is
+ * dereferenced with `!!`, mirroring the vendored bare derefs. (The
+ * `getTransactionId` `@return` keeps the vendored copy-paste "X-Mms-Report-Allowed"
+ * wording verbatim — parked on the codec-modernization doc pass.)
  */
-public class NotifyRespInd extends GenericPdu {
+class NotifyRespInd : GenericPdu {
     /**
      * Constructor, used when composing a M-NotifyResp.ind pdu.
      *
@@ -32,14 +40,12 @@ public class NotifyRespInd extends GenericPdu {
      *         NullPointerException if transactionId is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public NotifyRespInd(int mmsVersion,
-                         byte[] transactionId,
-                         int status) throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_NOTIFYRESP_IND);
-        setMmsVersion(mmsVersion);
-        setTransactionId(transactionId);
-        setStatus(status);
+    @Throws(InvalidHeaderValueException::class)
+    constructor(mmsVersion: Int, transactionId: ByteArray?, status: Int) : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_NOTIFYRESP_IND)
+        setMmsVersion(mmsVersion)
+        setTransactionId(transactionId)
+        setStatus(status)
     }
 
     /**
@@ -47,18 +53,15 @@ public class NotifyRespInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    NotifyRespInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get X-Mms-Report-Allowed field value.
      *
      * @return the X-Mms-Report-Allowed value
      */
-    public int getReportAllowed() {
-        return mPduHeaders.getOctet(PduHeaders.REPORT_ALLOWED);
-    }
+    val reportAllowed: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.REPORT_ALLOWED)
 
     /**
      * Set X-Mms-Report-Allowed field value.
@@ -67,8 +70,9 @@ public class NotifyRespInd extends GenericPdu {
      * @throws InvalidHeaderValueException if the value is invalid.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setReportAllowed(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.REPORT_ALLOWED);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReportAllowed(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.REPORT_ALLOWED)
     }
 
     /**
@@ -78,8 +82,9 @@ public class NotifyRespInd extends GenericPdu {
      * @throws InvalidHeaderValueException if the value is invalid.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.STATUS)
     }
 
     /**
@@ -87,18 +92,16 @@ public class NotifyRespInd extends GenericPdu {
      *
      * @return the X-Mms-Status value
      */
-    public int getStatus() {
-        return mPduHeaders.getOctet(PduHeaders.STATUS);
-    }
+    val status: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.STATUS)
 
     /**
      * Get X-Mms-Transaction-Id field value.
      *
      * @return the X-Mms-Report-Allowed value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id field value.
@@ -107,7 +110,7 @@ public class NotifyRespInd extends GenericPdu {
      * @throws NullPointerException if the value is null.
      *         RuntimeException if an undeclared error occurs.
      */
-    public void setTransactionId(byte[] value) {
-            mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 }
