@@ -14,11 +14,20 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
-public class ReadRecInd extends GenericPdu {
+/**
+ * First-party Kotlin port of the vendored `ReadRecInd` (Phase 5 · pdu_alt), a
+ * [GenericPdu] subclass. Behaviour-faithful 1:1. The compose constructor calls
+ * the inherited [GenericPdu.setFrom] (no `from` override here, unlike
+ * `ReadOrigInd`). The `(PduHeaders)` parse constructor is widened
+ * package-private → `public` for the same-package non-subclass `PduParser`;
+ * getters are `val` properties; `mPduHeaders` is dereferenced with `!!`,
+ * mirroring the vendored bare derefs.
+ */
+class ReadRecInd : GenericPdu {
     /**
      * Constructor, used when composing a M-ReadRec.ind pdu.
      *
@@ -30,18 +39,20 @@ public class ReadRecInd extends GenericPdu {
      * @throws InvalidHeaderValueException if parameters are invalid.
      *         NullPointerException if messageId or to is null.
      */
-    public ReadRecInd(EncodedStringValue from,
-                      byte[] messageId,
-                      int mmsVersion,
-                      int readStatus,
-                      EncodedStringValue[] to) throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_READ_REC_IND);
-        setFrom(from);
-        setMessageId(messageId);
-        setMmsVersion(mmsVersion);
-        setTo(to);
-        setReadStatus(readStatus);
+    @Throws(InvalidHeaderValueException::class)
+    constructor(
+        from: EncodedStringValue?,
+        messageId: ByteArray?,
+        mmsVersion: Int,
+        readStatus: Int,
+        to: Array<EncodedStringValue>?,
+    ) : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_READ_REC_IND)
+        setFrom(from)
+        setMessageId(messageId)
+        setMmsVersion(mmsVersion)
+        setTo(to)
+        setReadStatus(readStatus)
     }
 
     /**
@@ -49,26 +60,23 @@ public class ReadRecInd extends GenericPdu {
      *
      * @param headers Headers for this PDU.
      */
-    ReadRecInd(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Get Date value.
      *
      * @return the value
      */
-    public long getDate() {
-        return mPduHeaders.getLongInteger(PduHeaders.DATE);
-    }
+    val date: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.DATE)
 
     /**
      * Set Date value.
      *
      * @param value the value
      */
-    public void setDate(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.DATE);
+    fun setDate(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.DATE)
     }
 
     /**
@@ -76,9 +84,8 @@ public class ReadRecInd extends GenericPdu {
      *
      * @return the value
      */
-    public byte[] getMessageId() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_ID);
-    }
+    val messageId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_ID)
 
     /**
      * Set Message-ID value.
@@ -86,8 +93,8 @@ public class ReadRecInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_ID);
+    fun setMessageId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_ID)
     }
 
     /**
@@ -95,9 +102,8 @@ public class ReadRecInd extends GenericPdu {
      *
      * @return the value
      */
-    public EncodedStringValue[] getTo() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.TO);
-    }
+    val to: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.TO)
 
     /**
      * Set To value.
@@ -105,8 +111,8 @@ public class ReadRecInd extends GenericPdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTo(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.TO);
+    fun setTo(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.TO)
     }
 
     /**
@@ -114,9 +120,8 @@ public class ReadRecInd extends GenericPdu {
      *
      * @return the value
      */
-    public int getReadStatus() {
-        return mPduHeaders.getOctet(PduHeaders.READ_STATUS);
-    }
+    val readStatus: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.READ_STATUS)
 
     /**
      * Set X-MMS-Read-status value.
@@ -124,8 +129,9 @@ public class ReadRecInd extends GenericPdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setReadStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.READ_STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReadStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.READ_STATUS)
     }
 
     /*
