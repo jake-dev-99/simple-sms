@@ -131,7 +131,7 @@ class PduComposeGoldenTest {
         // Decode with an explicit charset — String(ByteArray) on the JVM would
         // otherwise use the platform default; the wire fields are ASCII so the
         // bytes are unaffected, but pinning UTF-8 keeps the test environment-proof.
-        assertEquals("transaction-id", fixedTransactionId, String(parsed.transactionId, Charsets.UTF_8))
+        assertEquals("transaction-id", fixedTransactionId, String(parsed.transactionId!!, Charsets.UTF_8))
         assertEquals("date", fixedDateSeconds, parsed.date)
         assertEquals("subject", "golden-compose", parsed.subject?.string)
         assertEquals(

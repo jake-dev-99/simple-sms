@@ -14,39 +14,46 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import android.content.Context;
-import android.text.TextUtils;
-import android.util.Log;
+import android.content.Context
+import android.text.TextUtils
+import android.util.Log
+import com.google.android.mms.InvalidHeaderValueException
+import com.klinker.android.send_message.Utils
 
-import com.google.android.mms.InvalidHeaderValueException;
-import com.klinker.android.send_message.Utils;
+/**
+ * First-party Kotlin port of the vendored `SendReq` (Phase 5 · pdu_alt) — the
+ * M-Send.req PDU, a [MultimediaMessagePdu] subclass. Behaviour-faithful 1:1.
+ *
+ * The `(PduHeaders)` and `(PduHeaders, PduBody)` parse constructors are widened
+ * package-private → `public` for the same-package non-subclass `PduParser`.
+ * `setTo` is added here (the base only has the `to` getter + `addTo`). Getters
+ * are `val` properties; `mPduHeaders` is dereferenced with `!!`, mirroring the
+ * vendored bare derefs. (`getTransactionId`'s `@return` is corrected from the
+ * vendored copy-paste "X-Mms-Report-Allowed".)
+ */
+class SendReq : MultimediaMessagePdu {
 
-public class SendReq extends MultimediaMessagePdu {
-    private static final String TAG = "SendReq";
-
-    public SendReq() {
-        super();
-
+    constructor() : super() {
         try {
-            setMessageType(PduHeaders.MESSAGE_TYPE_SEND_REQ);
-            setMmsVersion(PduHeaders.CURRENT_MMS_VERSION);
+            setMessageType(PduHeaders.MESSAGE_TYPE_SEND_REQ)
+            setMmsVersion(PduHeaders.CURRENT_MMS_VERSION)
             // FIXME: Content-type must be decided according to whether
             // SMIL part present.
-            setContentType("application/vnd.wap.multipart.related".getBytes());
-            setFrom(new EncodedStringValue(PduHeaders.FROM_INSERT_ADDRESS_TOKEN_STR.getBytes()));
-            setTransactionId(generateTransactionId());
-        } catch (InvalidHeaderValueException e) {
+            setContentType("application/vnd.wap.multipart.related".toByteArray())
+            setFrom(EncodedStringValue(PduHeaders.FROM_INSERT_ADDRESS_TOKEN_STR.toByteArray()))
+            setTransactionId(generateTransactionId())
+        } catch (e: InvalidHeaderValueException) {
             // Impossible to reach here since all headers we set above are valid.
-            Log.e(TAG, "Unexpected InvalidHeaderValueException.", e);
-            throw new RuntimeException(e);
+            Log.e(TAG, "Unexpected InvalidHeaderValueException.", e)
+            throw RuntimeException(e)
         }
     }
 
-    private byte[] generateTransactionId() {
-        String transactionId = "T" + Long.toHexString(System.currentTimeMillis());
-        return transactionId.getBytes();
+    private fun generateTransactionId(): ByteArray {
+        val transactionId = "T" + java.lang.Long.toHexString(System.currentTimeMillis())
+        return transactionId.toByteArray()
     }
 
     /**
@@ -60,16 +67,18 @@ public class SendReq extends MultimediaMessagePdu {
      *                                     NullPointerException if contentType, form
      *                                     or transactionId is null.
      */
-    public SendReq(byte[] contentType,
-            EncodedStringValue from,
-            int mmsVersion,
-            byte[] transactionId) throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_SEND_REQ);
-        setContentType(contentType);
-        setFrom(from);
-        setMmsVersion(mmsVersion);
-        setTransactionId(transactionId);
+    @Throws(InvalidHeaderValueException::class)
+    constructor(
+        contentType: ByteArray?,
+        from: EncodedStringValue?,
+        mmsVersion: Int,
+        transactionId: ByteArray?,
+    ) : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_SEND_REQ)
+        setContentType(contentType)
+        setFrom(from)
+        setMmsVersion(mmsVersion)
+        setTransactionId(transactionId)
     }
 
     /**
@@ -77,9 +86,7 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @param headers Headers for this PDU.
      */
-    SendReq(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Constructor with given headers and body
@@ -87,18 +94,15 @@ public class SendReq extends MultimediaMessagePdu {
      * @param headers Headers for this PDU.
      * @param body    Body of this PDu.
      */
-    SendReq(PduHeaders headers, PduBody body) {
-        super(headers, body);
-    }
+    constructor(headers: PduHeaders?, body: PduBody?) : super(headers, body)
 
     /**
      * Get Bcc value.
      *
      * @return the value
      */
-    public EncodedStringValue[] getBcc() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.BCC);
-    }
+    val bcc: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.BCC)
 
     /**
      * Add a "BCC" value.
@@ -106,8 +110,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void addBcc(EncodedStringValue value) {
-        mPduHeaders.appendEncodedStringValue(value, PduHeaders.BCC);
+    fun addBcc(value: EncodedStringValue?) {
+        mPduHeaders!!.appendEncodedStringValue(value, PduHeaders.BCC)
     }
 
     /**
@@ -116,8 +120,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setBcc(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.BCC);
+    fun setBcc(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.BCC)
     }
 
     /**
@@ -125,9 +129,8 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public EncodedStringValue[] getCc() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.CC);
-    }
+    val cc: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.CC)
 
     /**
      * Add a "CC" value.
@@ -135,8 +138,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void addCc(EncodedStringValue value) {
-        mPduHeaders.appendEncodedStringValue(value, PduHeaders.CC);
+    fun addCc(value: EncodedStringValue?) {
+        mPduHeaders!!.appendEncodedStringValue(value, PduHeaders.CC)
     }
 
     /**
@@ -145,8 +148,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setCc(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.CC);
+    fun setCc(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.CC)
     }
 
     /**
@@ -154,9 +157,8 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getContentType() {
-        return mPduHeaders.getTextString(PduHeaders.CONTENT_TYPE);
-    }
+    val contentType: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.CONTENT_TYPE)
 
     /**
      * Set Content-type value.
@@ -164,8 +166,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setContentType(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.CONTENT_TYPE);
+    fun setContentType(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.CONTENT_TYPE)
     }
 
     /**
@@ -173,9 +175,8 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public int getDeliveryReport() {
-        return mPduHeaders.getOctet(PduHeaders.DELIVERY_REPORT);
-    }
+    val deliveryReport: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.DELIVERY_REPORT)
 
     /**
      * Set X-Mms-Delivery-Report value.
@@ -183,8 +184,9 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setDeliveryReport(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.DELIVERY_REPORT);
+    @Throws(InvalidHeaderValueException::class)
+    fun setDeliveryReport(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.DELIVERY_REPORT)
     }
 
     /**
@@ -195,17 +197,16 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public long getExpiry() {
-        return mPduHeaders.getLongInteger(PduHeaders.EXPIRY);
-    }
+    val expiry: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.EXPIRY)
 
     /**
      * Set X-Mms-Expiry value.
      *
      * @param value the value
      */
-    public void setExpiry(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.EXPIRY);
+    fun setExpiry(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.EXPIRY)
     }
 
     /**
@@ -215,17 +216,16 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public long getMessageSize() {
-        return mPduHeaders.getLongInteger(PduHeaders.MESSAGE_SIZE);
-    }
+    val messageSize: Long
+        get() = mPduHeaders!!.getLongInteger(PduHeaders.MESSAGE_SIZE)
 
     /**
      * Set X-Mms-MessageSize value.
      *
      * @param value the value
      */
-    public void setMessageSize(long value) {
-        mPduHeaders.setLongInteger(value, PduHeaders.MESSAGE_SIZE);
+    fun setMessageSize(value: Long) {
+        mPduHeaders!!.setLongInteger(value, PduHeaders.MESSAGE_SIZE)
     }
 
     /**
@@ -235,9 +235,8 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getMessageClass() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_CLASS);
-    }
+    val messageClass: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_CLASS)
 
     /**
      * Set X-Mms-Message-Class value.
@@ -245,8 +244,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageClass(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_CLASS);
+    fun setMessageClass(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_CLASS)
     }
 
     /**
@@ -254,9 +253,8 @@ public class SendReq extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public int getReadReport() {
-        return mPduHeaders.getOctet(PduHeaders.READ_REPORT);
-    }
+    val readReport: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.READ_REPORT)
 
     /**
      * Set X-Mms-Read-Report value.
@@ -264,8 +262,9 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setReadReport(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.READ_REPORT);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReadReport(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.READ_REPORT)
     }
 
     /**
@@ -274,18 +273,17 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTo(EncodedStringValue[] value) {
-        mPduHeaders.setEncodedStringValues(value, PduHeaders.TO);
+    fun setTo(value: Array<EncodedStringValue>?) {
+        mPduHeaders!!.setEncodedStringValues(value, PduHeaders.TO)
     }
 
     /**
      * Get X-Mms-Transaction-Id field value.
      *
-     * @return the X-Mms-Report-Allowed value
+     * @return the X-Mms-Transaction-Id value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id field value.
@@ -293,8 +291,8 @@ public class SendReq extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTransactionId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 
     /**
@@ -304,13 +302,17 @@ public class SendReq extends MultimediaMessagePdu {
      * @param fromAddress    from address info from client
      * @param subscriptionId subscription id to use
      */
-    public void prepareFromAddress(Context context, String fromAddress, int subscriptionId) {
-        String phoneNumber = Utils.getMyPhoneNumberFromSubscription(context, subscriptionId);
+    fun prepareFromAddress(context: Context, fromAddress: String?, subscriptionId: Int) {
+        val phoneNumber = Utils.getMyPhoneNumberFromSubscription(context, subscriptionId)
         if (!TextUtils.isEmpty(phoneNumber)) {
-            setFrom(new EncodedStringValue(phoneNumber));
+            setFrom(EncodedStringValue(phoneNumber))
         } else if (!TextUtils.isEmpty(fromAddress)) {
-            setFrom(new EncodedStringValue(fromAddress));
+            setFrom(EncodedStringValue(fromAddress))
         }
+    }
+
+    companion object {
+        private const val TAG = "SendReq"
     }
 
     /*
