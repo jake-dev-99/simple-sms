@@ -98,19 +98,12 @@ dependencies {
     // Same plugin-loader pattern as simple_permissions_android above.
     implementation(project(":simple_query_android"))
 
-    // `google_apps_messaging_core` removed in the inbound-MMS port.
-    // Its `MmsUtils.insertReceivedMmsMessage` was the canonical reference
-    // we ported into `InboundMmsPersister.kt`; with that port complete,
-    // nothing in this module's runtime code calls into Bugle anymore.
-    // PduPersister + the Klinker send_message tree under
-    // `src/main/java/com/{google,android,klinker}/...` remain — those
-    // are still used directly by inbound (PduPersister) and outbound
-    // (Klinker Transaction). Their removal is a separate follow-up.
-    implementation(project(":google_i18n_libphonenumber"))
-    implementation(project(":google_chips"))
-    implementation(project(":google_photoviewer"))
-    implementation(project(":google_vcard"))
-    implementation(project(":google_ex"))
+    // The vendored `android/lib/google_*` modules were build-time reference
+    // scaffolding from the original port, not sourced by this plugin —
+    // removed entirely (UNFY-158). `google_apps_messaging_core` was already
+    // removed during the inbound-MMS port (`MmsUtils.insertReceivedMmsMessage`
+    // → `InboundMmsPersister.kt`); the remaining five (i18n_libphonenumber,
+    // chips, photoviewer, vcard, ex) had zero references anywhere in the tree.
 
     implementation("com.google.firebase:firebase-crashlytics-buildtools:3.0.3")
 
