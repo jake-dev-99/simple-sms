@@ -14,62 +14,69 @@
  * limitations under the License.
  */
 
-package com.android.internal.telephony;
+package com.android.internal.telephony
 
 /**
  * Contains a list of string constants used to get or set telephone properties
  * in the system. You can use {android.os.SystemProperties os.SystemProperties}
  * to get and set these values.
  *
+ * First-party Kotlin port of the vendored `TelephonyProperties` (Phase 5).
+ * Behaviour-faithful 1:1: the vendored Java constant-interface becomes a Kotlin
+ * `object` of `const val`s (no class implements it, so the constant-interface
+ * shape isn't needed); every property string is preserved value-for-value.
+ * `const val` compiles to `public static final`, so `TelephonyProperties.X`
+ * keeps resolving from both Kotlin (`DownloadManager`) and Java.
+ *
  * @hide
  */
-public interface TelephonyProperties {
-    //****** Baseband and Radio Interface version
+object TelephonyProperties {
+    // ****** Baseband and Radio Interface version
 
-    //TODO T: property strings do not have to be gsm specific
-    //        change gsm.*operator.*" properties to "operator.*" properties
+    // TODO T: property strings do not have to be gsm specific
+    //         change gsm.*operator.*" properties to "operator.*" properties
 
     /**
      * Baseband version
      * Availability: property is available any time radio is on
      */
-    String PROPERTY_BASEBAND_VERSION = "gsm.version.baseband";
+    const val PROPERTY_BASEBAND_VERSION = "gsm.version.baseband"
 
     /**
      * Radio Interface Layer (RIL) library implementation.
      */
-    String PROPERTY_RIL_IMPL = "gsm.version.ril-impl";
+    const val PROPERTY_RIL_IMPL = "gsm.version.ril-impl"
 
-    //****** Current Network
+    // ****** Current Network
 
     /**
      * Alpha name of current registered operator.<p>
      * Availability: when registered to a network. Result may be unreliable on
      * CDMA networks.
      */
-    String PROPERTY_OPERATOR_ALPHA = "gsm.operator.alpha";
-    //TODO: most of these properties are generic, substitute gsm. with phone. bug 1856959
+    const val PROPERTY_OPERATOR_ALPHA = "gsm.operator.alpha"
+    // TODO: most of these properties are generic, substitute gsm. with phone. bug 1856959
 
     /**
      * Numeric name (MCC+MNC) of current registered operator.<p>
      * Availability: when registered to a network. Result may be unreliable on
      * CDMA networks.
      */
-    String PROPERTY_OPERATOR_NUMERIC = "gsm.operator.numeric";
+    const val PROPERTY_OPERATOR_NUMERIC = "gsm.operator.numeric"
 
     /**
      * 'true' if the device is on a manually selected network
      * <p/>
      * Availability: when registered to a network
      */
-    String PROPERTY_OPERATOR_ISMANUAL = "operator.ismanual";
+    const val PROPERTY_OPERATOR_ISMANUAL = "operator.ismanual"
 
     /**
      * 'true' if the device is considered roaming on this network for GSM
      * purposes.
      * Availability: when registered to a network
      */
-    String PROPERTY_OPERATOR_ISROAMING = "gsm.operator.isroaming";
+    const val PROPERTY_OPERATOR_ISROAMING = "gsm.operator.isroaming"
 
     /**
      * The ISO country code equivalent of the current registered operator's
@@ -77,14 +84,14 @@ public interface TelephonyProperties {
      * Availability: when registered to a network. Result may be unreliable on
      * CDMA networks.
      */
-    String PROPERTY_OPERATOR_ISO_COUNTRY = "gsm.operator.iso-country";
+    const val PROPERTY_OPERATOR_ISO_COUNTRY = "gsm.operator.iso-country"
 
     /**
      * The contents of this property is the value of the kernel command line
      * product_type variable that corresponds to a product that supports LTE on CDMA.
      * {@see BaseCommands#getLteOnCdmaMode()}
      */
-    String PROPERTY_LTE_ON_CDMA_PRODUCT_TYPE = "telephony.lteOnCdmaProductType";
+    const val PROPERTY_LTE_ON_CDMA_PRODUCT_TYPE = "telephony.lteOnCdmaProductType"
 
     /**
      * The contents of this property is the one of {Phone#LTE_ON_CDMA_TRUE} or
@@ -93,115 +100,114 @@ public interface TelephonyProperties {
      * final value which could also be {Phone#LTE_ON_CDMA_FALSE}.
      * {@see BaseCommands#getLteOnCdmaMode()}
      */
-    String PROPERTY_LTE_ON_CDMA_DEVICE = "telephony.lteOnCdmaDevice";
+    const val PROPERTY_LTE_ON_CDMA_DEVICE = "telephony.lteOnCdmaDevice"
 
-    String CURRENT_ACTIVE_PHONE = "gsm.current.phone-type";
+    const val CURRENT_ACTIVE_PHONE = "gsm.current.phone-type"
 
-    //****** SIM Card
+    // ****** SIM Card
     /**
      * One of <code>"UNKNOWN"</code> <code>"ABSENT"</code> <code>"PIN_REQUIRED"</code>
      * <code>"PUK_REQUIRED"</code> <code>"NETWORK_LOCKED"</code> or <code>"READY"</code>
      */
-    String PROPERTY_SIM_STATE = "gsm.sim.state";
+    const val PROPERTY_SIM_STATE = "gsm.sim.state"
 
     /**
      * The MCC+MNC (mobile country code+mobile network code) of the
      * provider of the SIM. 5 or 6 decimal digits.
      * Availability: SIM state must be "READY"
      */
-    String PROPERTY_ICC_OPERATOR_NUMERIC = "gsm.sim.operator.numeric";
+    const val PROPERTY_ICC_OPERATOR_NUMERIC = "gsm.sim.operator.numeric"
 
     /**
      * PROPERTY_ICC_OPERATOR_ALPHA is also known as the SPN, or Service Provider Name.
      * Availability: SIM state must be "READY"
      */
-    String PROPERTY_ICC_OPERATOR_ALPHA = "gsm.sim.operator.alpha";
+    const val PROPERTY_ICC_OPERATOR_ALPHA = "gsm.sim.operator.alpha"
 
     /**
      * ISO country code equivalent for the SIM provider's country code
      */
-    String PROPERTY_ICC_OPERATOR_ISO_COUNTRY = "gsm.sim.operator.iso-country";
+    const val PROPERTY_ICC_OPERATOR_ISO_COUNTRY = "gsm.sim.operator.iso-country"
 
     /**
      * Indicates the available radio technology.  Values include: <code>"unknown"</code>,
      * <code>"GPRS"</code>, <code>"EDGE"</code> and <code>"UMTS"</code>.
      */
-    String PROPERTY_DATA_NETWORK_TYPE = "gsm.network.type";
+    const val PROPERTY_DATA_NETWORK_TYPE = "gsm.network.type"
 
     /**
      * Indicate if phone is in emergency callback mode
      */
-    String PROPERTY_INECM_MODE = "ril.cdma.inecmmode";
+    const val PROPERTY_INECM_MODE = "ril.cdma.inecmmode"
 
     /**
      * Indicate the timer value for exiting emergency callback mode
      */
-    String PROPERTY_ECM_EXIT_TIMER = "ro.cdma.ecmexittimer";
+    const val PROPERTY_ECM_EXIT_TIMER = "ro.cdma.ecmexittimer"
 
     /**
      * The international dialing prefix conversion string
      */
-    String PROPERTY_IDP_STRING = "ro.cdma.idpstring";
+    const val PROPERTY_IDP_STRING = "ro.cdma.idpstring"
 
     /**
      * Defines the schema for the carrier specified OTASP number
      */
-    String PROPERTY_OTASP_NUM_SCHEMA = "ro.cdma.otaspnumschema";
+    const val PROPERTY_OTASP_NUM_SCHEMA = "ro.cdma.otaspnumschema"
 
     /**
      * Disable all calls including Emergency call when it set to true.
      */
-    String PROPERTY_DISABLE_CALL = "ro.telephony.disable-call";
+    const val PROPERTY_DISABLE_CALL = "ro.telephony.disable-call"
 
     /**
      * Set to true for vendor RIL's that send multiple UNSOL_CALL_RING notifications.
      */
-    String PROPERTY_RIL_SENDS_MULTIPLE_CALL_RING =
-            "ro.telephony.call_ring.multiple";
+    const val PROPERTY_RIL_SENDS_MULTIPLE_CALL_RING = "ro.telephony.call_ring.multiple"
 
     /**
      * The number of milliseconds between CALL_RING notifications.
      */
-    String PROPERTY_CALL_RING_DELAY = "ro.telephony.call_ring.delay";
+    const val PROPERTY_CALL_RING_DELAY = "ro.telephony.call_ring.delay"
 
     /**
      * Track CDMA SMS message id numbers to ensure they increment
      * monotonically, regardless of reboots.
      */
-    String PROPERTY_CDMA_MSG_ID = "persist.radio.cdma.msgid";
+    const val PROPERTY_CDMA_MSG_ID = "persist.radio.cdma.msgid"
 
     /**
      * Property to override DEFAULT_WAKE_LOCK_TIMEOUT
      */
-    String PROPERTY_WAKE_LOCK_TIMEOUT = "ro.ril.wake_lock_timeout";
+    const val PROPERTY_WAKE_LOCK_TIMEOUT = "ro.ril.wake_lock_timeout"
 
     /**
      * Set to true to indicate that the modem needs to be reset
      * when there is a radio technology change.
      */
-    String PROPERTY_RESET_ON_RADIO_TECH_CHANGE = "persist.radio.reset_on_switch";
+    const val PROPERTY_RESET_ON_RADIO_TECH_CHANGE = "persist.radio.reset_on_switch"
 
     /**
      * Set to false to disable SMS receiving, default is
      * the value of config_sms_capable
      */
-    String PROPERTY_SMS_RECEIVE = "telephony.sms.receive";
+    const val PROPERTY_SMS_RECEIVE = "telephony.sms.receive"
 
     /**
      * Set to false to disable SMS sending, default is
      * the value of config_sms_capable
      */
-    String PROPERTY_SMS_SEND = "telephony.sms.send";
+    const val PROPERTY_SMS_SEND = "telephony.sms.send"
 
     /**
      * Set to true to indicate a test CSIM card is used in the device.
      * This property is for testing purpose only. This should not be defined
      * in commercial configuration.
      */
-    String PROPERTY_TEST_CSIM = "persist.radio.test-csim";
+    const val PROPERTY_TEST_CSIM = "persist.radio.test-csim"
 
     /**
      * Ignore RIL_UNSOL_NITZ_TIME_RECEIVED completely, used for debugging/testing.
      */
-    String PROPERTY_IGNORE_NITZ = "telephony.test.ignore.nitz";
+    const val PROPERTY_IGNORE_NITZ = "telephony.test.ignore.nitz"
 }
