@@ -39,9 +39,12 @@ import android.widget.Toast
  * - Modeled as a Kotlin `object` with `@JvmStatic` methods so the still-Java
  *   `RateController` and the Kotlin `DownloadManager` keep calling
  *   `SqliteWrapper.query(...)` etc. unchanged.
- * - TODO(layering): these are direct `ContentResolver` calls; they will route
- *   through `simple_query` in the separate layering re-route change (per the
- *   1:1-port-now / re-route-later decision), not in this fidelity port.
+ * - Layering carve-out (UNFY-156): direct `ContentResolver` by design. This is
+ *   the generic provider primitive for the vendored MMS PDU codec — its reads
+ *   serve binary reconstruction (positional column-index + BLOB + exact-type +
+ *   `Cursor` semantics that `simple_query`'s name-keyed/BLOB-coalescing
+ *   `ContentQuery` can't represent), and its writes are out of `simple_query`'s
+ *   read-only scope. The layering contract covers lookup reads, not the codec.
  */
 object SqliteWrapper {
     private const val TAG = "SqliteWrapper"

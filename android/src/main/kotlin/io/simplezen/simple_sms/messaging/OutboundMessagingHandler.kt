@@ -11,7 +11,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.database.Cursor
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
@@ -310,34 +309,19 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                 }
                         context.contentResolver.update(messageUri, statusUpdate, null, null)
 
-                        val cursor: Cursor? =
-                                context.contentResolver.query(messageUri, null, null, null, null)
-                        val finalMessage = mutableMapOf<String, Any?>()
-                        cursor?.use {
-                            if (it.moveToFirst()) {
-                                val row = HashMap<String, Any?>()
-                                for (index in 0 until cursor.columnCount) {
-                                    val columnName = cursor.getColumnName(index)
-                                    val columnType = cursor.getType(index)
-                                    when (columnType) {
-                                        Cursor.FIELD_TYPE_NULL -> row[columnName] = null
-                                        Cursor.FIELD_TYPE_INTEGER ->
-                                                row[columnName] = cursor.getLong(index)
-                                        Cursor.FIELD_TYPE_FLOAT ->
-                                                row[columnName] = cursor.getFloat(index)
-                                        Cursor.FIELD_TYPE_STRING ->
-                                                row[columnName] = cursor.getString(index)
-                                        Cursor.FIELD_TYPE_BLOB ->
-                                                row[columnName] = cursor.getBlob(index)
-                                        else -> {
-                                            throw Exception("Unknown column type: $columnType")
-                                        }
-                                    }
-                                    finalMessage[columnName] = row[columnName]
-                                }
-                            }
-                        }
-                        cursor?.close()
+                        // Read the just-updated row back through simple_query (Rule 1).
+                        // The manual FIELD_TYPE_* walk this replaces was an inlined
+                        // re-implementation of ContentQuery.drainRows; the
+                        // parts/recipients reads just below already route through Query().
+                        // Message rows (content://sms/N, content://mms/N) are INTEGER/TEXT
+                        // only — no BLOB columns — so ContentQuery's BLOB-coalescing is
+                        // moot here (verified vs the AOSP sms/pdu schema + codec; UNFY-156).
+                        val finalMessage: MutableMap<String, Any?> =
+                                Query(context)
+                                        .query(QueryObj(contentUri = messageUri.toString()))
+                                        .firstOrNull()
+                                        ?.toMutableMap()
+                                        ?: mutableMapOf()
 
                         finalMessage["uri"] = messageUri.toString()
                         if (eventType == SENTMMS_ACTION) {

@@ -91,12 +91,18 @@ See [`docs/runbooks/`](docs/runbooks/) and [`doc/RELEASE.md`](doc/RELEASE.md).
   `SecurityException`/empty results) but never *requests*. Activity/permission
   result listeners on `SimpleSmsPlugin` decline (`return false`) so
   `simple_permissions_native` handles them.
-- **Don't read ContentProviders directly.** Every Android read routes
-  through **`simple_query`** (Dart `SimpleQuery.instance.query(...)`; Kotlin
-  `io.simplezen.simple_query.ContentQuery.query(...)`). Never drop to
-  `ContentResolver.query` or bespoke cursor reads. The one documented
-  exception is the **binary bytes stream** (`openInputStream` on a part) —
-  and only the bytes, not the content-type probe.
+- **Don't read ContentProviders directly.** Every Android **lookup read**
+  routes through **`simple_query`** (Dart `SimpleQuery.instance.query(...)`;
+  Kotlin `io.simplezen.simple_query.ContentQuery.query(...)`). Never drop to
+  `ContentResolver.query` or bespoke cursor reads for a lookup. **Writes
+  (insert/update/delete) stay on `ContentResolver`** — `simple_query` is
+  read-only by design. Two documented read exceptions: (1) the **binary bytes
+  stream** (`openInputStream` on a part) — only the bytes, not the content-type
+  probe; (2) the **vendored MMS PDU codec** (`pdu_alt.PduPersister` + its
+  `SqliteWrapper` / `RateController` / `SubscriptionIdChecker` helpers), whose
+  reads are binary PDU reconstruction (positional column-index + BLOB +
+  exact-type + `Cursor.count`/exception semantics that `ContentQuery` can't
+  represent) — direct by design (UNFY-156).
 - **Don't guess provider column semantics.** Verify URI + join columns +
   value shapes against real device-provider data before coding (watch
   `thread_id` vs `_id`, `mid`, `msg_id`, `contact_id`; `?simple=true` row

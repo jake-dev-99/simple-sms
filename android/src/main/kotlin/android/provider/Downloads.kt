@@ -33,9 +33,9 @@ import android.net.Uri
  *   `Downloads.Impl.X` resolving for Java and Kotlin consumers (e.g.
  *   `DrmConvertSession` reads `Downloads.Impl.STATUS_*`). Status helpers are
  *   `@JvmStatic`.
- * - TODO(layering): `removeAllDownloadsByPackage` deletes via `ContentResolver`
- *   directly; it will route through `simple_query` in the separate layering
- *   re-route change, not in this fidelity port.
+ * - Layering carve-out (UNFY-156): `removeAllDownloadsByPackage` is a provider
+ *   `delete` (a write); `simple_query` is read-only, so writes stay on
+ *   `ContentResolver` by design.
  *
  * @pending
  */
@@ -767,7 +767,8 @@ class Downloads private constructor() {
             notification_package: String,
             notification_class: String,
         ) {
-            // TODO(layering): route this provider delete through simple_query.
+            // Layering carve-out (UNFY-156): provider delete (write); simple_query
+            // is read-only, so writes stay direct by design.
             context.contentResolver.delete(
                 Impl.CONTENT_URI,
                 QUERY_WHERE_CLAUSE,
