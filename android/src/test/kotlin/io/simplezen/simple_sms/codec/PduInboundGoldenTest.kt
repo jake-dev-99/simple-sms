@@ -144,10 +144,10 @@ class PduInboundGoldenTest {
         assertEquals(
             "content-type",
             "application/vnd.wap.multipart.related",
-            String(parsed.contentType),
+            String(parsed.contentType!!),
         )
-        assertEquals("transactionId", "T123", String(parsed.transactionId))
-        assertEquals("messageId", "MID-1", String(parsed.messageId))
+        assertEquals("transactionId", "T123", String(parsed.transactionId!!))
+        assertEquals("messageId", "MID-1", String(parsed.messageId!!))
         assertEquals("from", "num", parsed.from?.string)
         assertEquals("subject", "Hi", parsed.subject?.string)
 

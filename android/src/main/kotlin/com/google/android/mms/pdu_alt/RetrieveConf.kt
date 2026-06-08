@@ -14,14 +14,23 @@
  * limitations under the License.
  */
 
-package com.google.android.mms.pdu_alt;
+package com.google.android.mms.pdu_alt
 
-import com.google.android.mms.InvalidHeaderValueException;
+import com.google.android.mms.InvalidHeaderValueException
 
 /**
  * M-Retrive.conf Pdu.
+ *
+ * First-party Kotlin port of the vendored `RetrieveConf` (Phase 5 · pdu_alt), a
+ * [MultimediaMessagePdu] subclass. Behaviour-faithful 1:1. `from`/`setFrom`
+ * `override` [GenericPdu]'s `open` `from`/`setFrom` (the vendored re-declares
+ * them with identical bodies). The `(PduHeaders)` and `(PduHeaders, PduBody)`
+ * parse constructors are widened package-private → `public` for the same-package
+ * non-subclass `PduParser`; getters are `val` properties (`cc` is val + `addCc`,
+ * like `to`/`addTo`); `mPduHeaders` is dereferenced with `!!`, mirroring the
+ * vendored bare derefs.
  */
-public class RetrieveConf extends MultimediaMessagePdu {
+class RetrieveConf : MultimediaMessagePdu {
     /**
      * Empty constructor.
      * Since the Pdu corresponding to this class is constructed
@@ -30,9 +39,9 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @throws InvalidHeaderValueException if error occurs.
      */
-    public RetrieveConf() throws InvalidHeaderValueException {
-        super();
-        setMessageType(PduHeaders.MESSAGE_TYPE_RETRIEVE_CONF);
+    @Throws(InvalidHeaderValueException::class)
+    constructor() : super() {
+        setMessageType(PduHeaders.MESSAGE_TYPE_RETRIEVE_CONF)
     }
 
     /**
@@ -40,9 +49,7 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @param headers Headers for this PDU.
      */
-    RetrieveConf(PduHeaders headers) {
-        super(headers);
-    }
+    constructor(headers: PduHeaders?) : super(headers)
 
     /**
      * Constructor with given headers and body
@@ -50,18 +57,15 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param headers Headers for this PDU.
      * @param body Body of this PDu.
      */
-    RetrieveConf(PduHeaders headers, PduBody body) {
-        super(headers, body);
-    }
+    constructor(headers: PduHeaders?, body: PduBody?) : super(headers, body)
 
     /**
      * Get CC value.
      *
      * @return the value
      */
-    public EncodedStringValue[] getCc() {
-        return mPduHeaders.getEncodedStringValues(PduHeaders.CC);
-    }
+    val cc: Array<EncodedStringValue>?
+        get() = mPduHeaders!!.getEncodedStringValues(PduHeaders.CC)
 
     /**
      * Add a "CC" value.
@@ -69,8 +73,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void addCc(EncodedStringValue value) {
-        mPduHeaders.appendEncodedStringValue(value, PduHeaders.CC);
+    fun addCc(value: EncodedStringValue?) {
+        mPduHeaders!!.appendEncodedStringValue(value, PduHeaders.CC)
     }
 
     /**
@@ -78,9 +82,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getContentType() {
-        return mPduHeaders.getTextString(PduHeaders.CONTENT_TYPE);
-    }
+    val contentType: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.CONTENT_TYPE)
 
     /**
      * Set Content-type value.
@@ -88,8 +91,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setContentType(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.CONTENT_TYPE);
+    fun setContentType(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.CONTENT_TYPE)
     }
 
     /**
@@ -97,9 +100,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public int getDeliveryReport() {
-        return mPduHeaders.getOctet(PduHeaders.DELIVERY_REPORT);
-    }
+    val deliveryReport: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.DELIVERY_REPORT)
 
     /**
      * Set X-Mms-Delivery-Report value.
@@ -107,8 +109,9 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setDeliveryReport(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.DELIVERY_REPORT);
+    @Throws(InvalidHeaderValueException::class)
+    fun setDeliveryReport(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.DELIVERY_REPORT)
     }
 
     /**
@@ -118,9 +121,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public EncodedStringValue getFrom() {
-       return mPduHeaders.getEncodedStringValue(PduHeaders.FROM);
-    }
+    override val from: EncodedStringValue?
+        get() = mPduHeaders!!.getEncodedStringValue(PduHeaders.FROM)
 
     /**
      * Set From value.
@@ -128,8 +130,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setFrom(EncodedStringValue value) {
-        mPduHeaders.setEncodedStringValue(value, PduHeaders.FROM);
+    override fun setFrom(value: EncodedStringValue?) {
+        mPduHeaders!!.setEncodedStringValue(value, PduHeaders.FROM)
     }
 
     /**
@@ -139,9 +141,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getMessageClass() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_CLASS);
-    }
+    val messageClass: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_CLASS)
 
     /**
      * Set X-Mms-Message-Class value.
@@ -149,8 +150,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageClass(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_CLASS);
+    fun setMessageClass(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_CLASS)
     }
 
     /**
@@ -158,9 +159,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getMessageId() {
-        return mPduHeaders.getTextString(PduHeaders.MESSAGE_ID);
-    }
+    val messageId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.MESSAGE_ID)
 
     /**
      * Set Message-ID value.
@@ -168,8 +168,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setMessageId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.MESSAGE_ID);
+    fun setMessageId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.MESSAGE_ID)
     }
 
     /**
@@ -177,9 +177,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public int getReadReport() {
-        return mPduHeaders.getOctet(PduHeaders.READ_REPORT);
-    }
+    val readReport: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.READ_REPORT)
 
     /**
      * Set X-Mms-Read-Report value.
@@ -187,8 +186,9 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setReadReport(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.READ_REPORT);
+    @Throws(InvalidHeaderValueException::class)
+    fun setReadReport(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.READ_REPORT)
     }
 
     /**
@@ -196,9 +196,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public int getRetrieveStatus() {
-        return mPduHeaders.getOctet(PduHeaders.RETRIEVE_STATUS);
-    }
+    val retrieveStatus: Int
+        get() = mPduHeaders!!.getOctet(PduHeaders.RETRIEVE_STATUS)
 
     /**
      * Set X-Mms-Retrieve-Status value.
@@ -206,8 +205,9 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws InvalidHeaderValueException if the value is invalid.
      */
-    public void setRetrieveStatus(int value) throws InvalidHeaderValueException {
-        mPduHeaders.setOctet(value, PduHeaders.RETRIEVE_STATUS);
+    @Throws(InvalidHeaderValueException::class)
+    fun setRetrieveStatus(value: Int) {
+        mPduHeaders!!.setOctet(value, PduHeaders.RETRIEVE_STATUS)
     }
 
     /**
@@ -215,9 +215,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public EncodedStringValue getRetrieveText() {
-        return mPduHeaders.getEncodedStringValue(PduHeaders.RETRIEVE_TEXT);
-    }
+    val retrieveText: EncodedStringValue?
+        get() = mPduHeaders!!.getEncodedStringValue(PduHeaders.RETRIEVE_TEXT)
 
     /**
      * Set X-Mms-Retrieve-Text value.
@@ -225,8 +224,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setRetrieveText(EncodedStringValue value) {
-        mPduHeaders.setEncodedStringValue(value, PduHeaders.RETRIEVE_TEXT);
+    fun setRetrieveText(value: EncodedStringValue?) {
+        mPduHeaders!!.setEncodedStringValue(value, PduHeaders.RETRIEVE_TEXT)
     }
 
     /**
@@ -234,9 +233,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      *
      * @return the value
      */
-    public byte[] getTransactionId() {
-        return mPduHeaders.getTextString(PduHeaders.TRANSACTION_ID);
-    }
+    val transactionId: ByteArray?
+        get() = mPduHeaders!!.getTextString(PduHeaders.TRANSACTION_ID)
 
     /**
      * Set X-Mms-Transaction-Id.
@@ -244,8 +242,8 @@ public class RetrieveConf extends MultimediaMessagePdu {
      * @param value the value
      * @throws NullPointerException if the value is null.
      */
-    public void setTransactionId(byte[] value) {
-        mPduHeaders.setTextString(value, PduHeaders.TRANSACTION_ID);
+    fun setTransactionId(value: ByteArray?) {
+        mPduHeaders!!.setTextString(value, PduHeaders.TRANSACTION_ID)
     }
 
     /*

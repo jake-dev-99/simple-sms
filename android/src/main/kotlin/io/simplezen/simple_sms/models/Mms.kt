@@ -43,12 +43,14 @@ data class MmsObject(
             val date: Long = System.currentTimeMillis()
             val subscriptionId: Int = SmsManager.getDefaultSmsSubscriptionId()
 
-            // Optional fields
-            val contentType: String? = if (pdu.contentType != null) String(pdu.contentType) else null
-            val contentClass: String? = if (pdu.messageClass != null) String(pdu.messageClass) else null
-            val messageId: String? = if (pdu.messageId != null) String(pdu.messageId) else null
+            // Optional fields. `?.let` reads each RetrieveConf getter once and
+            // avoids the smart-cast that no longer applies now they are Kotlin
+            // custom-getter `val`s (behaviour-identical: null → null).
+            val contentType: String? = pdu.contentType?.let { String(it) }
+            val contentClass: String? = pdu.messageClass?.let { String(it) }
+            val messageId: String? = pdu.messageId?.let { String(it) }
             val status: Int? = 0
-            val transactionId: String? = if (pdu.transactionId != null) String(pdu.transactionId) else null
+            val transactionId: String? = pdu.transactionId?.let { String(it) }
             val priority: Int? = pdu.priority
 
             return MmsObject(
