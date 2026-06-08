@@ -81,7 +81,7 @@ open class GenericPdu {
     /**
      * Get X-Mms-Message-Type field value.
      *
-     * @return the X-Mms-Report-Allowed value
+     * @return the X-Mms-Message-Type value
      */
     open val messageType: Int
         get() = mPduHeaders!!.getOctet(PduHeaders.MESSAGE_TYPE)
