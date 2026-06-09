@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -65,8 +66,8 @@ internal enum class WapAction {
 }
 
 internal fun classifyWapPushAction(action: String?): WapAction = when (action) {
-    "android.provider.Telephony.WAP_PUSH_DELIVER" -> WapAction.Deliver
-    "android.provider.Telephony.WAP_PUSH_RECEIVED" -> WapAction.ReceivedIgnored
+    Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION -> WapAction.Deliver
+    Telephony.Sms.Intents.WAP_PUSH_RECEIVED_ACTION -> WapAction.ReceivedIgnored
     else -> WapAction.Unexpected
 }
 

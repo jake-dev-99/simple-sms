@@ -15,6 +15,12 @@ import org.junit.Test
  * expected no-op, not an error.
  *
  * Plain JUnit: the classifier is pure Kotlin with no Android dependencies.
+ *
+ * The action strings here are intentionally the **raw** wire values (not the
+ * `Telephony.Sms.Intents.WAP_PUSH_*_ACTION` constants the classifier switches
+ * on): this pins that those constants still resolve to the literal strings the
+ * manifest `<intent-filter>`s and the OS broadcast actually carry, so a platform
+ * constant value drift would surface as a test failure rather than silently.
  */
 class WapPushActionRoutingTest {
 
