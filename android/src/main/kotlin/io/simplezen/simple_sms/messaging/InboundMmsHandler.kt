@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -44,6 +45,33 @@ internal fun resolveVerizonDownloadUrl(contentLocation: String, transactionId: S
     }
 
 /**
+ * The WAP-push broadcast actions [InboundMmsHandler] is registered for. Routing
+ * is a pure, unit-tested function rather than inline `when` logic (mirrors
+ * [resolveVerizonDownloadUrl]) so the de-dup decision below is a visible, tested
+ * choice (UNFY-161).
+ */
+internal enum class WapAction {
+    /** `WAP_PUSH_DELIVER` — the default-app authoritative path: download + persist. */
+    Deliver,
+
+    /**
+     * `WAP_PUSH_RECEIVED` — a public broadcast (any app with BROADCAST_WAP_PUSH).
+     * An *expected* duplicate of the DELIVER path, deliberately ignored (de-dup),
+     * **not** an error. See the [InboundMmsHandler] KDoc for the full rationale.
+     */
+    ReceivedIgnored,
+
+    /** Any other action — a real registration/routing bug worth a warning. */
+    Unexpected,
+}
+
+internal fun classifyWapPushAction(action: String?): WapAction = when (action) {
+    Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION -> WapAction.Deliver
+    Telephony.Sms.Intents.WAP_PUSH_RECEIVED_ACTION -> WapAction.ReceivedIgnored
+    else -> WapAction.Unexpected
+}
+
+/**
  * WAP_PUSH receiver for inbound MMS.
  *
  * Lifecycle (mirrors AOSP `ReceiveMmsMessageAction`):
@@ -67,10 +95,26 @@ internal fun resolveVerizonDownloadUrl(contentLocation: String, transactionId: S
  *     and the executor running.
  *   - Single shared executor across all inbound MMS — no per-receive
  *     `newSingleThreadExecutor()` thread leak.
- *   - Only `WAP_PUSH_DELIVER` is registered — `WAP_PUSH_RECEIVED`
- *     fires for ALL apps including the default, but we have no
- *     authority to ack the carrier from the RECEIVED path, so its
- *     filter was removed from the manifest.
+ *   - Both `WAP_PUSH_DELIVER` and `WAP_PUSH_RECEIVED` are registered
+ *     in the manifest, and handled deliberately (not interchangeably):
+ *       · `WAP_PUSH_DELIVER` is delivered ONLY to the default SMS app
+ *         and is the authoritative inbound-MMS path (download + persist).
+ *       · `WAP_PUSH_RECEIVED` is a PUBLIC broadcast — any app holding
+ *         `BROADCAST_WAP_PUSH` receives it. While we are the default app
+ *         the MMS already arrives via DELIVER, so a RECEIVED is a
+ *         duplicate and is deliberately ignored (de-dup) to avoid a
+ *         double download + double persist. When we are NOT the default
+ *         app we receive RECEIVED but not DELIVER, and we hold no
+ *         authority to ack the carrier / call
+ *         `downloadMultimediaMessage` from that path — so there is
+ *         nothing actionable here either. (Surfacing a non-default
+ *         inbound MMS, if ever wanted, is a consumer/unify concern, not
+ *         this receiver's.)
+ *     Routing lives in [classifyWapPushAction] / [WapAction] so the
+ *     de-dup decision is unit-tested (UNFY-161). Before this fix RECEIVED
+ *     fell into the `else` branch and logged `W/"unexpected action"` on
+ *     every inbound MMS, and this comment falsely claimed the RECEIVED
+ *     filter had been removed from the manifest.
  *   - The result `PendingIntent` uses `FLAG_ONE_SHOT | FLAG_IMMUTABLE`
  *     — the AOSP `RetrieveTransaction` canonical pair. ONE_SHOT
  *     invalidates the PendingIntent the moment SmsManager fires the
@@ -94,9 +138,17 @@ class InboundMmsHandler() : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            "android.provider.Telephony.WAP_PUSH_DELIVER" -> handleDeliver(context, intent)
-            else -> Log.w(TAG, "Received unexpected action: ${intent.action}")
+        when (classifyWapPushAction(intent.action)) {
+            WapAction.Deliver -> handleDeliver(context, intent)
+            WapAction.ReceivedIgnored ->
+                // Expected duplicate of the DELIVER path (see [WapAction]): the
+                // MMS is downloaded + persisted from WAP_PUSH_DELIVER while we
+                // are the default app, so RECEIVED is intentionally a no-op to
+                // avoid a double download + double persist. Debug, not warn — it
+                // fires on every inbound MMS and is not an error.
+                Log.d(TAG, "WAP_PUSH_RECEIVED ignored (de-dup of WAP_PUSH_DELIVER)")
+            WapAction.Unexpected ->
+                Log.w(TAG, "Received unexpected action: ${intent.action}")
         }
     }
 
