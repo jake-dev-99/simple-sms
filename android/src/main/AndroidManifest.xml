@@ -10,6 +10,19 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
     <uses-permission android:name="android.permission.RECEIVE_MMS" />
+    <!--
+        Completes the *declarable* default-SMS-role permission set (UNFY-166).
+        When we hold the default-SMS role the OS grants the full default-app
+        appop set (AOSP SmsApplication.setDefaultApplicationInternal) — which
+        includes OP_READ_CELL_BROADCASTS. Without the matching manifest
+        permission the SmsApplication/AppOpsManager reconciler sees a mismatch
+        and churns "(fixing)" the appop on every pass. READ_CELL_BROADCASTS
+        gates cell-broadcast / emergency-alert (CMAS/ETWS) reads the default
+        messaging app is expected to surface. The set's remaining members
+        (OP_WRITE_SMS, OP_READ/WRITE_ICC_SMS) are role-granted appops with no
+        standalone normal-app manifest permission, so nothing else to declare.
+    -->
+    <uses-permission android:name="android.permission.READ_CELL_BROADCASTS" />
 
     <!-- Phone & Contacts -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
