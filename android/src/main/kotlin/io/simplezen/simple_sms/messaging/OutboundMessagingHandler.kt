@@ -3,6 +3,7 @@
 package io.simplezen.simple_sms.messaging
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ContentUris
@@ -292,22 +293,52 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             statusString,
                             resultCode ->
 
-                        // This callback is from OutboundMessagingReceiver
+                        // This callback is from OutboundMessagingReceiver.
+                        //
+                        // Honor the send result (UNFY-178). A failed *send*
+                        // (resultCode != RESULT_OK on a SENT broadcast) must move the
+                        // row to the failed box so the consumer derives delivered=false
+                        // — previously this wrote STATUS_COMPLETE unconditionally, so a
+                        // failed send (e.g. MMS_ERROR_IO_ERROR) showed as sent. SMS uses
+                        // the TYPE column, MMS uses MESSAGE_BOX — different columns.
+                        // NB: provider-write semantics — verify on a real device
+                        // (esp. Samsung MMS msg_box) before relying on it.
+                        val isSentEvent =
+                                eventType == SENTSMS_ACTION || eventType == SENTMMS_ACTION
+                        val sendFailed = isSentEvent && resultCode != Activity.RESULT_OK
                         val statusUpdate =
                                 ContentValues().apply {
-                                    if (eventType == SENTMMS_ACTION) {
-                                        put(
-                                                Telephony.Mms.Sent.STATUS,
-                                                Telephony.TextBasedSmsColumns.STATUS_COMPLETE
-                                        )
-                                    } else {
-                                        put(
-                                                Telephony.Sms.Sent.STATUS,
-                                                Telephony.TextBasedSmsColumns.STATUS_COMPLETE
-                                        )
+                                    when {
+                                        sendFailed && eventType == SENTMMS_ACTION ->
+                                                put(
+                                                        Telephony.Mms.MESSAGE_BOX,
+                                                        Telephony.Mms.MESSAGE_BOX_FAILED
+                                                )
+                                        sendFailed ->
+                                                put(
+                                                        Telephony.Sms.TYPE,
+                                                        Telephony.Sms.MESSAGE_TYPE_FAILED
+                                                )
+                                        eventType == SENTMMS_ACTION ->
+                                                put(
+                                                        Telephony.Mms.Sent.STATUS,
+                                                        Telephony.TextBasedSmsColumns.STATUS_COMPLETE
+                                                )
+                                        else ->
+                                                put(
+                                                        Telephony.Sms.Sent.STATUS,
+                                                        Telephony.TextBasedSmsColumns.STATUS_COMPLETE
+                                                )
                                     }
                                 }
                         context.contentResolver.update(messageUri, statusUpdate, null, null)
+                        if (sendFailed) {
+                            Log.w(
+                                    "OutboundMessagingHandler",
+                                    "Send FAILED for messageId=$messageId ($eventType, " +
+                                            "resultCode=$resultCode, $statusString) — marked failed.",
+                            )
+                        }
 
                         // Read the just-updated row back through simple_query (Rule 1).
                         // The manual FIELD_TYPE_* walk this replaces was an inlined
