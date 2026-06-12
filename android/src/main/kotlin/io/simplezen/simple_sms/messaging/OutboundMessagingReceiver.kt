@@ -52,7 +52,7 @@ class OutboundMessagingReceiver(
             }
             SENTMMS_ACTION -> {
                 eventType = SENTMMS_ACTION
-                statusString = getDeliveredStatusString(currentResultCode)
+                statusString = getMmsSentStatusString(currentResultCode)
             }
             DELIVEREDMMS_ACTION -> {
                 eventType = DELIVEREDMMS_ACTION
@@ -145,6 +145,30 @@ class OutboundMessagingReceiver(
             Activity.RESULT_OK -> "DELIVERED_OK"
             Activity.RESULT_CANCELED -> "DELIVERED_FAILED" // Often used for failure
             else -> "DELIVERED_STATUS_UNKNOWN ($resultCode)"
+        }
+    }
+
+    // MMS *sent* result codes are SmsManager.MMS_ERROR_* values, a different
+    // enum from both the SMS sent (RESULT_*) and the delivery enums — they
+    // collide numerically (e.g. SMS RESULT 5 vs MMS_ERROR_IO_ERROR 5), so MMS
+    // needs its own mapping. RESULT_OK is success; anything else is a send
+    // failure (UNFY-178).
+    internal fun getMmsSentStatusString(resultCode: Int): String {
+        return when (resultCode) {
+            Activity.RESULT_OK -> "SENT_SUCCESS"
+            SmsManager.MMS_ERROR_UNSPECIFIED -> "ERROR_MMS_UNSPECIFIED"
+            SmsManager.MMS_ERROR_INVALID_APN -> "ERROR_MMS_INVALID_APN"
+            SmsManager.MMS_ERROR_UNABLE_CONNECT_MMS -> "ERROR_MMS_UNABLE_TO_CONNECT"
+            SmsManager.MMS_ERROR_HTTP_FAILURE -> "ERROR_MMS_HTTP_FAILURE"
+            SmsManager.MMS_ERROR_IO_ERROR -> "ERROR_MMS_IO_ERROR"
+            SmsManager.MMS_ERROR_RETRY -> "ERROR_MMS_RETRY"
+            SmsManager.MMS_ERROR_CONFIGURATION_ERROR -> "ERROR_MMS_CONFIGURATION"
+            SmsManager.MMS_ERROR_NO_DATA_NETWORK -> "ERROR_MMS_NO_DATA_NETWORK"
+            SmsManager.MMS_ERROR_INVALID_SUBSCRIPTION_ID -> "ERROR_MMS_INVALID_SUBSCRIPTION_ID"
+            SmsManager.MMS_ERROR_INACTIVE_SUBSCRIPTION -> "ERROR_MMS_INACTIVE_SUBSCRIPTION"
+            SmsManager.MMS_ERROR_DATA_DISABLED -> "ERROR_MMS_DATA_DISABLED"
+            SmsManager.MMS_ERROR_MMS_DISABLED_BY_CARRIER -> "ERROR_MMS_DISABLED_BY_CARRIER"
+            else -> "MMS_SENT_UNKNOWN_ERROR ($resultCode)"
         }
     }
 }
