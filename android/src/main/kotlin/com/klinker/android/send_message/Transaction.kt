@@ -2,7 +2,6 @@ package com.klinker.android.send_message
 
 import android.app.Activity
 import android.app.PendingIntent
-import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -17,6 +16,7 @@ import android.telephony.SmsMessage
 import android.text.TextUtils
 import android.util.Log
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.android.mms.MmsConfig
 import com.android.mms.util.DownloadManager
 import com.android.mms.util.RateController
@@ -541,11 +541,36 @@ class Transaction(private val context: Context, settings: Settings) {
                     PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 
-                val writerUri = Uri.Builder()
-                    .authority(context.packageName + ".MmsFileProvider")
-                    .path(fileName)
-                    .scheme(ContentResolver.SCHEME_CONTENT)
-                    .build()
+                // Hand MmsService a content:// URI it can actually resolve
+                // (UNFY-182). The vendored code pointed at
+                // `<pkg>.MmsFileProvider` — Klinker's ContentProvider that the
+                // vendoring cleanup deleted (its only references were a
+                // manifest entry and this runtime string, invisible to
+                // dead-code analysis) — so the system read no PDU and every
+                // send failed with MMS_ERROR_IO_ERROR before any network
+                // attempt. Route through the androidx FileProvider declared in
+                // this plugin's manifest (`${applicationId}.provider`,
+                // cache-path mapped in res/xml/file_paths.xml) — the same
+                // mechanism the working MMS *download* path uses
+                // (InboundMmsHandler). A null here (unmapped path) degrades
+                // into the existing contentUri == null branch below, which
+                // reports MMS_ERROR_IO_ERROR through the sent broadcast.
+                val writerUri: Uri? = try {
+                    FileProvider.getUriForFile(
+                        context,
+                        context.packageName + ".provider",
+                        mSendFile,
+                    )
+                } catch (e: IllegalArgumentException) {
+                    Log.e(
+                        TAG,
+                        "FileProvider.getUriForFile failed for " +
+                            "${mSendFile.absolutePath}; check file_paths.xml " +
+                            "cache-path coverage.",
+                        e,
+                    )
+                    null
+                }
                 var writer: FileOutputStream? = null
                 var contentUri: Uri? = null
                 try {
