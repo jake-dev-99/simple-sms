@@ -34,6 +34,15 @@ void main() {
       expect(sms.sender.address, '+15550001111');
     });
 
+    test('outbound does NOT fall back to from_address (it is the local line)',
+        () {
+      // On outbound rows `fromAddress` is the local sender MSISDN, not the
+      // remote recipient — so an empty `address` must yield a null recipient,
+      // never the local line.
+      final sms = smsOfType(2, address: '', fromAddress: '+15550009999');
+      expect(sms.recipient.address, isNull);
+    });
+
     test('SMS participants never carry a contactId or resolved name', () {
       final sms = smsOfType(1, address: '695628');
       expect(sms.sender.contactId, isNull);

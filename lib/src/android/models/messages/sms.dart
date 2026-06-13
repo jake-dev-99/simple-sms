@@ -188,16 +188,29 @@ class Sms {
 
   // ---- Participants (MessageParticipant contract, UNFY-165) ----
 
+  /// Whether this row was received (`inbox`) rather than locally originated.
+  ///
+  /// Only [SmsMessageType.inbox] is inbound. Every other type — `sent`,
+  /// `outbox`, `failed`, `queued`, and `draft` — is outbound-direction: on
+  /// those rows the stored [address] is the remote *recipient* (a draft's
+  /// [address] is its intended recipient), and the sender is the local line.
+  /// Unrecognized `type` codes never reach here — `fromRaw`/`fromJson` build
+  /// `type` via `enumFromValueOrThrow`, so an unknown value throws at parse
+  /// rather than being silently classified as outbound.
   bool get _isInbound => type == SmsMessageType.inbox;
 
-  /// The remote party on this row: the non-empty [address], else the
-  /// carrier-reported [fromAddress], else `null`. A `content://sms` row
-  /// stores only the *other* party — never the local line.
+  /// The remote party on this row: the non-empty [address], or — **only on
+  /// inbound rows** — the carrier-reported [fromAddress] as a fallback, else
+  /// `null`. On outbound rows [fromAddress] is the *local* sender MSISDN (see
+  /// its field doc), so it is never used as the remote address there — an
+  /// empty outbound `address` yields `null`, not the local line.
   String? get _remoteAddress {
     final a = address;
     if (a != null && a.isNotEmpty) return a;
-    final f = fromAddress;
-    if (f != null && f.isNotEmpty) return f;
+    if (_isInbound) {
+      final f = fromAddress;
+      if (f != null && f.isNotEmpty) return f;
+    }
     return null;
   }
 
