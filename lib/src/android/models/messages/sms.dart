@@ -2,6 +2,7 @@ import 'dart:core';
 
 import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 import '../enums/sms_mms_enums.dart';
+import '../people/message_participant.dart';
 
 /// An SMS message record read from the Android telephony content provider.
 ///
@@ -184,6 +185,56 @@ class Sms {
     this.type,
     this.usingMode,
   });
+
+  // ---- Participants (MessageParticipant contract, UNFY-165) ----
+
+  /// Whether this row was received (`inbox`) rather than locally originated.
+  ///
+  /// Only [SmsMessageType.inbox] is inbound. Every other type — `sent`,
+  /// `outbox`, `failed`, `queued`, and `draft` — is outbound-direction: on
+  /// those rows the stored [address] is the remote *recipient* (a draft's
+  /// [address] is its intended recipient), and the sender is the local line.
+  /// Unrecognized `type` codes never reach here — `fromRaw`/`fromJson` build
+  /// `type` via `enumFromValueOrThrow`, so an unknown value throws at parse
+  /// rather than being silently classified as outbound.
+  bool get _isInbound => type == SmsMessageType.inbox;
+
+  /// The remote party on this row: the non-empty [address], or — **only on
+  /// inbound rows** — the carrier-reported [fromAddress] as a fallback, else
+  /// `null`. On outbound rows [fromAddress] is the *local* sender MSISDN (see
+  /// its field doc), so it is never used as the remote address there — an
+  /// empty outbound `address` yields `null`, not the local line.
+  String? get _remoteAddress {
+    final a = address;
+    if (a != null && a.isNotEmpty) return a;
+    if (_isInbound) {
+      final f = fromAddress;
+      if (f != null && f.isNotEmpty) return f;
+    }
+    return null;
+  }
+
+  /// Who sent this SMS, as a uniform [MessageParticipant].
+  ///
+  /// Inbound (`type == inbox`) → the remote line is the sender. Outbound →
+  /// the sender is the local device, which the row does not record, so its
+  /// [MessageParticipant.address] is `null`. Mirrors MMS's typed `sender`
+  /// so the host reads one `sender` for both message types rather than
+  /// inferring it from `address` + direction.
+  MessageParticipant get sender => SmsParticipant(
+        address: _isInbound ? _remoteAddress : null,
+        role: ParticipantRole.sender,
+      );
+
+  /// Who this SMS was addressed to, as a uniform [MessageParticipant].
+  ///
+  /// Outbound → the remote line is the recipient. Inbound → the recipient
+  /// is the local device (`address` `null`). The single stored [address] is
+  /// always the remote line; direction decides which role it plays.
+  MessageParticipant get recipient => SmsParticipant(
+        address: _isInbound ? null : _remoteAddress,
+        role: ParticipantRole.to,
+      );
 
   // ---- JSON (App/Server) ----
   factory Sms.fromJson(Map<String, dynamic> json) => Sms(
