@@ -6,15 +6,18 @@ import 'package:simple_sms_native/src/android/models/model_helpers.dart';
 
 import '../enums/contact_enums.dart';
 import '../enums/sms_mms_enums.dart';
+import 'message_participant.dart';
 
-class MmsParticipant {
+class MmsParticipant implements MessageParticipant {
   final int id;
 
   final Map<String, dynamic>? sourceMap;
 
   final CharSet? charset;
   final AndroidParticipantType? participantType;
+  @override
   final String? address;
+  @override
   final int? contactId;
   final String? sourceLabel;
   final int? msgId;
@@ -35,6 +38,27 @@ class MmsParticipant {
     this.contactId,
     this.subId,
   });
+
+  // ---- MessageParticipant (UNFY-165) ----
+
+  /// Maps the MMS WAP-PDU [participantType] onto the source-neutral
+  /// [ParticipantRole]. A `null` participant type (only reachable on a
+  /// hand-constructed instance — the parsers require it) surfaces as
+  /// [ParticipantRole.unknown] rather than a silent default.
+  @override
+  ParticipantRole get role => switch (participantType) {
+        AndroidParticipantType.sender => ParticipantRole.sender,
+        AndroidParticipantType.recipient => ParticipantRole.to,
+        AndroidParticipantType.recipient_cc => ParticipantRole.cc,
+        AndroidParticipantType.recipient_bcc => ParticipantRole.bcc,
+        null => ParticipantRole.unknown,
+      };
+
+  /// Always `null` on the raw provider-parse path: the `addr` table carries
+  /// [address] + [contactId] but no resolved name — host enrichment resolves
+  /// the display name from those.
+  @override
+  String? get displayName => null;
 
   static MmsParticipant fromJson(Map<String, dynamic> json) => MmsParticipant(
     address: json["address"],
