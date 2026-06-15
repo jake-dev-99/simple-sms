@@ -72,12 +72,10 @@ On CI **today**, only the Dart gate (`verify.yml`) runs per-PR; the native
 build + unit tests run **at tag time** as the pre-publish gate in `deploy.yml`
 (matching `verify.yml`'s own header). A path-gated **PR-time** native gate —
 `verify-native.yml`, triggered by `android/**`, the example Android project, and
-the `pubspec*.yaml` manifests — is **planned but NOT yet landed** (UNFY-162):
-it can't be pushed from a Claude Code web session, whose token lacks GitHub
-`workflow` scope by design, so it must be committed with a workflow-scoped
-credential. **Until it lands, no native test runs at PR time** — so run the
-local native gate above before pushing any `android/` change; that is the only
-native check on a PR for now.
+the `pubspec*.yaml` manifests — is **planned but NOT yet landed** (UNFY-162;
+see the issue for current status). **Until it lands, no native test runs at PR
+time** — so run the local native gate above before pushing any `android/`
+change; that is the only native check on a PR for now.
 
 ## Conventions that have teeth
 
