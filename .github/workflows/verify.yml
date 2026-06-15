@@ -17,6 +17,10 @@ name: Verify
 # pre-publish gate in the tag-triggered "Deploy" workflow
 # (.github/workflows/deploy.yml). See Linear UNFY-149 / UNFY-153.
 #
+# Native *unit tests* now also run per-PR, path-gated to native
+# changes, in the sibling `verify-native.yml` (UNFY-162); the full
+# APK build above stays tag-time-only.
+#
 # simple-sms has path-dep references to sibling plugin repos
 # (simple-permissions for PermissionGuards, simple-query for
 # ContentQuery) via pubspec_overrides.yaml. The override paths

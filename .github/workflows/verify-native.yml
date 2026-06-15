@@ -1,0 +1,122 @@
+name: Verify (native)
+
+# Native Kotlin compile + JVM (Robolectric) unit tests for the `android/`
+# side — the half of the codebase that the Dart-only `verify.yml`
+# (`flutter test`) never compiles or touches.
+#
+# WHY THIS EXISTS (UNFY-162). A Kotlin change could previously reach `main`
+# with ZERO Kotlin compiled or tested: `verify.yml` is Dart-only and the
+# native gate ran only at tag/deploy time (`deploy.yml`). That hole is a
+# direct violation of CQS § Verify-Before-Push, and it let the UNFY-182
+# MMS-send regression (a hand-built URI pointing at a deleted FileProvider
+# authority — invisible to Dart analysis) ship to `main` and break every
+# outbound MMS. This workflow closes the hole by running the native unit
+# tests on every PR that actually touches the native side.
+#
+# COST CONTROL. Path-gated to `android/**` (+ the example app's Android
+# project, the dependency manifests, and this workflow itself), so it does
+# NOT run on Dart-only or docs/comment PRs — the original "no throwaway
+# native build on every push"
+# concern (see verify.yml / deploy.yml) is preserved. The *full* native
+# APK build also still runs as the pre-publish gate in `deploy.yml` at tag
+# time; this is just the unit-test slice, brought forward to PR time.
+#
+# Mirrors deploy.yml's `native-build` job (the proven recipe). A bare
+# `:simple_sms_native` Gradle invocation can't configure on its own —
+# `settings.gradle.kts` requires `flutter.sdk` in `local.properties`, and
+# the sibling plugin modules (`:simple_permissions_android`,
+# `:simple_query_android`) resolve only via Flutter's plugin-loader applied
+# in the *app's* settings — so we let `flutter build apk` inject the
+# gitignored gradlew wrapper + `local.properties` and compile the native
+# side, then run the unit tests against that already-configured build.
+#
+# External GitHub Actions are pinned to a full commit SHA (not a floating
+# tag) for supply-chain safety, with a human-readable version comment — same
+# convention as verify.yml / deploy.yml.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'example/android/**'
+      # Sibling-plugin version bumps change what the native side compiles
+      # against (:simple_query_android / :simple_permissions_android), so
+      # gate on the dependency manifests too — otherwise a native-affecting
+      # change could still slip past the gate (the exact class of hole
+      # UNFY-162 closes).
+      - 'pubspec.yaml'
+      - 'pubspec_overrides.yaml'
+      - '.github/workflows/verify-native.yml'
+  # Manual override for re-running the native gate against a specific ref.
+  workflow_dispatch:
+
+jobs:
+  native-unit-tests:
+    name: Native build + unit tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # checkout only; least-privilege (zizmor)
+
+    steps:
+      - name: Checkout simple-sms
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false  # no later step does authenticated git ops (zizmor artipacked)
+          path: simple-sms
+
+      - name: Checkout simple-permissions (sibling dep)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          repository: jake-dev-99/simple-permissions
+          ref: main
+          path: simple-permissions
+
+      - name: Checkout simple-query (sibling dep)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          repository: jake-dev-99/simple-query
+          ref: main
+          path: simple-query
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Set up JDK 21 (Temurin)
+        # Provision JDK 21 explicitly rather than leaning on the runner's
+        # preinstalled $JAVA_HOME_21_X64 (brittle across runner images).
+        # setup-java exports JAVA_HOME for the build + test steps below.
+        # Version matches android/build.gradle.kts (VERSION_21).
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK packages (compileSdk 36 + build-tools)
+        # cmdline-tools live under $ANDROID_HOME and are NOT on PATH — invoke
+        # sdkmanager by absolute path. Feed a bounded `printf` of license
+        # acceptances rather than `yes |` (infinite `yes` dies by SIGPIPE
+        # 141 under the runner's pipefail shell when sdkmanager stops
+        # reading). NDK is intentionally NOT installed: android/build.gradle.kts
+        # pins an ndkVersion preinstalled on ubuntu-latest (UNFY-153).
+        run: printf 'y\n%.0s' $(seq 50) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Resolve example app deps
+        working-directory: simple-sms/example
+        run: flutter pub get
+
+      - name: Compile native side (debug APK)
+        working-directory: simple-sms/example
+        # JAVA_HOME comes from setup-java (JDK 21). This step also injects
+        # the gradlew wrapper + local.properties consumed by the unit-test
+        # step below, and resolves the sibling plugin modules.
+        run: flutter build apk --debug
+
+      - name: Run native JVM unit tests
+        working-directory: simple-sms/example/android
+        # --no-daemon: throwaway CI runner, a persistent Gradle daemon buys
+        # nothing. --stacktrace: full trace on failure (fail-loud stance).
+        run: ./gradlew :simple_sms_native:testDebugUnitTest --console=plain --no-daemon --stacktrace
