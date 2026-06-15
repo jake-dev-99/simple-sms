@@ -69,9 +69,10 @@ cd android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
 ```
 
 CI mirrors this split: the Dart gate (`verify.yml`) runs on every PR; the
-native Robolectric gate (`verify-native.yml`) is **path-gated to `android/**`
-PRs** (so Dart-only/docs pushes stay cheap); and the full native APK build
-runs at tag time as the pre-publish gate (`deploy.yml`).
+native Robolectric gate (`verify-native.yml`) is **path-gated to native-affecting
+changes** (`android/**`, the example Android project, and the `pubspec*.yaml`
+dependency manifests — so Dart-only/docs pushes stay cheap); and the full native
+APK build runs at tag time as the pre-publish gate (`deploy.yml`).
 
 ## Conventions that have teeth
 
