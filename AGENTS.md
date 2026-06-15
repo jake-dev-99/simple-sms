@@ -64,8 +64,8 @@ Gradle (a bare `:simple_sms_native` invocation can't configure on its own),
 so build once to inject the wrapper + `local.properties`, then test:
 
 ```sh
-cd example && flutter build apk --debug     # configures gradlew + local.properties
-cd android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
+(cd example && flutter build apk --debug)               # injects gradlew + local.properties
+(cd example/android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain)
 ```
 
 On CI **today**, only the Dart gate (`verify.yml`) runs per-PR; the native
