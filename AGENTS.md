@@ -55,6 +55,24 @@ flutter test
 flutter pub publish --dry-run     # keep it publishable
 ```
 
+**When you touch `android/` (Kotlin), also run the native gate.** `flutter
+test` is Dart-only — it never compiles or tests the Kotlin in `android/`, so
+a native change can otherwise pass everything above with **zero Kotlin
+exercised** (UNFY-162 — the hole that let the UNFY-182 MMS-send regression
+reach `main`). The native unit tests must run through the *example app's*
+Gradle (a bare `:simple_sms_native` invocation can't configure on its own),
+so build once to inject the wrapper + `local.properties`, then test:
+
+```sh
+cd example && flutter build apk --debug     # configures gradlew + local.properties
+cd android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
+```
+
+CI mirrors this split: the Dart gate (`verify.yml`) runs on every PR; the
+native Robolectric gate (`verify-native.yml`) is **path-gated to `android/**`
+PRs** (so Dart-only/docs pushes stay cheap); and the full native APK build
+runs at tag time as the pre-publish gate (`deploy.yml`).
+
 ## Conventions that have teeth
 
 - **The layering contract is binding** (see What NOT to do): permissions →
