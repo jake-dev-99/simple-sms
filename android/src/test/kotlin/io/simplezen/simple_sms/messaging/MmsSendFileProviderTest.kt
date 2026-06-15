@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -36,6 +37,25 @@ import java.io.File
 class MmsSendFileProviderTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    /**
+     * Reset FileProvider's static PathStrategy cache before each test.
+     *
+     * FileProvider caches one PathStrategy per authority in a private static
+     * map (`sCache`). Robolectric gives each test method its own temp dataDir
+     * (hence a distinct cacheDir), so a strategy cached by an earlier method is
+     * bound to a stale cacheDir root and makes getUriForFile throw "Failed to
+     * find configured root" for this method's file. Clearing the cache forces
+     * each method to rebuild the strategy against its own cacheDir. This is
+     * order-dependent test isolation only — on a real device cacheDir is
+     * stable, so production is unaffected (UNFY-186).
+     */
+    @Before
+    fun resetFileProviderStrategyCache() {
+        val cacheField = FileProvider::class.java.getDeclaredField("sCache")
+        cacheField.isAccessible = true
+        (cacheField.get(null) as MutableMap<*, *>).clear()
+    }
 
     @Test
     fun sendPduCacheFile_resolvesThroughDeclaredProvider() {
