@@ -68,14 +68,14 @@ so build once to inject the wrapper + `local.properties`, then test:
 (cd example/android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain)
 ```
 
-On CI **today**, only the Dart gate (`verify.yml`) runs per-PR; the native
-build + unit tests run **at tag time** as the pre-publish gate in `deploy.yml`
-(matching `verify.yml`'s own header). A path-gated **PR-time** native gate —
-`verify-native.yml`, triggered by `android/**`, the example Android project, and
-the `pubspec*.yaml` manifests — is **planned but NOT yet landed** (UNFY-162;
-see the issue for current status). **Until it lands, no native test runs at PR
-time** — so run the local native gate above before pushing any `android/`
-change; that is the only native check on a PR for now.
+On CI, the Dart gate (`verify.yml`) runs per-PR, and a path-gated **PR-time**
+native gate — `verify-native.yml`, triggered by `android/**`, the example
+Android project, and the `pubspec*.yaml` manifests — now runs the native build +
+unit tests on **every PR that touches the native side** (UNFY-162). The *full*
+APK build still also runs **at tag time** as the pre-publish gate in `deploy.yml`
+(matching `verify.yml`'s own header). CI enforces this now, but the local native
+gate above is still the fast way to catch a break before pushing any `android/`
+change — don't wait for CI to tell you.
 
 ## Conventions that have teeth
 
