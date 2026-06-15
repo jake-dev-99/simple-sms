@@ -68,11 +68,16 @@ cd example && flutter build apk --debug     # configures gradlew + local.propert
 cd android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain
 ```
 
-CI mirrors this split: the Dart gate (`verify.yml`) runs on every PR; the
-native Robolectric gate (`verify-native.yml`) is **path-gated to native-affecting
-changes** (`android/**`, the example Android project, and the `pubspec*.yaml`
-dependency manifests — so Dart-only/docs pushes stay cheap); and the full native
-APK build runs at tag time as the pre-publish gate (`deploy.yml`).
+On CI **today**, only the Dart gate (`verify.yml`) runs per-PR; the native
+build + unit tests run **at tag time** as the pre-publish gate in `deploy.yml`
+(matching `verify.yml`'s own header). A path-gated **PR-time** native gate —
+`verify-native.yml`, triggered by `android/**`, the example Android project, and
+the `pubspec*.yaml` manifests — is **planned but NOT yet landed** (UNFY-162):
+it can't be pushed from a Claude Code web session, whose token lacks GitHub
+`workflow` scope by design, so it must be committed with a workflow-scoped
+credential. **Until it lands, no native test runs at PR time** — so run the
+local native gate above before pushing any `android/` change; that is the only
+native check on a PR for now.
 
 ## Conventions that have teeth
 
