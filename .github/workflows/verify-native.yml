@@ -106,11 +106,14 @@ jobs:
         # workflows.
         run: |
           set -euo pipefail
+          # `^\s*` anchors each match to the start of the line so a
+          # commented-out `// compileSdk = 33` (or block-comment line) can't
+          # be picked up by `-m1` ahead of the real declaration.
           # `|| true`: a no-match grep exits 1, which under `set -e` would
           # abort the step before the explicit check below — losing the
           # friendly diagnostic. Let the empty-check be the one that fails.
-          compile_sdk="$(grep -oP -m1 'compileSdk\s*=\s*\K[0-9]+' build.gradle.kts || true)"
-          build_tools="$(grep -oP -m1 'buildToolsVersion\s*=\s*"\K[^"]+' build.gradle.kts || true)"
+          compile_sdk="$(grep -oP -m1 '^\s*compileSdk\s*=\s*\K[0-9]+' build.gradle.kts || true)"
+          build_tools="$(grep -oP -m1 '^\s*buildToolsVersion\s*=\s*"\K[^"]+' build.gradle.kts || true)"
           if [ -z "$compile_sdk" ] || [ -z "$build_tools" ]; then
             echo "::error::Could not parse compileSdk/buildToolsVersion from android/build.gradle.kts"
             exit 1
