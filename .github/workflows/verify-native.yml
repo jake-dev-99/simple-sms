@@ -94,6 +94,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          # Cache ~/.gradle (downloaded dependencies + wrapper dists — the
+          # bulk of this gate's wall time) via setup-java's built-in Gradle
+          # cache (UNFY-190). Deliberately NOT a separate `actions/cache`
+          # step: that would add an unpinned third-party action (the Sourcery
+          # snippet in #210 used a floating `@v4`, which violates this repo's
+          # full-SHA action-pin rule), whereas setup-java is already
+          # SHA-pinned above. This caches downloads only — task outputs are
+          # NOT cached, so the compile + unit tests still run fresh and the
+          # per-PR gate stays a real build. Scoped to this per-PR gate;
+          # deploy.yml's pre-publish build stays uncached (a clean build for
+          # the release path).
+          cache: gradle
 
       - name: Install Android SDK packages (compileSdk 36 + build-tools)
         # cmdline-tools live under $ANDROID_HOME and are NOT on PATH — invoke
