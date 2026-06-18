@@ -65,6 +65,15 @@ jobs:
           persist-credentials: false  # no later step does authenticated git ops (zizmor artipacked)
           path: simple-sms
 
+      # Sibling plugins below (simple-permissions, simple-query) are checked
+      # out at `ref: main` — an ACCEPTED non-hermeticity tradeoff (UNFY-189),
+      # captured here so it stays a deliberate decision rather than a silent
+      # one. The job builds against the siblings' moving `main`, not a
+      # coordinated revision, so a sibling push can flip this repo's CI with
+      # no change here. Acknowledged when the native gate was scoped. If
+      # sibling-drift flakiness becomes a real cost, tighten across all three
+      # workflows (verify-native.yml / verify.yml / deploy.yml) to pinned
+      # revisions (pubspec.lock / pubspec_overrides) or release tags.
       - name: Checkout simple-permissions (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
