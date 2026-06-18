@@ -144,6 +144,25 @@ void initializeApp() {
 
 See `example/lib/background_example.dart` for the full pattern.
 
+## Acknowledgements
+
+simple-sms's Android SMS/MMS internals build directly on
+[**android-smsmms**](https://github.com/klinkerapps/android-smsmms) by
+**Jacob Klinker** ([Klinker Apps](https://github.com/klinkerapps)), licensed
+under the Apache License 2.0. Klinker's library was the primary driver for —
+and the reference while reverse-engineering — how this plugin talks to the
+Android messaging stack:
+
+- The outbound send / transaction layer under
+  `com.klinker.android.send_message` (e.g. `Transaction`, `Message`,
+  `SmsManagerFactory`, `Utils`) derives from android-smsmms.
+- The MMS PDU codec under `com.google.android.mms` (`pdu_alt` / `util_alt`)
+  is the AOSP messaging codec that android-smsmms vendored; those files
+  retain their upstream Apache-2.0 headers.
+
+Those components remain under the Apache License 2.0; this project as a whole
+is BSD-3-Clause (see [License](#license)).
+
 ## License
 
 BSD 3-Clause. See [LICENSE](LICENSE) for details.
