@@ -209,7 +209,7 @@ class Transaction(private val context: Context, settings: Settings) {
                     sentIntent = explicitSentSmsReceiver!!
                 }
 
-                sentIntent.putExtra("message_uri", if (messageUri == null) "" else messageUri.toString())
+                sentIntent.putExtra("message_uri", messageUri.toString())
                 sentIntent.putExtra(SENT_SMS_BUNDLE, sentMessageParcelable)
                 // Android 12+ (S, API 31) requires explicit FLAG_IMMUTABLE / FLAG_MUTABLE
                 // on every PendingIntent (see vendored note); IMMUTABLE is correct here
@@ -227,7 +227,7 @@ class Transaction(private val context: Context, settings: Settings) {
                     deliveredIntent = explicitDeliveredSmsReceiver!!
                 }
 
-                deliveredIntent.putExtra("message_uri", if (messageUri == null) "" else messageUri.toString())
+                deliveredIntent.putExtra("message_uri", messageUri.toString())
                 deliveredIntent.putExtra(DELIVERED_SMS_BUNDLE, deliveredParcelable)
                 val deliveredPI = PendingIntent.getBroadcast(
                     context, messageId, deliveredIntent,
