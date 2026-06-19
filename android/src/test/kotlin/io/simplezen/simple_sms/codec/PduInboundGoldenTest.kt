@@ -160,4 +160,72 @@ class PduInboundGoldenTest {
         assertEquals("part0 content-type", "text/plain", String(part0.contentType!!))
         assertEquals("part0 data", "Hello", String(part0.data!!))
     }
+
+    // M-Retrieve.conf with a TOP-LEVEL multipart/alternative body (Content-Type
+    // 0x80|0x26). UNFY-155: this is retain-all — every part is kept. The AOSP
+    // original had a "take only the first part" branch for ALTERNATIVE that was
+    // dead code (the mixed/related/alternative `if` already returns), so the
+    // effective behaviour was always retain-all; we keep that and dropped the
+    // dead branch (see ADR-0012). This pins the decision so a future change to
+    // first-part-only is caught here.
+    private val retrieveConfAlternativePdu = hex(
+        """
+        8C 84                                  // X-Mms-Message-Type = m-retrieve-conf
+        8D 92                                  // X-Mms-MMS-Version = 1.2
+        98 54 31 32 33 00                      // X-Mms-Transaction-Id = "T123"
+        8B 4D 49 44 2D 32 00                   // Message-ID = "MID-2"
+        85 04 5A A3 C2 80                      // Date = long-int(len 4) 0x5AA3C280
+        89 05 80 6E 75 6D 00                   // From = vlen(5) address-present(0x80) "num"
+        84 A6                                  // Content-Type = multipart.alternative (0x80|0x26) — TERMINAL
+        02                                     //   body: part count = 2
+        01 05 83 48 65 6C 6C 6F                //   part0: hlen=1 dlen=5 ctype=text/plain data="Hello"
+        01 05 83 57 6F 72 6C 64                //   part1: hlen=1 dlen=5 ctype=text/plain data="World"
+        """.trimIndent(),
+    )
+
+    @Test
+    fun retrieveConf_multipartAlternative_retainsAllParts() {
+        val parsed = PduParser(retrieveConfAlternativePdu, true).parse()
+        assertTrue(
+            "expected RetrieveConf, got ${parsed?.javaClass?.simpleName}",
+            parsed is RetrieveConf,
+        )
+        parsed as RetrieveConf
+        assertEquals(
+            "content-type",
+            "application/vnd.wap.multipart.alternative",
+            String(parsed.contentType!!),
+        )
+        // UNFY-155 retain-all: BOTH alternative parts survive (not just the first).
+        val body = parsed.body!!
+        assertEquals("both parts retained", 2, body.partsNum)
+        assertEquals("part0 data", "Hello", String(body.getPart(0).data!!))
+        assertEquals("part1 data", "World", String(body.getPart(1).data!!))
+    }
+
+    // M-Retrieve.conf whose single body part is a NESTED multipart/alternative
+    // (Content-Type 0x80|0x26) with a malformed inner body: it declares 1 part
+    // then immediately exhausts, so the inner parseParts() returns null. UNFY-155:
+    // the original childBody!!.getPart(0) NPE'd on that null; the guard now bails,
+    // so parse() returns null (mBody == null path) instead of throwing.
+    private val retrieveConfMalformedNestedAlternativePdu = hex(
+        """
+        8C 84                                  // m-retrieve-conf
+        8D 92                                  // MMS-Version 1.2
+        98 54 31 32 33 00                      // Transaction-Id "T123"
+        8B 4D 49 44 2D 33 00                   // Message-ID "MID-3"
+        85 04 5A A3 C2 80                      // Date
+        89 05 80 6E 75 6D 00                   // From "num"
+        84 B3                                  // Content-Type = multipart.related — TERMINAL
+        01                                     //   body: part count = 1
+        01 03 A6 01 00 00                      //   part0: hlen=1 dlen=3 ctype=multipart.alternative data=malformed("01 00 00")
+        """.trimIndent(),
+    )
+
+    @Test
+    fun retrieveConf_malformedNestedAlternative_returnsNullNotNpe() {
+        // Before UNFY-155 this threw NullPointerException; the guard makes it bail.
+        val parsed = PduParser(retrieveConfMalformedNestedAlternativePdu, true).parse()
+        assertTrue("malformed nested alternative must parse to null, not crash", parsed == null)
+    }
 }
