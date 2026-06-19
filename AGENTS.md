@@ -100,7 +100,7 @@ and a **single roll-up PR into `main`** as the review surface. After it
 merges, the **Cut Release** workflow ([`release.yml`](.github/workflows/release.yml),
 manual `workflow_dispatch`) tags the commit, and the resulting tag push
 fires [`deploy.yml`](.github/workflows/deploy.yml) (OIDC pub.dev publish).
-See [`docs/runbooks/`](docs/runbooks/) and [`doc/RELEASE.md`](doc/RELEASE.md).
+See [`doc/RELEASE.md`](doc/RELEASE.md).
 
 ## What NOT to do (binding rulings)
 
