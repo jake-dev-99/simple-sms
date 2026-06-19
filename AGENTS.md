@@ -127,7 +127,8 @@ See [`doc/RELEASE.md`](doc/RELEASE.md).
   `SqliteWrapper` / `RateController` / `SubscriptionIdChecker` helpers), whose
   reads are binary PDU reconstruction (positional column-index + BLOB +
   exact-type + `Cursor.count`/exception semantics that `ContentQuery` can't
-  represent) — direct by design (UNFY-156).
+  represent) — direct by design (UNFY-156), sanctioned in
+  [ADR-0012](https://app.notion.com/p/ADR-0012-Fidelity-first-port-of-the-AOSP-Klinker-MMS-stack-sanctioned-deviations-3843802ee6ba813da189ffee5bdc64e0).
 - **Don't guess provider column semantics.** Verify URI + join columns +
   value shapes against real device-provider data before coding (watch
   `thread_id` vs `_id`, `mid`, `msg_id`, `contact_id`; `?simple=true` row
