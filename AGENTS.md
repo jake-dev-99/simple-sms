@@ -86,7 +86,10 @@ change — don't wait for CI to tell you.
   schemas (esp. on Samsung OEM builds) are full of footguns — verify column
   names/types/URIs against real device data before coding, never guess.
 - `analysis_options.yaml` is the lint baseline; analyze must be clean.
-- The design rationale lives in [`WHITEPAPER.md`](WHITEPAPER.md).
+- Design rationale lives in the [**Unify Messages+ → Architecture** concern](https://www.notion.so/3683802ee6ba8180b59ec1d07727308f)
+  in Notion (Simple Zen internal — ADRs, not a repo doc, per the Documentation
+  Standard): **ADR-0012** (MMS-port fidelity deviations) and **ADR-0013**
+  (per-concern platform channels).
 
 ## Git workflow
 
