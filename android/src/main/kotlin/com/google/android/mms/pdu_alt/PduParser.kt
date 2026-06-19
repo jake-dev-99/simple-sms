@@ -147,14 +147,15 @@ class PduParser(pduDataStream: ByteArray, parseContentDisposition: Boolean) {
                 ) {
                     // The MMS content type must be "application/vnd.wap.multipart.mixed"
                     // or "application/vnd.wap.multipart.related"
-                    // or "application/vnd.wap.multipart.alternative"
-                    return retrieveConf
-                } else if (ctTypeStr == ContentType.MULTIPART_ALTERNATIVE) {
-                    // "application/vnd.wap.multipart.alternative"
-                    // should take only the first part.
-                    val firstPart = mBody!!.getPart(0)
-                    mBody!!.removeAll()
-                    mBody!!.addPart(0, firstPart)
+                    // or "application/vnd.wap.multipart.alternative".
+                    //
+                    // UNFY-155: top-level multipart/alternative is retain-all (all
+                    // parts kept), the same as mixed/related. The AOSP original had
+                    // a separate "take only the first part" branch for ALTERNATIVE
+                    // below this one, but it was unreachable (this `if` already
+                    // matches ALTERNATIVE and returns), so the effective AOSP
+                    // behaviour was always retain-all. We preserve that and remove
+                    // the dead branch rather than change behaviour. See ADR-0012.
                     return retrieveConf
                 } else if (ctTypeStr == ContentType.MULTIPART_SIGNED) {
                     // multipart/signed
@@ -890,8 +891,19 @@ class PduParser(pduDataStream: ByteArray, parseContentDisposition: Boolean) {
                 if (partContentType.equals(ContentType.MULTIPART_ALTERNATIVE, ignoreCase = true)) {
                     // parse "multipart/vnd.wap.multipart.alternative".
                     val childBody = parseParts(ByteArrayInputStream(partData))
+                    // UNFY-155: parseParts returns null on a malformed nested PDU,
+                    // and an empty body has no part 0 — the original
+                    // childBody!!.getPart(0) NPEs / throws there. Bail like every
+                    // other malformed-input path in this parser instead of crashing.
+                    if (childBody == null || childBody.partsNum == 0) {
+                        ExternalLogger.logMessage(
+                            LOG_TAG,
+                            "parseParts: malformed nested multipart/alternative part",
+                        )
+                        return null
+                    }
                     // take the first part of children.
-                    part = childBody!!.getPart(0)
+                    part = childBody.getPart(0)
                 } else {
                     // Check Content-Transfer-Encoding.
                     val partDataEncoding = part.contentTransferEncoding
