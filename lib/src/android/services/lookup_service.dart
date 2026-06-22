@@ -15,6 +15,7 @@ import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
+import '../models/people/message_participant.dart';
 import '../models/people/mms_participant.dart';
 import 'attachment_extractor.dart';
 import 'contact_lookup.dart';
@@ -199,7 +200,9 @@ class LookupService {
         .toList(growable: false);
 
     final partsByMmsId = <int, List<MmsPart>>{};
-    final addressesByMmsId = <int, List<MmsParticipant>>{};
+    // Interface-typed to match assembleThread's param exactly (no reliance on
+    // covariant Map upcast); MmsParticipant implements MessageParticipant.
+    final addressesByMmsId = <int, List<MessageParticipant>>{};
     for (final m in visible) {
       partsByMmsId[m.id] = await listMmsParts(mmsId: m.id);
       addressesByMmsId[m.id] = await listMmsAddressesByMessage(m.id);
