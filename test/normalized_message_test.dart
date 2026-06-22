@@ -17,11 +17,12 @@ Sms buildSms({
   bool? seen,
   int? simSlot,
   int? subscriptionId,
+  DateTime? date,
 }) =>
     Sms(
       id: id,
       threadId: threadId,
-      date: DateTime.fromMillisecondsSinceEpoch(1000),
+      date: date ?? DateTime.fromMillisecondsSinceEpoch(1000),
       type: type,
       address: address,
       body: body,
@@ -42,6 +43,7 @@ Mms buildMms({
   int simSlot = 0,
   int? subscriptionId,
   String? subject,
+  DateTime? date,
 }) =>
     Mms(
       id: id,
@@ -56,7 +58,7 @@ Mms buildMms({
       messageBox: messageBox,
       subscriptionId: subscriptionId,
       subject: subject,
-      date: DateTime.fromMillisecondsSinceEpoch(2000),
+      date: date ?? DateTime.fromMillisecondsSinceEpoch(2000),
     );
 
 MmsPart buildPart({
@@ -269,6 +271,108 @@ void main() {
       expect(att.mimeType, 'image/jpeg');
       expect(att.category, MimeCategory.image);
       expect(att.fileName, 'p.jpg');
+    });
+  });
+
+  group('NormalizedMessage.assembleThread', () {
+    test('merges SMS + user-visible MMS, drops transport PDUs, newest first',
+        () {
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(
+            id: 1,
+            type: SmsMessageType.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(300),
+          ),
+        ],
+        mms: [
+          buildMms(
+            id: 2,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(100),
+          ),
+          // notificationInd is transport-only (not user-visible) → dropped.
+          buildMms(
+            id: 3,
+            type: MmsMessageType.notificationInd,
+            messageBox: MessageBox.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(200),
+          ),
+        ],
+      );
+      expect(out.map((m) => m.id), [1, 2]); // newest-first; id 3 dropped
+      expect(out.map((m) => m.channel), [SmsMmsType.sms, SmsMmsType.mms]);
+    });
+
+    test('ascending flips the order', () {
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(
+            id: 1,
+            type: SmsMessageType.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(300),
+          ),
+        ],
+        mms: [
+          buildMms(
+            id: 2,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(100),
+          ),
+        ],
+        ascending: true,
+      );
+      expect(out.map((m) => m.id), [2, 1]); // 100 then 300
+    });
+
+    test('applies MMS hydration (parts + addresses) to the normalized message',
+        () {
+      final out = NormalizedMessage.assembleThread(
+        sms: const [],
+        mms: [
+          buildMms(
+            id: 5,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+          ),
+        ],
+        partsByMmsId: {
+          5: [
+            buildPart(
+                id: 50, contentType: ContentType.textPlain, text: 'hydrated'),
+            buildPart(id: 51, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+          ],
+        },
+        addressesByMmsId: {
+          5: [
+            SmsParticipant(address: 'sender@x', role: ParticipantRole.sender),
+            SmsParticipant(address: 'r1', role: ParticipantRole.to),
+          ],
+        },
+      );
+      expect(out.length, 1);
+      expect(out.single.body, 'hydrated');
+      expect(out.single.attachments.single.partId, 51);
+      expect(out.single.sender?.address, 'sender@x');
+      expect(out.single.recipients.single.address, 'r1');
+    });
+
+    test('user-visible MMS with no hydration entry normalizes empty', () {
+      final out = NormalizedMessage.assembleThread(
+        sms: const [],
+        mms: [
+          buildMms(
+            id: 6,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+          ),
+        ],
+      );
+      expect(out.single.body, '');
+      expect(out.single.sender, isNull);
+      expect(out.single.attachments, isEmpty);
     });
   });
 }

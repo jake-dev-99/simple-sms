@@ -10,6 +10,7 @@ import '../models/filters/mms_filter.dart';
 import '../models/filters/sms_filter.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/mms_part.dart';
+import '../models/messages/normalized_message.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
@@ -173,6 +174,45 @@ class LookupService {
         limit: limit,
         offset: offset,
       );
+
+  /// Returns a single thread's messages already normalized into the
+  /// source-agnostic [NormalizedMessage] contract (ADR-0014): SMS plus the
+  /// user-visible MMS in the thread, each with body extracted, direction and
+  /// delivery-state derived, participants split, and attachments described —
+  /// merged and sorted by send/receive time (newest first unless
+  /// [ascending]). Transport-only MMS PDUs are dropped
+  /// ([MmsMessageType.isUserVisible]).
+  ///
+  /// This is the read-through path: each call hits the provider. User-visible
+  /// MMS rows are hydrated with their parts + addresses (one round-trip each)
+  /// before normalization; SMS needs no hydration. The host consumes the
+  /// returned [NormalizedMessage]s directly — it does not parse SMIL, derive
+  /// direction, or split participants.
+  Future<List<NormalizedMessage>> getNormalizedMessagesByThread(
+    int threadId, {
+    bool ascending = false,
+  }) async {
+    final sms = await getSmsByThread(threadId);
+    final mms = await getMmsByThread(threadId);
+    final visible = mms
+        .where((m) => m.type?.isUserVisible ?? false)
+        .toList(growable: false);
+
+    final partsByMmsId = <int, List<MmsPart>>{};
+    final addressesByMmsId = <int, List<MmsParticipant>>{};
+    for (final m in visible) {
+      partsByMmsId[m.id] = await listMmsParts(mmsId: m.id);
+      addressesByMmsId[m.id] = await listMmsAddressesByMessage(m.id);
+    }
+
+    return NormalizedMessage.assembleThread(
+      sms: sms,
+      mms: visible,
+      partsByMmsId: partsByMmsId,
+      addressesByMmsId: addressesByMmsId,
+      ascending: ascending,
+    );
+  }
 
   /// Lists the parts (text body + attachments) that belong to an MMS message.
   /// Façade — delegates to [AttachmentExtractor] (Tier 0f extraction).

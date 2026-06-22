@@ -255,6 +255,45 @@ class NormalizedMessage {
       subject: mms.subject,
     );
   }
+
+  /// Assemble one thread's messages into the normalized contract — SMS plus
+  /// the **user-visible** MMS (transport-only PDUs are dropped per
+  /// [MmsMessageType.isUserVisible]) — each normalized, merged, and sorted by
+  /// [sentAt] (newest first unless [ascending]).
+  ///
+  /// MMS hydration is supplied by the caller (the provider fetches parts +
+  /// addresses per message): [partsByMmsId] / [addressesByMmsId] keyed by MMS
+  /// id; a missing entry normalizes that MMS with no parts/addresses. Rows
+  /// with a null [sentAt] sort last regardless of direction.
+  static List<NormalizedMessage> assembleThread({
+    required List<Sms> sms,
+    required List<Mms> mms,
+    Map<int, List<MmsPart>> partsByMmsId = const {},
+    Map<int, List<MessageParticipant>> addressesByMmsId = const {},
+    bool ascending = false,
+  }) {
+    final out = <NormalizedMessage>[
+      for (final s in sms) NormalizedMessage.fromSms(s),
+      for (final m in mms)
+        if (m.type?.isUserVisible ?? false)
+          NormalizedMessage.fromMms(
+            m,
+            parts: partsByMmsId[m.id],
+            addresses: addressesByMmsId[m.id],
+          ),
+    ];
+    out.sort((a, b) {
+      final at = a.sentAt;
+      final bt = b.sentAt;
+      if (at == null || bt == null) {
+        if (at == null && bt == null) return 0;
+        return at == null ? 1 : -1; // nulls last
+      }
+      final cmp = at.compareTo(bt);
+      return ascending ? cmp : -cmp;
+    });
+    return out;
+  }
 }
 
 // ── Direction / delivery-state derivation ───────────────────────────────
