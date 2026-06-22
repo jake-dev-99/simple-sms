@@ -57,8 +57,10 @@ enum MessageDeliveryState {
 /// The bytes are **not** carried here — under the provider model the binary
 /// stays in the native store and is fetched on demand (via
 /// `LookupService.extractMmsPart` keyed by [partId]), not eagerly copied.
-/// Text and SMIL parts are not attachments — their content is folded into
-/// [NormalizedMessage.body], so they never appear in this list.
+/// The `text/plain` body part and the SMIL layout part are excluded (their
+/// content is folded into [NormalizedMessage.body]). Other `text/*` parts
+/// (vCard, vCalendar, html) are currently excluded too — a pre-existing gap
+/// (UNFY-223) where they should instead surface as attachments.
 class NormalizedAttachment {
   const NormalizedAttachment({
     required this.partId,
@@ -221,6 +223,8 @@ class NormalizedMessage {
         : (_extractTextBody(effectiveParts) ?? '');
 
     final attachments = effectiveParts
+        // TODO(UNFY-223): `!p.isText` also drops vCard/vCalendar/html parts
+        // that belong here — narrow to the text/plain body + SMIL only.
         .where((p) => !p.isText && !p.isSmil)
         .map(
           (p) => NormalizedAttachment(
@@ -357,6 +361,15 @@ MessageDeliveryState _mmsDeliveryState(MmsMessageType? type, MessageBox? box) {
 // parts as a secondary source. Returns null when no real text exists —
 // callers must not synthesize a placeholder.
 
+// Hoisted to file scope so each pattern compiles once, not on every MMS
+// normalized (the inline form recompiled per `_extractTextFromSmil` call).
+final RegExp _smilInlineTextRegex =
+    RegExp(r'<text[^>]*>([^<]+)</text>', caseSensitive: false);
+final RegExp _smilCidRegex = RegExp(
+  r'''<text[^>]*\bsrc\s*=\s*["']cid:([^"']+)["']''',
+  caseSensitive: false,
+);
+
 String? _extractTextBody(List<MmsPart> parts) {
   if (parts.isEmpty) return null;
   for (final part in parts) {
@@ -377,16 +390,11 @@ String? _extractTextFromSmil(List<MmsPart> parts) {
   }
   if (xml == null || xml.isEmpty) return null;
 
-  final inlineMatch =
-      RegExp(r'<text[^>]*>([^<]+)</text>', caseSensitive: false)
-          .firstMatch(xml);
+  final inlineMatch = _smilInlineTextRegex.firstMatch(xml);
   final inline = inlineMatch?.group(1)?.trim();
   if (inline != null && inline.isNotEmpty) return inline;
 
-  final cidMatch = RegExp(
-    r'''<text[^>]*\bsrc\s*=\s*["']cid:([^"']+)["']''',
-    caseSensitive: false,
-  ).firstMatch(xml);
+  final cidMatch = _smilCidRegex.firstMatch(xml);
   final cid = cidMatch?.group(1);
   if (cid == null) return null;
 
