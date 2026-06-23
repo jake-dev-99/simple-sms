@@ -138,12 +138,13 @@ class AttachmentExtractor {
 
   /// Opens an MMS part for **on-demand** binary access (ADR-0014, UNFY-211).
   ///
-  /// Returns a self-closing [BinaryContent] — the host reads bytes (via
-  /// `File(content.localPath).readAsBytes()`, etc.) when it actually needs
-  /// to render the attachment and **calls `close()` when done**. No copy is
-  /// forced into a caller-owned directory: caching is the host's choice,
-  /// not the provider's mandate. Pair with [NormalizedMessage.attachments]
-  /// — the [NormalizedAttachment.partId] is the key the host hands here.
+  /// Returns a [BinaryContent] whose lifetime the caller owns: the host
+  /// reads bytes (via `File(content.localPath).readAsBytes()`, etc.) when
+  /// it actually needs to render the attachment, and **is responsible for
+  /// calling `close()` when done** — same contract as
+  /// [SimpleQuery.openBinaryContent]. No copy is forced into a caller-owned
+  /// directory: caching is the host's choice, not the provider's mandate.
+  /// Pair with [NormalizedAttachment.partId].
   ///
   /// Prefer [withMmsPart] when the read is scoped to a single function
   /// body: it pairs the open with a guaranteed close, which this raw form

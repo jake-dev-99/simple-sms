@@ -292,10 +292,10 @@ class LookupService {
       );
 
   /// Opens an MMS part for **on-demand** binary access (ADR-0014, UNFY-211).
-  /// Returns a self-closing [BinaryContent]; the host reads bytes when
-  /// needed and calls `close()` when done. Pair with the [partId] carried
-  /// by [NormalizedAttachment]. Prefer [withMmsPart] when the read is
-  /// scoped to a single function body.
+  /// Returns a [BinaryContent] whose lifetime the caller owns — the host
+  /// reads bytes when needed and is responsible for calling `close()` when
+  /// done. Pair with the [partId] carried by [NormalizedAttachment]. Prefer
+  /// [withMmsPart] when the read is scoped to a single function body.
   /// Façade — delegates to [AttachmentExtractor].
   Future<BinaryContent> openMmsPart(int partId) =>
       AttachmentExtractor.instance.openMmsPart(partId);

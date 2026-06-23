@@ -27,8 +27,10 @@ void main() {
 
     test('encodes 0 / large ids round-trip-safe', () {
       expect(mmsPartBinaryRequest(0).recordId, '0');
+      // 2^53 - 1 (the int ceiling preserved across web compile + native
+      // 64-bit int), well within Android Telephony `_id` ranges.
       expect(mmsPartBinaryRequest(9007199254740991).recordId,
-          '9007199254740991'); // safe-int ceiling
+          '9007199254740991');
     });
 
     test('two requests for the same partId are equal', () {
