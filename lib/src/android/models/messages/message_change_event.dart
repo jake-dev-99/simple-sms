@@ -67,8 +67,17 @@ class MessageChangeEvent {
   /// Translate a raw `simple_query` [ObserveEvent] into the normalized event
   /// the host consumes. [channel] is the source the observation was attached
   /// to (the wrapper observes one URI per channel, so it knows which one
-  /// emitted the event). Unparseable id strings are dropped — the rest of
-  /// the event is still informative as a reconcile signal.
+  /// emitted the event).
+  ///
+  /// [ObserveEvent.ids] is typed `List<String>` with no shape guarantee at
+  /// the `simple_query` contract level. For SMS/MMS specifically the
+  /// `_id` columns on `content://sms` and `content://mms` are integers
+  /// (Android Telephony, AOSP `BaseColumns._ID`), so the strings the
+  /// platform bridge surfaces are stringified ints — `int.tryParse` round-
+  /// trips them. Anything that fails to parse is dropped: the rest of the
+  /// event is still a valid reconcile signal (the channel changed; re-read
+  /// what matters). A non-integer id arriving here would indicate a
+  /// platform-bridge regression, not a contract issue with this translator.
   factory MessageChangeEvent.fromObserveEvent(
     ObserveEvent event, {
     required SmsMmsType channel,
