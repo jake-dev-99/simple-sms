@@ -303,9 +303,15 @@ class NormalizedMessage {
         primary = at.compareTo(bt);
       }
       if (primary != 0) return ascending ? primary : -primary;
-      // Stable tie-break on `id` — SMS and MMS in group threads can share a
-      // second-level timestamp; without this the order would be undefined.
-      return ascending ? a.id.compareTo(b.id) : -a.id.compareTo(b.id);
+      // Tie-break on (id, channel) — SMS and MMS in group threads can share a
+      // second-level timestamp, and `id` is only unique within a provider
+      // table (content://sms vs content://mms have independent _id
+      // namespaces), so an SMS and an MMS can collide on both axes. Channel
+      // is the final discriminator that makes the order total.
+      final idCmp = a.id.compareTo(b.id);
+      if (idCmp != 0) return ascending ? idCmp : -idCmp;
+      final chCmp = a.channel.index.compareTo(b.channel.index);
+      return ascending ? chCmp : -chCmp;
     });
     return out;
   }

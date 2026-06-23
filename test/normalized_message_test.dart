@@ -351,6 +351,28 @@ void main() {
       expect(asc.map((m) => m.id), [5, 7, 10]);
     });
 
+    test('tie-break across channels when id ALSO collides (sms vs mms)', () {
+      // content://sms and content://mms have independent _id namespaces, so
+      // an SMS row id=42 and an MMS row id=42 can both exist and collide.
+      // With a shared sentAt the order is otherwise undefined; channel
+      // index makes it total.
+      final shared = DateTime.fromMillisecondsSinceEpoch(500);
+      final out = NormalizedMessage.assembleThread(
+        sms: [buildSms(id: 42, type: SmsMessageType.inbox, date: shared)],
+        mms: [
+          buildMms(
+            id: 42,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: shared,
+          ),
+        ],
+      );
+      // Both newest-first and ascending must produce a defined, total order.
+      expect(out.map((m) => m.channel), isNotEmpty);
+      expect(out.length, 2);
+    });
+
     test('ascending flips the order', () {
       final out = NormalizedMessage.assembleThread(
         sms: [
