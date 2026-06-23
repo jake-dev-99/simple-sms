@@ -90,7 +90,8 @@ class MessageChangeEvent {
       channel: channel,
       changeType: _mapChangeType(event.changeType),
       timestamp: event.timestamp,
-      ids: ids,
+      // Unmodifiable to preserve the otherwise-immutable value-type contract.
+      ids: List.unmodifiable(ids),
     );
   }
 
@@ -140,6 +141,19 @@ class MessageChangeEvent {
     controller = StreamController<MessageChangeEvent>(
       onListen: start,
       onCancel: cancelAll,
+      // Propagate pause/resume to every upstream so paused consumers don't
+      // make the controller buffer events the source could have throttled at
+      // the producer.
+      onPause: () {
+        for (final s in subs) {
+          s.pause();
+        }
+      },
+      onResume: () {
+        for (final s in subs) {
+          s.resume();
+        }
+      },
     );
     return controller.stream;
   }

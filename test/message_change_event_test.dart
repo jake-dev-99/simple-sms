@@ -62,6 +62,16 @@ void main() {
       expect(m.ids, isEmpty);
       expect(m.changeType, MessageChangeType.updated);
     });
+
+    test('ids list is unmodifiable so external mutation cannot corrupt it',
+        () {
+      final m = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.insert, ids: ['1', '2']),
+        channel: SmsMmsType.sms,
+      );
+      expect(() => m.ids.add(3), throwsUnsupportedError);
+      expect(() => m.ids.clear(), throwsUnsupportedError);
+    });
   });
 
   group('MessageChangeEvent.merge', () {
@@ -153,6 +163,34 @@ void main() {
     test('empty source list yields an immediately-done stream', () async {
       final events = await MessageChangeEvent.merge([]).toList();
       expect(events, isEmpty);
+    });
+
+    test('pause/resume on the merged stream propagates to every upstream',
+        () async {
+      final a = StreamController<ObserveEvent>();
+      final b = StreamController<ObserveEvent>();
+      final sub = MessageChangeEvent.merge([
+        (stream: a.stream, channel: SmsMmsType.sms),
+        (stream: b.stream, channel: SmsMmsType.mms),
+      ]).listen((_) {});
+
+      await Future<void>.delayed(Duration.zero); // let listens attach
+      expect(a.isPaused, false);
+      expect(b.isPaused, false);
+
+      sub.pause();
+      await Future<void>.delayed(Duration.zero);
+      expect(a.isPaused, true, reason: 'sms upstream should be paused');
+      expect(b.isPaused, true, reason: 'mms upstream should be paused');
+
+      sub.resume();
+      await Future<void>.delayed(Duration.zero);
+      expect(a.isPaused, false);
+      expect(b.isPaused, false);
+
+      await sub.cancel();
+      await a.close();
+      await b.close();
     });
   });
 }
