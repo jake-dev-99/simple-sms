@@ -17,11 +17,12 @@ Sms buildSms({
   bool? seen,
   int? simSlot,
   int? subscriptionId,
+  DateTime? date,
 }) =>
     Sms(
       id: id,
       threadId: threadId,
-      date: DateTime.fromMillisecondsSinceEpoch(1000),
+      date: date ?? DateTime.fromMillisecondsSinceEpoch(1000),
       type: type,
       address: address,
       body: body,
@@ -42,6 +43,7 @@ Mms buildMms({
   int simSlot = 0,
   int? subscriptionId,
   String? subject,
+  DateTime? date,
 }) =>
     Mms(
       id: id,
@@ -56,7 +58,7 @@ Mms buildMms({
       messageBox: messageBox,
       subscriptionId: subscriptionId,
       subject: subject,
-      date: DateTime.fromMillisecondsSinceEpoch(2000),
+      date: date ?? DateTime.fromMillisecondsSinceEpoch(2000),
     );
 
 MmsPart buildPart({
@@ -269,6 +271,176 @@ void main() {
       expect(att.mimeType, 'image/jpeg');
       expect(att.category, MimeCategory.image);
       expect(att.fileName, 'p.jpg');
+    });
+  });
+
+  group('NormalizedMessage.assembleThread', () {
+    test('merges SMS + MMS newest-first; caller owns user-visible filtering',
+        () {
+      // Caller responsibility (see doc): pre-filter to user-visible. This
+      // test simulates the orchestration's pre-filter step.
+      final mmsRows = [
+        buildMms(
+          id: 2,
+          type: MmsMessageType.retrieveConfirmationInd,
+          messageBox: MessageBox.inbox,
+          date: DateTime.fromMillisecondsSinceEpoch(100),
+        ),
+        // notificationInd is transport-only; the caller filters it out
+        // upstream so the assembler never sees it.
+        buildMms(
+          id: 3,
+          type: MmsMessageType.notificationInd,
+          messageBox: MessageBox.inbox,
+          date: DateTime.fromMillisecondsSinceEpoch(200),
+        ),
+      ];
+      final visible =
+          mmsRows.where((m) => m.type?.isUserVisible ?? false).toList();
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(
+            id: 1,
+            type: SmsMessageType.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(300),
+          ),
+        ],
+        mms: visible,
+      );
+      expect(out.map((m) => m.id), [1, 2]); // newest-first
+      expect(out.map((m) => m.channel), [SmsMmsType.sms, SmsMmsType.mms]);
+    });
+
+    test('breaks sentAt ties on id (deterministic total order)', () {
+      // Two messages sharing a second-level timestamp — a routine case in
+      // group threads. Without a tie-break the order would be undefined.
+      final shared = DateTime.fromMillisecondsSinceEpoch(500);
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(id: 10, type: SmsMessageType.inbox, date: shared),
+          buildSms(id: 7, type: SmsMessageType.inbox, date: shared),
+        ],
+        mms: [
+          buildMms(
+            id: 5,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: shared,
+          ),
+        ],
+      );
+      // newest-first → highest id first within the tied bucket.
+      expect(out.map((m) => m.id), [10, 7, 5]);
+
+      final asc = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(id: 10, type: SmsMessageType.inbox, date: shared),
+          buildSms(id: 7, type: SmsMessageType.inbox, date: shared),
+        ],
+        mms: [
+          buildMms(
+            id: 5,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: shared,
+          ),
+        ],
+        ascending: true,
+      );
+      // oldest-first within ties → lowest id first.
+      expect(asc.map((m) => m.id), [5, 7, 10]);
+    });
+
+    test('tie-break across channels when id ALSO collides (sms vs mms)', () {
+      // content://sms and content://mms have independent _id namespaces, so
+      // an SMS row id=42 and an MMS row id=42 can both exist and collide.
+      // With a shared sentAt the order is otherwise undefined; channel
+      // index makes it total.
+      final shared = DateTime.fromMillisecondsSinceEpoch(500);
+      final out = NormalizedMessage.assembleThread(
+        sms: [buildSms(id: 42, type: SmsMessageType.inbox, date: shared)],
+        mms: [
+          buildMms(
+            id: 42,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: shared,
+          ),
+        ],
+      );
+      // Both newest-first and ascending must produce a defined, total order.
+      expect(out.map((m) => m.channel), isNotEmpty);
+      expect(out.length, 2);
+    });
+
+    test('ascending flips the order', () {
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(
+            id: 1,
+            type: SmsMessageType.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(300),
+          ),
+        ],
+        mms: [
+          buildMms(
+            id: 2,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: DateTime.fromMillisecondsSinceEpoch(100),
+          ),
+        ],
+        ascending: true,
+      );
+      expect(out.map((m) => m.id), [2, 1]); // 100 then 300
+    });
+
+    test('applies MMS hydration (parts + addresses) to the normalized message',
+        () {
+      final out = NormalizedMessage.assembleThread(
+        sms: const [],
+        mms: [
+          buildMms(
+            id: 5,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+          ),
+        ],
+        partsByMmsId: {
+          5: [
+            buildPart(
+                id: 50, contentType: ContentType.textPlain, text: 'hydrated'),
+            buildPart(id: 51, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+          ],
+        },
+        addressesByMmsId: {
+          5: [
+            SmsParticipant(address: 'sender@x', role: ParticipantRole.sender),
+            SmsParticipant(address: 'r1', role: ParticipantRole.to),
+          ],
+        },
+      );
+      expect(out.length, 1);
+      expect(out.single.body, 'hydrated');
+      expect(out.single.attachments.single.partId, 51);
+      expect(out.single.sender?.address, 'sender@x');
+      expect(out.single.recipients.single.address, 'r1');
+    });
+
+    test('user-visible MMS with no hydration entry normalizes empty', () {
+      final out = NormalizedMessage.assembleThread(
+        sms: const [],
+        mms: [
+          buildMms(
+            id: 6,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+          ),
+        ],
+      );
+      expect(out.single.body, '');
+      expect(out.single.sender, isNull);
+      expect(out.single.attachments, isEmpty);
     });
   });
 }

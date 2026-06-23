@@ -255,6 +255,66 @@ class NormalizedMessage {
       subject: mms.subject,
     );
   }
+
+  /// Assemble one thread's messages into the normalized contract — every
+  /// [sms] and every [mms] passed in, each normalized, merged, and sorted by
+  /// [sentAt] then [id] (newest first unless [ascending]).
+  ///
+  /// **The caller owns user-visible filtering** ([MmsMessageType.isUserVisible]).
+  /// Filtering MMS before this call lets the caller skip the per-MMS parts +
+  /// addresses round-trips on transport-only PDUs — see
+  /// [LookupService.getNormalizedMessagesByThread]. This method normalizes
+  /// what it is given.
+  ///
+  /// MMS hydration is supplied by the caller: [partsByMmsId] /
+  /// [addressesByMmsId] keyed by MMS id; a missing entry normalizes that MMS
+  /// with no parts/addresses. The sort breaks `sentAt` ties by [id] so the
+  /// order is total and deterministic for SMS and MMS that share a second-
+  /// level timestamp in group threads; null `sentAt` rows sort last regardless
+  /// of direction.
+  static List<NormalizedMessage> assembleThread({
+    required List<Sms> sms,
+    required List<Mms> mms,
+    Map<int, List<MmsPart>> partsByMmsId = const {},
+    Map<int, List<MessageParticipant>> addressesByMmsId = const {},
+    bool ascending = false,
+  }) {
+    final out = <NormalizedMessage>[
+      for (final s in sms) NormalizedMessage.fromSms(s),
+      for (final m in mms)
+        NormalizedMessage.fromMms(
+          m,
+          parts: partsByMmsId[m.id],
+          addresses: addressesByMmsId[m.id],
+        ),
+    ];
+    out.sort((a, b) {
+      final at = a.sentAt;
+      final bt = b.sentAt;
+      final int primary;
+      if (at == null || bt == null) {
+        if (at == null && bt == null) {
+          primary = 0;
+        } else {
+          // Null `sentAt` rows sort last regardless of direction.
+          return at == null ? 1 : -1;
+        }
+      } else {
+        primary = at.compareTo(bt);
+      }
+      if (primary != 0) return ascending ? primary : -primary;
+      // Tie-break on (id, channel) — SMS and MMS in group threads can share a
+      // second-level timestamp, and `id` is only unique within a provider
+      // table (content://sms vs content://mms have independent _id
+      // namespaces), so an SMS and an MMS can collide on both axes. Channel
+      // is the final discriminator that makes the order total.
+      final idCmp = a.id.compareTo(b.id);
+      if (idCmp != 0) return ascending ? idCmp : -idCmp;
+      final chCmp = a.channel.index.compareTo(b.channel.index);
+      return ascending ? chCmp : -chCmp;
+    });
+    return out;
+  }
 }
 
 // ── Direction / delivery-state derivation ───────────────────────────────
