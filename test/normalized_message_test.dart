@@ -275,8 +275,28 @@ void main() {
   });
 
   group('NormalizedMessage.assembleThread', () {
-    test('merges SMS + user-visible MMS, drops transport PDUs, newest first',
+    test('merges SMS + MMS newest-first; caller owns user-visible filtering',
         () {
+      // Caller responsibility (see doc): pre-filter to user-visible. This
+      // test simulates the orchestration's pre-filter step.
+      final mmsRows = [
+        buildMms(
+          id: 2,
+          type: MmsMessageType.retrieveConfirmationInd,
+          messageBox: MessageBox.inbox,
+          date: DateTime.fromMillisecondsSinceEpoch(100),
+        ),
+        // notificationInd is transport-only; the caller filters it out
+        // upstream so the assembler never sees it.
+        buildMms(
+          id: 3,
+          type: MmsMessageType.notificationInd,
+          messageBox: MessageBox.inbox,
+          date: DateTime.fromMillisecondsSinceEpoch(200),
+        ),
+      ];
+      final visible =
+          mmsRows.where((m) => m.type?.isUserVisible ?? false).toList();
       final out = NormalizedMessage.assembleThread(
         sms: [
           buildSms(
@@ -285,24 +305,50 @@ void main() {
             date: DateTime.fromMillisecondsSinceEpoch(300),
           ),
         ],
+        mms: visible,
+      );
+      expect(out.map((m) => m.id), [1, 2]); // newest-first
+      expect(out.map((m) => m.channel), [SmsMmsType.sms, SmsMmsType.mms]);
+    });
+
+    test('breaks sentAt ties on id (deterministic total order)', () {
+      // Two messages sharing a second-level timestamp — a routine case in
+      // group threads. Without a tie-break the order would be undefined.
+      final shared = DateTime.fromMillisecondsSinceEpoch(500);
+      final out = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(id: 10, type: SmsMessageType.inbox, date: shared),
+          buildSms(id: 7, type: SmsMessageType.inbox, date: shared),
+        ],
         mms: [
           buildMms(
-            id: 2,
+            id: 5,
             type: MmsMessageType.retrieveConfirmationInd,
             messageBox: MessageBox.inbox,
-            date: DateTime.fromMillisecondsSinceEpoch(100),
-          ),
-          // notificationInd is transport-only (not user-visible) → dropped.
-          buildMms(
-            id: 3,
-            type: MmsMessageType.notificationInd,
-            messageBox: MessageBox.inbox,
-            date: DateTime.fromMillisecondsSinceEpoch(200),
+            date: shared,
           ),
         ],
       );
-      expect(out.map((m) => m.id), [1, 2]); // newest-first; id 3 dropped
-      expect(out.map((m) => m.channel), [SmsMmsType.sms, SmsMmsType.mms]);
+      // newest-first → highest id first within the tied bucket.
+      expect(out.map((m) => m.id), [10, 7, 5]);
+
+      final asc = NormalizedMessage.assembleThread(
+        sms: [
+          buildSms(id: 10, type: SmsMessageType.inbox, date: shared),
+          buildSms(id: 7, type: SmsMessageType.inbox, date: shared),
+        ],
+        mms: [
+          buildMms(
+            id: 5,
+            type: MmsMessageType.retrieveConfirmationInd,
+            messageBox: MessageBox.inbox,
+            date: shared,
+          ),
+        ],
+        ascending: true,
+      );
+      // oldest-first within ties → lowest id first.
+      expect(asc.map((m) => m.id), [5, 7, 10]);
     });
 
     test('ascending flips the order', () {

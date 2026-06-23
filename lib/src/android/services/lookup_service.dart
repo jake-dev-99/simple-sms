@@ -193,20 +193,35 @@ class LookupService {
     int threadId, {
     bool ascending = false,
   }) async {
-    final sms = await getSmsByThread(threadId);
-    final mms = await getMmsByThread(threadId);
+    // SMS + MMS lists in parallel — independent provider queries.
+    final results = await Future.wait([getSmsByThread(threadId), getMmsByThread(threadId)]);
+    final sms = results[0] as List<Sms>;
+    final mms = results[1] as List<Mms>;
+    // Filter to user-visible MMS HERE (single owner) so we don't pay the
+    // per-MMS hydration round-trips on transport PDUs like notificationInd —
+    // those exist for every incoming MMS and would otherwise double the
+    // round-trip count for nothing. `assembleThread` trusts this input.
     final visible = mms
         .where((m) => m.type?.isUserVisible ?? false)
         .toList(growable: false);
 
-    final partsByMmsId = <int, List<MmsPart>>{};
+    // Hydrate parts + addresses for all visible MMS concurrently — each pair
+    // is independent. Sequential awaits made a long thread O(n) round-trips
+    // when the underlying provider can serve them in parallel.
+    final partsList = await Future.wait(
+      visible.map((m) => listMmsParts(mmsId: m.id)),
+    );
+    final addressesList = await Future.wait(
+      visible.map((m) => listMmsAddressesByMessage(m.id)),
+    );
+    final partsByMmsId = <int, List<MmsPart>>{
+      for (var i = 0; i < visible.length; i++) visible[i].id: partsList[i],
+    };
     // Interface-typed to match assembleThread's param exactly (no reliance on
     // covariant Map upcast); MmsParticipant implements MessageParticipant.
-    final addressesByMmsId = <int, List<MessageParticipant>>{};
-    for (final m in visible) {
-      partsByMmsId[m.id] = await listMmsParts(mmsId: m.id);
-      addressesByMmsId[m.id] = await listMmsAddressesByMessage(m.id);
-    }
+    final addressesByMmsId = <int, List<MessageParticipant>>{
+      for (var i = 0; i < visible.length; i++) visible[i].id: addressesList[i],
+    };
 
     return NormalizedMessage.assembleThread(
       sms: sms,
