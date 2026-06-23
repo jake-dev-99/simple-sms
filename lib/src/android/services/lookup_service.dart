@@ -274,7 +274,12 @@ class LookupService {
   /// Extracts the binary content of a single MMS part to [outputDirectory],
   /// returning the resulting [File]. The file is named [filename] if given,
   /// otherwise a name is derived from the part id + mime type.
-  /// Façade — delegates to [AttachmentExtractor] (Tier 0f extraction).
+  ///
+  /// **Legacy materialization path** (ADR-0014, UNFY-211). New callers should
+  /// prefer [openMmsPart] / [withMmsPart], which hand out a self-closing
+  /// handle the host opens on demand — caching is the host's choice, not
+  /// forced. Retained for the existing sync pipeline until UNFY-218 retires
+  /// it. Façade — delegates to [AttachmentExtractor] (Tier 0f extraction).
   Future<File> extractMmsPart({
     required int partId,
     required String outputDirectory,
@@ -285,6 +290,24 @@ class LookupService {
         outputDirectory: outputDirectory,
         filename: filename,
       );
+
+  /// Opens an MMS part for **on-demand** binary access (ADR-0014, UNFY-211).
+  /// Returns a self-closing [BinaryContent]; the host reads bytes when
+  /// needed and calls `close()` when done. Pair with the [partId] carried
+  /// by [NormalizedAttachment]. Prefer [withMmsPart] when the read is
+  /// scoped to a single function body.
+  /// Façade — delegates to [AttachmentExtractor].
+  Future<BinaryContent> openMmsPart(int partId) =>
+      AttachmentExtractor.instance.openMmsPart(partId);
+
+  /// Opens an MMS part for the duration of [body] and closes it on return
+  /// or throw (ADR-0014, UNFY-211). Returns whatever [body] returns.
+  /// Façade — delegates to [AttachmentExtractor].
+  Future<R> withMmsPart<R>(
+    int partId,
+    Future<R> Function(BinaryContent content) body,
+  ) =>
+      AttachmentExtractor.instance.withMmsPart(partId, body);
 
   /// Lists conversations (MMS-SMS threads) matching the given [filter].
   ///
