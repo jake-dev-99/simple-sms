@@ -3,11 +3,15 @@
 // unambiguously inside this file.
 import 'dart:io' hide ContentType;
 
+import 'package:simple_query/simple_query.dart';
+
 import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
 import '../models/filters/sms_filter.dart';
+import '../models/messages/message_change_event.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/mms_part.dart';
 import '../models/messages/normalized_message.dart';
@@ -230,6 +234,33 @@ class LookupService {
       addressesByMmsId: addressesByMmsId,
       ascending: ascending,
     );
+  }
+
+  /// Watches the native SMS + MMS stores for changes and emits a normalized
+  /// [MessageChangeEvent] for each one — the provider's change-stream
+  /// surface (ADR-0014; ADR-0013 dedicated channel).
+  ///
+  /// Two underlying observations are multiplexed in arrival order: one over
+  /// `content://sms`, one over `content://mms`. Each emitted event carries
+  /// its source [SmsMmsType] so the consumer can route by channel. Empty
+  /// `ids` means "something changed in this channel — reconcile by
+  /// re-reading"; Android's `ContentObserver` callback often omits row ids.
+  ///
+  /// The returned stream is single-subscription. Cancel the subscription to
+  /// detach every upstream observer.
+  Stream<MessageChangeEvent> observeMessages() {
+    final sms = SimpleQuery.instance.observe(const ObserveRequest(
+      domain: QueryDomain.platformSpecific,
+      platformData: {'contentUri': 'content://sms'},
+    ));
+    final mms = SimpleQuery.instance.observe(const ObserveRequest(
+      domain: QueryDomain.platformSpecific,
+      platformData: {'contentUri': 'content://mms'},
+    ));
+    return MessageChangeEvent.merge([
+      (stream: sms, channel: SmsMmsType.sms),
+      (stream: mms, channel: SmsMmsType.mms),
+    ]);
   }
 
   /// Lists the parts (text body + attachments) that belong to an MMS message.
