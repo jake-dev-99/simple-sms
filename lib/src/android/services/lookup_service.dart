@@ -5,6 +5,7 @@ import 'dart:io' hide ContentType;
 
 import 'package:simple_query/simple_query.dart';
 
+import '../models/channel_capabilities.dart';
 import '../models/conversations/mms_sms_simple_conversations.dart';
 import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/contact_filter.dart';
@@ -68,6 +69,13 @@ import 'message_lookup.dart';
 /// ```
 
 class LookupService {
+  /// What this provider supports as a flat set of capability flags
+  /// (ADR-0014, UNFY-212). The host renders a generic UI against these
+  /// instead of hardcoding `if (channel == sms)`; future channels
+  /// (Telegram, native chat) will publish a different set behind the same
+  /// shape. See [androidSmsMmsCapabilities] for the per-flag rationale.
+  ChannelCapabilities get capabilities => androidSmsMmsCapabilities;
+
   /// Replaces the self-MSISDN set used by MMS-addr filtering. Call
   /// once at app bootstrap with the result of an E.164 normalization
   /// pass over `SimpleTelephonyNative.listSimCards()` `number` fields,
