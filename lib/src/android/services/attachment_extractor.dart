@@ -15,6 +15,21 @@ import '../models/messages/mms_part.dart';
 /// risk of typos in the inline string literal at the query site.
 const String _mmsPartUri = 'content://mms/part';
 
+/// Construct the `simple_query` [BinaryRequest] that opens an MMS part by
+/// its native row id.
+///
+/// Factored out so the request shape is the single point of truth for every
+/// open-path — eager [AttachmentExtractor.extractMmsPart], on-demand
+/// [AttachmentExtractor.openMmsPart], scoped
+/// [AttachmentExtractor.withMmsPart] — and so the shape is unit-testable
+/// without going through `simple_query`'s binary backend.
+@visibleForTesting
+BinaryRequest mmsPartBinaryRequest(int partId) => BinaryRequest(
+      domain: QueryDomain.messages,
+      entityType: 'mmsPart',
+      recordId: partId.toString(),
+    );
+
 /// MMS attachment retrieval — list parts for a message + extract a part's
 /// binary content to a local file.
 ///
@@ -82,6 +97,13 @@ class AttachmentExtractor {
   /// returning the resulting [File]. The file is named [filename] if given,
   /// otherwise a name is derived from the part id + mime type.
   ///
+  /// **Legacy materialization path** (ADR-0014, UNFY-211). Forces a copy to
+  /// caller-owned disk and is the system-of-record pattern the provider
+  /// migration moves away from. New callers should prefer [openMmsPart] /
+  /// [withMmsPart], which hand out a self-closing handle the host opens
+  /// on demand and disposes — caching is the host's choice, not forced.
+  /// Retained for the existing sync pipeline until UNFY-218 retires it.
+  ///
   /// Internally this opens a binary handle via `simple_query`, copies the
   /// temporary content to the caller-specified location, and closes the
   /// handle. Throws if the part cannot be opened or copied.
@@ -90,13 +112,8 @@ class AttachmentExtractor {
     required String outputDirectory,
     String? filename,
   }) async {
-    final handle = await SimpleQuery.instance.openBinary(
-      BinaryRequest(
-        domain: QueryDomain.messages,
-        entityType: 'mmsPart',
-        recordId: partId.toString(),
-      ),
-    );
+    final handle =
+        await SimpleQuery.instance.openBinary(mmsPartBinaryRequest(partId));
     try {
       final dir = Directory(outputDirectory);
       if (!await dir.exists()) {
@@ -117,6 +134,40 @@ class AttachmentExtractor {
         debugPrint('simple_sms: closeBinary failed for $partId: $e');
       }
     }
+  }
+
+  /// Opens an MMS part for **on-demand** binary access (ADR-0014, UNFY-211).
+  ///
+  /// Returns a [BinaryContent] whose lifetime the caller owns: the host
+  /// reads bytes (via `File(content.localPath).readAsBytes()`, etc.) when
+  /// it actually needs to render the attachment, and **is responsible for
+  /// calling `close()` when done** — same contract as
+  /// [SimpleQuery.openBinaryContent]. No copy is forced into a caller-owned
+  /// directory: caching is the host's choice, not the provider's mandate.
+  /// Pair with [NormalizedAttachment.partId].
+  ///
+  /// Prefer [withMmsPart] when the read is scoped to a single function
+  /// body: it pairs the open with a guaranteed close, which this raw form
+  /// leaves to the caller.
+  Future<BinaryContent> openMmsPart(int partId) {
+    return SimpleQuery.instance.openBinaryContent(mmsPartBinaryRequest(partId));
+  }
+
+  /// Opens an MMS part for the duration of [body] and closes it when [body]
+  /// returns or throws (ADR-0014, UNFY-211). Returns whatever [body] returns.
+  ///
+  /// ```dart
+  /// final bytes = await LookupService().withMmsPart(
+  ///   attachment.partId,
+  ///   (content) => File(content.localPath).readAsBytes(),
+  /// );
+  /// ```
+  Future<R> withMmsPart<R>(
+    int partId,
+    Future<R> Function(BinaryContent content) body,
+  ) {
+    return SimpleQuery.instance
+        .withBinaryContent(mmsPartBinaryRequest(partId), body);
   }
 
   String _deriveMmsPartFilename(int partId, BinaryContentHandle handle) {
