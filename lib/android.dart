@@ -8,6 +8,9 @@ export 'src/android/messaging/destructive_action.dart';
 // to `package:simple_permissions_native/simple_permissions_native.dart`.
 export 'src/android/services/lookup_service.dart';
 
+// Models - Provider contract
+export 'src/android/models/channel_capabilities.dart';
+
 // Models - Messages
 export 'src/android/models/messages/sms.dart';
 export 'src/android/models/messages/mms.dart';
