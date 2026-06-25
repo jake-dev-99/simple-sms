@@ -57,10 +57,10 @@ enum MessageDeliveryState {
 /// The bytes are **not** carried here — under the provider model the binary
 /// stays in the native store and is fetched on demand (via
 /// `LookupService.extractMmsPart` keyed by [partId]), not eagerly copied.
-/// The `text/plain` body part and the SMIL layout part are excluded (their
-/// content is folded into [NormalizedMessage.body]). Other `text/*` parts
-/// (vCard, vCalendar, html) are currently excluded too — a pre-existing gap
-/// (UNFY-223) where they should instead surface as attachments.
+/// The `text/plain` body part and the SMIL layout part are excluded (the
+/// body's content is folded into [NormalizedMessage.body]). Every other part —
+/// including non-body `text/*` parts (vCard, vCalendar, html) — surfaces here
+/// as an attachment (UNFY-223).
 class NormalizedAttachment {
   const NormalizedAttachment({
     required this.partId,
@@ -223,9 +223,10 @@ class NormalizedMessage {
         : (_extractTextBody(effectiveParts) ?? '');
 
     final attachments = effectiveParts
-        // TODO(UNFY-223): `!p.isText` also drops vCard/vCalendar/html parts
-        // that belong here — narrow to the text/plain body + SMIL only.
-        .where((p) => !p.isText && !p.isSmil)
+        // Exclude only the text/plain body (folded into `body`) and the SMIL
+        // layout descriptor. Every other part — including non-body `text/*`
+        // parts (vCard, vCalendar, html) — surfaces as an attachment (UNFY-223).
+        .where((p) => !p.isSmil && !_isTextPlainBody(p))
         .map(
           (p) => NormalizedAttachment(
             partId: p.id,
@@ -430,10 +431,18 @@ final RegExp _smilCidRegex = RegExp(
   caseSensitive: false,
 );
 
+/// Whether [p] is the `text/plain` message body — the part whose content is
+/// folded into [NormalizedMessage.body] and therefore excluded from
+/// attachments. Other `text/*` parts (vCard, vCalendar, html) are NOT the
+/// body; they surface as attachments (UNFY-223). Lower-cased because
+/// `ContentType.fromMime` preserves raw case for unknown MIMEs.
+bool _isTextPlainBody(MmsPart p) =>
+    p.contentType.value.toLowerCase() == ContentType.textPlain.value;
+
 String? _extractTextBody(List<MmsPart> parts) {
   if (parts.isEmpty) return null;
   for (final part in parts) {
-    if (part.isText && (part.text?.isNotEmpty ?? false)) {
+    if (_isTextPlainBody(part) && (part.text?.isNotEmpty ?? false)) {
       return part.text;
     }
   }
