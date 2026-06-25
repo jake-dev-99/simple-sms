@@ -24,12 +24,27 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "markMessageAsRead" -> {
-                val messageId = call.arguments as? String
-                if (messageId == null) {
-                    result.error("INVALID_ARGUMENT", "Message ID required", null)
+                val args = call.arguments as? Map<*, *>
+                val messageId = args?.get("messageId") as? String
+                val table = messageTableFor(args?.get("channel") as? String)
+                if (messageId == null || table == null) {
+                    result.error(
+                        "INVALID_ARGUMENT",
+                        "markMessageAsRead requires messageId + channel (sms|mms); " +
+                            "got messageId=$messageId channel=${args?.get("channel")}",
+                        null,
+                    )
                     return
                 }
-                result.success(markMessageAsRead(messageId))
+                try {
+                    result.success(markMessageAsRead(messageId, table))
+                } catch (e: Exception) {
+                    result.error(
+                        "MARK_READ_FAILED",
+                        "Failed to mark message read: ${e.message}",
+                        e.stackTraceToString(),
+                    )
+                }
             }
             "markConversationAsRead" -> {
                 val conversationId = call.arguments as? String
@@ -37,7 +52,15 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                     result.error("INVALID_ARGUMENT", "Conversation ID required", null)
                     return
                 }
-                result.success(markConversationAsRead(conversationId))
+                try {
+                    result.success(markConversationAsRead(conversationId))
+                } catch (e: Exception) {
+                    result.error(
+                        "MARK_READ_FAILED",
+                        "Failed to mark conversation read: ${e.message}",
+                        e.stackTraceToString(),
+                    )
+                }
             }
             "launchAddContact" -> {
                 val args = call.arguments as? Map<*, *>
@@ -49,32 +72,35 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
         }
     }
 
-    private fun markMessageAsRead(messageId: String): Boolean {
+    /**
+     * Mark one message read in the table named by [table]. The native `_id` is
+     * unique only within its own table, so the channel-derived [table] targets
+     * the right message directly — no SMS-first fallback (UNFY-213).
+     */
+    private fun markMessageAsRead(messageId: String, table: MessageTable): Boolean {
         val values = ContentValues().apply {
-            put(Telephony.Sms.READ, 1)
-            put(Telephony.Sms.SEEN, 1)
+            when (table) {
+                MessageTable.SMS -> {
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.SEEN, 1)
+                }
+                MessageTable.MMS -> {
+                    put(Telephony.Mms.READ, 1)
+                    put(Telephony.Mms.SEEN, 1)
+                }
+            }
         }
-        // Try SMS
-        val smsUpdated = context.contentResolver.update(
-            Telephony.Sms.CONTENT_URI,
+        val idColumn = when (table) {
+            MessageTable.SMS -> Telephony.Sms._ID
+            MessageTable.MMS -> Telephony.Mms._ID
+        }
+        val updated = context.contentResolver.update(
+            table.contentUri(),
             values,
-            "${Telephony.Sms._ID} = ?",
+            "$idColumn = ?",
             arrayOf(messageId)
         )
-        if (smsUpdated > 0) return true
-
-        // Try MMS
-        val mmsValues = ContentValues().apply {
-            put(Telephony.Mms.READ, 1)
-            put(Telephony.Mms.SEEN, 1)
-        }
-        val mmsUpdated = context.contentResolver.update(
-            Telephony.Mms.CONTENT_URI,
-            mmsValues,
-            "${Telephony.Mms._ID} = ?",
-            arrayOf(messageId)
-        )
-        return mmsUpdated > 0
+        return updated > 0
     }
 
     private fun markConversationAsRead(conversationId: String): Boolean {

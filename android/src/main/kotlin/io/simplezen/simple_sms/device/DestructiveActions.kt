@@ -24,20 +24,35 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     val success = deleteThread(threadId)
                     result.success(success)
                 } catch (e: Exception) {
-                    result.error("DELETE_FAILED", "Failed to delete thread: ${e.message}", null)
+                    result.error(
+                        "DELETE_FAILED",
+                        "Failed to delete thread: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             "deleteMessage" -> {
-                val messageId = call.arguments as? String
-                if (messageId == null) {
-                    result.error("INVALID_ARGUMENT", "Message ID required", null)
+                val args = call.arguments as? Map<*, *>
+                val messageId = args?.get("messageId") as? String
+                val table = messageTableFor(args?.get("channel") as? String)
+                if (messageId == null || table == null) {
+                    result.error(
+                        "INVALID_ARGUMENT",
+                        "deleteMessage requires messageId + channel (sms|mms); " +
+                            "got messageId=$messageId channel=${args?.get("channel")}",
+                        null,
+                    )
                     return
                 }
                 try {
-                    val success = deleteMessage(messageId)
+                    val success = deleteMessage(messageId, table)
                     result.success(success)
                 } catch (e: Exception) {
-                    result.error("DELETE_FAILED", "Failed to delete message: ${e.message}", null)
+                    result.error(
+                        "DELETE_FAILED",
+                        "Failed to delete message: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             else -> result.notImplemented()
@@ -61,30 +76,22 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
         return (smsDeleted + mmsDeleted) > 0
     }
 
-    private fun deleteMessage(messageId: String): Boolean {
-        // Try SMS first
-        val smsDeleted = context.contentResolver.delete(
-            Uri.withAppendedPath(Telephony.Sms.CONTENT_URI, messageId),
+    /**
+     * Delete one message from the table named by [table]. The native `_id` is
+     * unique only within its own table, so the channel-derived [table] targets
+     * the right message directly — no SMS-first fallback (UNFY-213).
+     */
+    private fun deleteMessage(messageId: String, table: MessageTable): Boolean {
+        val deleted = context.contentResolver.delete(
+            Uri.withAppendedPath(table.contentUri(), messageId),
             null,
             null
         )
-        if (smsDeleted > 0) {
-            Log.d(TAG, "Deleted SMS message $messageId")
+        if (deleted > 0) {
+            Log.d(TAG, "Deleted ${table.name} message $messageId")
             return true
         }
-
-        // Try MMS
-        val mmsDeleted = context.contentResolver.delete(
-            Uri.withAppendedPath(Telephony.Mms.CONTENT_URI, messageId),
-            null,
-            null
-        )
-        if (mmsDeleted > 0) {
-            Log.d(TAG, "Deleted MMS message $messageId")
-            return true
-        }
-
-        Log.w(TAG, "Message $messageId not found in SMS or MMS tables")
+        Log.w(TAG, "Message $messageId not found in ${table.name} table")
         return false
     }
 }
