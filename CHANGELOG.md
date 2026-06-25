@@ -1,3 +1,35 @@
+## 0.4.0
+
+### Changed (breaking)
+
+- **Per-message writes now require a channel.**
+  `AndroidAction.markMessageAsRead` and `AndroidDestructiveAction.deleteMessage`
+  take a required `SmsMmsType channel`. The native `_id` is unique only within
+  its own SMS/MMS table, so the channel selects the correct table — the prior
+  bare-id signatures guessed SMS-first and could mark or delete the **wrong**
+  message when an SMS and an MMS shared an `_id` (UNFY-213). Callers pass the
+  channel they already hold (it is part of the message identity in the read
+  contract). `markConversationAsRead` / `deleteThread` are unchanged — they act
+  by thread, which spans both tables.
+
+### Fixed
+
+- Per-message write handlers (`DeviceActions`, `DestructiveActions`) surface
+  failures uniformly via `result.error`, with the originating stack trace in the
+  `details` argument, instead of an unhandled exception (e.g. a `SecurityException`
+  when the app is not the default SMS app) crashing the method-channel call.
+
+## 0.3.0
+
+### Added
+
+- Provider contract (ADR-0014): a source-agnostic `NormalizedMessage` read
+  surface (body/direction/status resolved at the plugin boundary), a
+  `ContentObserver`-backed change-stream, attachment-by-reference (on-demand
+  open/stream — the plugin is no longer the attachment system-of-record),
+  `ChannelCapabilities` flags, and a unified SMS/MMS `MessageParticipant`
+  contract (UNFY-165, UNFY-204–212).
+
 ## 0.2.0
 
 ### Added

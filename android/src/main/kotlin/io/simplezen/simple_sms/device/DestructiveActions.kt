@@ -24,7 +24,11 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     val success = deleteThread(threadId)
                     result.success(success)
                 } catch (e: Exception) {
-                    result.error("DELETE_FAILED", "Failed to delete thread: ${e.message}", null)
+                    result.error(
+                        "DELETE_FAILED",
+                        "Failed to delete thread: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             "deleteMessage" -> {
@@ -44,7 +48,11 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     val success = deleteMessage(messageId, table)
                     result.success(success)
                 } catch (e: Exception) {
-                    result.error("DELETE_FAILED", "Failed to delete message: ${e.message}", null)
+                    result.error(
+                        "DELETE_FAILED",
+                        "Failed to delete message: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             else -> result.notImplemented()

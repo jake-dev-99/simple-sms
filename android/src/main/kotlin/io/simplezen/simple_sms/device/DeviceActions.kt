@@ -39,7 +39,11 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                 try {
                     result.success(markMessageAsRead(messageId, table))
                 } catch (e: Exception) {
-                    result.error("MARK_READ_FAILED", "Failed to mark message read: ${e.message}", null)
+                    result.error(
+                        "MARK_READ_FAILED",
+                        "Failed to mark message read: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             "markConversationAsRead" -> {
@@ -51,7 +55,11 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                 try {
                     result.success(markConversationAsRead(conversationId))
                 } catch (e: Exception) {
-                    result.error("MARK_READ_FAILED", "Failed to mark conversation read: ${e.message}", null)
+                    result.error(
+                        "MARK_READ_FAILED",
+                        "Failed to mark conversation read: ${e.message}",
+                        e.stackTraceToString(),
+                    )
                 }
             }
             "launchAddContact" -> {
