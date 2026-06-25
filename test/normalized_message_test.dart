@@ -272,6 +272,106 @@ void main() {
       expect(att.category, MimeCategory.image);
       expect(att.fileName, 'p.jpg');
     });
+
+    test('vCard / vCalendar / html parts surface as attachments, not dropped',
+        () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        body: 'caption',
+        type: MmsMessageType.retrieveConfirmationInd,
+        messageBox: MessageBox.inbox,
+        parts: [
+          buildPart(id: 1, contentType: ContentType.textPlain, text: 'caption'),
+          buildPart(
+              id: 2, contentType: ContentType.applicationSmil, text: '<smil/>'),
+          buildPart(
+              id: 3, contentType: ContentType.textXVCard, fileName: 'c.vcf'),
+          buildPart(
+              id: 4, contentType: ContentType.textCalendar, fileName: 'i.ics'),
+          buildPart(
+              id: 5, contentType: ContentType.textHtml, fileName: 'b.html'),
+          buildPart(id: 6, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+        ],
+      ));
+
+      // Only the text/plain body + SMIL layout are excluded; every other part —
+      // including the vCard / vCalendar / html text parts — surfaces.
+      expect(m.body, 'caption');
+      expect(m.attachments.map((a) => a.partId).toList(), [3, 4, 5, 6]);
+      expect(
+        m.attachments.map((a) => a.mimeType).toList(),
+        ['text/x-vCard', 'text/calendar', 'text/html', 'image/jpeg'],
+      );
+      // The vCard keeps MimeCategory.text so a consumer can render-or-download.
+      expect(
+        m.attachments.firstWhere((a) => a.partId == 3).category,
+        MimeCategory.text,
+      );
+    });
+
+    test(
+        'empty Mms.body + a vCard text part: vCard is an attachment, body stays '
+        'empty (not folded in, not double-counted)', () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        body: '',
+        type: MmsMessageType.retrieveConfirmationInd,
+        messageBox: MessageBox.inbox,
+        parts: [
+          buildPart(
+              id: 1,
+              contentType: ContentType.textXVCard,
+              text: 'BEGIN:VCARD\nEND:VCARD',
+              fileName: 'c.vcf'),
+          buildPart(id: 2, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+        ],
+      ));
+
+      // A vCard is not the message body: it must not be folded into `body`,
+      // and it must appear exactly once (as an attachment).
+      expect(m.body, '');
+      expect(m.attachments.map((a) => a.partId).toList(), [1, 2]);
+    });
+
+    test('text/plain is the body even when a vCard text part precedes it', () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        body: '',
+        type: MmsMessageType.retrieveConfirmationInd,
+        messageBox: MessageBox.inbox,
+        parts: [
+          buildPart(
+              id: 1,
+              contentType: ContentType.textXVCard,
+              text: 'BEGIN:VCARD',
+              fileName: 'c.vcf'),
+          buildPart(
+              id: 2, contentType: ContentType.textPlain, text: 'the real body'),
+        ],
+      ));
+
+      expect(m.body, 'the real body');
+      expect(m.attachments.map((a) => a.partId).toList(), [1]);
+    });
+
+    test('a parameterized text/plain part (charset) is still body, not an '
+        'attachment', () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        body: '',
+        type: MmsMessageType.retrieveConfirmationInd,
+        messageBox: MessageBox.inbox,
+        parts: [
+          buildPart(
+              id: 1,
+              contentType: ContentType.fromMime('text/plain; charset=utf-8'),
+              text: 'parameterized body'),
+          buildPart(id: 2, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+        ],
+      ));
+
+      // `ContentType.fromMime` strips the `; charset=utf-8` parameter, so the
+      // part still classifies as the text/plain body — folded into `body`, not
+      // surfaced as an attachment. (Guards the value-equality classification.)
+      expect(m.body, 'parameterized body');
+      expect(m.attachments.map((a) => a.partId).toList(), [2]);
+    });
   });
 
   group('NormalizedMessage.assembleThread', () {
