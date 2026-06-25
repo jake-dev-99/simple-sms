@@ -223,10 +223,10 @@ class NormalizedMessage {
         : (_extractTextBody(effectiveParts) ?? '');
 
     final attachments = effectiveParts
-        // Exclude only the text/plain body (folded into `body`) and the SMIL
-        // layout descriptor. Every other part — including non-body `text/*`
+        // Exclude only the text/plain body part(s) (folded into `body`) and the
+        // SMIL layout descriptor. Every other part — including non-body `text/*`
         // parts (vCard, vCalendar, html) — surfaces as an attachment (UNFY-223).
-        .where((p) => !p.isSmil && !_isTextPlainBody(p))
+        .where((p) => !p.isSmil && !_isTextPlainPart(p))
         .map(
           (p) => NormalizedAttachment(
             partId: p.id,
@@ -431,18 +431,26 @@ final RegExp _smilCidRegex = RegExp(
   caseSensitive: false,
 );
 
-/// Whether [p] is the `text/plain` message body — the part whose content is
-/// folded into [NormalizedMessage.body] and therefore excluded from
-/// attachments. Other `text/*` parts (vCard, vCalendar, html) are NOT the
-/// body; they surface as attachments (UNFY-223). Lower-cased because
-/// `ContentType.fromMime` preserves raw case for unknown MIMEs.
-bool _isTextPlainBody(MmsPart p) =>
+/// Whether [p] is a `text/plain` part — the message's body material.
+///
+/// All `text/plain` parts are body content rather than attachments: they are
+/// excluded from [NormalizedMessage.attachments], and the **first** one with
+/// non-empty text becomes [NormalizedMessage.body] (see [_extractTextBody]).
+/// An MMS normally carries exactly one. Other `text/*` parts (vCard,
+/// vCalendar, html) are NOT body — they surface as attachments (UNFY-223).
+///
+/// Value-equality match, mirroring [MmsPart.isSmil]. Safe against MIME
+/// parameters because [ContentType.fromMime] — the only path that builds a
+/// part's [ContentType] — strips them (`text/plain; charset=utf-8` →
+/// `text/plain`) and lower-cases on the unknown-MIME branch, so a text/plain
+/// part's `value` is always exactly `text/plain`.
+bool _isTextPlainPart(MmsPart p) =>
     p.contentType.value.toLowerCase() == ContentType.textPlain.value;
 
 String? _extractTextBody(List<MmsPart> parts) {
   if (parts.isEmpty) return null;
   for (final part in parts) {
-    if (_isTextPlainBody(part) && (part.text?.isNotEmpty ?? false)) {
+    if (_isTextPlainPart(part) && (part.text?.isNotEmpty ?? false)) {
       return part.text;
     }
   }

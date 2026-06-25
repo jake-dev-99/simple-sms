@@ -350,6 +350,28 @@ void main() {
       expect(m.body, 'the real body');
       expect(m.attachments.map((a) => a.partId).toList(), [1]);
     });
+
+    test('a parameterized text/plain part (charset) is still body, not an '
+        'attachment', () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        body: '',
+        type: MmsMessageType.retrieveConfirmationInd,
+        messageBox: MessageBox.inbox,
+        parts: [
+          buildPart(
+              id: 1,
+              contentType: ContentType.fromMime('text/plain; charset=utf-8'),
+              text: 'parameterized body'),
+          buildPart(id: 2, contentType: ContentType.imageJpeg, fileName: 'p.jpg'),
+        ],
+      ));
+
+      // `ContentType.fromMime` strips the `; charset=utf-8` parameter, so the
+      // part still classifies as the text/plain body — folded into `body`, not
+      // surfaced as an attachment. (Guards the value-equality classification.)
+      expect(m.body, 'parameterized body');
+      expect(m.attachments.map((a) => a.partId).toList(), [2]);
+    });
   });
 
   group('NormalizedMessage.assembleThread', () {
