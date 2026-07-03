@@ -68,6 +68,27 @@ class ActionsInterop {
       ) ??
       false;
 
+  /// Mark one message unread in [channel]'s native table — the symmetric
+  /// inverse of [markMessageAsRead] (UNFY-205). [channel] (sent as
+  /// `SmsMmsType.name`) is required to target the right table; the native
+  /// `_id` is unique only within its own table (UNFY-213).
+  static Future<bool> markMessageAsUnread(
+    String messageId,
+    SmsMmsType channel,
+  ) async =>
+      await methodChannel.invokeMethod<bool>('markMessageAsUnread', {
+        'messageId': messageId,
+        'channel': channel.name,
+      }) ??
+      false;
+
+  static Future<bool> markConversationAsUnread(String conversationId) async =>
+      await methodChannel.invokeMethod<bool>(
+        'markConversationAsUnread',
+        conversationId,
+      ) ??
+      false;
+
   /// Launch the native contacts app to add a new contact.
   /// Optionally pre-fill [phoneNumber] and [name].
   static Future<bool> launchAddContact({

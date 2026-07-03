@@ -1,3 +1,15 @@
+## 0.5.0
+
+### Added
+
+- **Native mark-unread write surface.** `AndroidAction.markMessageAsUnread`
+  (channel-qualified, symmetric to `markMessageAsRead`) and
+  `AndroidAction.markConversationAsUnread` set the native `READ` flag back to
+  `0` via `ContentResolver`. `SEEN` is deliberately left untouched so a message
+  re-surfaces as unread without re-triggering a notification. Enables
+  native-authoritative read-state (mark-unread) for consumers (UNFY-205 /
+  ADR-0015); additive, non-breaking.
+
 ## 0.4.0
 
 ### Changed (breaking)
