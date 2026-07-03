@@ -62,6 +62,45 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
                     )
                 }
             }
+            "markMessageAsUnread" -> {
+                val args = call.arguments as? Map<*, *>
+                val messageId = args?.get("messageId") as? String
+                val table = messageTableFor(args?.get("channel") as? String)
+                if (messageId == null || table == null) {
+                    result.error(
+                        "INVALID_ARGUMENT",
+                        "markMessageAsUnread requires messageId + channel (sms|mms); " +
+                            "got messageId=$messageId channel=${args?.get("channel")}",
+                        null,
+                    )
+                    return
+                }
+                try {
+                    result.success(markMessageAsUnread(messageId, table))
+                } catch (e: Exception) {
+                    result.error(
+                        "MARK_UNREAD_FAILED",
+                        "Failed to mark message unread: ${e.message}",
+                        e.stackTraceToString(),
+                    )
+                }
+            }
+            "markConversationAsUnread" -> {
+                val conversationId = call.arguments as? String
+                if (conversationId == null) {
+                    result.error("INVALID_ARGUMENT", "Conversation ID required", null)
+                    return
+                }
+                try {
+                    result.success(markConversationAsUnread(conversationId))
+                } catch (e: Exception) {
+                    result.error(
+                        "MARK_UNREAD_FAILED",
+                        "Failed to mark conversation unread: ${e.message}",
+                        e.stackTraceToString(),
+                    )
+                }
+            }
             "launchAddContact" -> {
                 val args = call.arguments as? Map<*, *>
                 val phoneNumber = args?.get("phoneNumber") as? String
@@ -123,6 +162,56 @@ class DeviceActions(val context: Context) : MethodChannel.MethodCallHandler {
             Telephony.Mms.CONTENT_URI,
             mmsValues,
             "${Telephony.Mms.THREAD_ID} = ? AND ${Telephony.Mms.READ} = 0",
+            arrayOf(conversationId)
+        )
+        return (smsUpdated + mmsUpdated) > 0
+    }
+
+    /**
+     * Mark one message unread in the table named by [table] — the symmetric
+     * inverse of [markMessageAsRead] (UNFY-205, native-authoritative read-state
+     * per ADR-0015). Sets `READ = 0` only; `SEEN` is deliberately left untouched
+     * so the message re-surfaces as unread in the inbox without re-triggering a
+     * notification.
+     */
+    private fun markMessageAsUnread(messageId: String, table: MessageTable): Boolean {
+        val values = ContentValues().apply {
+            when (table) {
+                MessageTable.SMS -> put(Telephony.Sms.READ, 0)
+                MessageTable.MMS -> put(Telephony.Mms.READ, 0)
+            }
+        }
+        val idColumn = when (table) {
+            MessageTable.SMS -> Telephony.Sms._ID
+            MessageTable.MMS -> Telephony.Mms._ID
+        }
+        val updated = context.contentResolver.update(
+            table.contentUri(),
+            values,
+            "$idColumn = ?",
+            arrayOf(messageId)
+        )
+        return updated > 0
+    }
+
+    private fun markConversationAsUnread(conversationId: String): Boolean {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 0)
+        }
+        val smsUpdated = context.contentResolver.update(
+            Telephony.Sms.CONTENT_URI,
+            values,
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 1",
+            arrayOf(conversationId)
+        )
+
+        val mmsValues = ContentValues().apply {
+            put(Telephony.Mms.READ, 0)
+        }
+        val mmsUpdated = context.contentResolver.update(
+            Telephony.Mms.CONTENT_URI,
+            mmsValues,
+            "${Telephony.Mms.THREAD_ID} = ? AND ${Telephony.Mms.READ} = 1",
             arrayOf(conversationId)
         )
         return (smsUpdated + mmsUpdated) > 0

@@ -48,6 +48,34 @@ void main() {
     });
   });
 
+  group('AndroidAction.markMessageAsUnread', () {
+    test('forwards messageId + channel.name (mms) on the actions channel',
+        () async {
+      mock(actions);
+      final ok =
+          await AndroidAction.markMessageAsUnread('42', channel: SmsMmsType.mms);
+      expect(ok, isTrue);
+      expect(calls.single.method, 'markMessageAsUnread');
+      expect(calls.single.arguments, {'messageId': '42', 'channel': 'mms'});
+    });
+
+    test('forwards the sms channel discriminator', () async {
+      mock(actions);
+      await AndroidAction.markMessageAsUnread('7', channel: SmsMmsType.sms);
+      expect(calls.single.arguments, {'messageId': '7', 'channel': 'sms'});
+    });
+  });
+
+  group('AndroidAction.markConversationAsUnread', () {
+    test('forwards the thread id on the actions channel', () async {
+      mock(actions);
+      final ok = await AndroidAction.markConversationAsUnread('123');
+      expect(ok, isTrue);
+      expect(calls.single.method, 'markConversationAsUnread');
+      expect(calls.single.arguments, '123');
+    });
+  });
+
   group('AndroidDestructiveAction.deleteMessage', () {
     test('forwards messageId + channel.name (sms) on the destructive channel',
         () async {
