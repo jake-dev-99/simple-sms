@@ -121,14 +121,18 @@ class AttachmentExtractor {
     );
     final byMid = <int, List<MmsPart>>{};
     for (final row in response.records) {
+      final raw = Map<String, dynamic>.from(row);
       try {
-        final part = MmsPart.fromRaw(Map<String, dynamic>.from(row));
+        final part = MmsPart.fromRaw(raw);
         final mid = part.messageId;
         if (mid == null) continue;
         (byMid[mid] ??= <MmsPart>[]).add(part);
-      } catch (e) {
+      } catch (e, s) {
+        // Skip-with-context: keep the owning mid/_id and the stack so a
+        // recurring bad row is diagnosable, without failing the whole batch.
         debugPrint(
-          '[diag][simple-sms] listMmsPartsForMessages skipped a bad part row: $e',
+          '[diag][simple-sms] listMmsPartsForMessages skipped a bad part row '
+          '(mid=${raw['mid']}, _id=${raw['_id']}): $e\n$s',
         );
       }
     }
