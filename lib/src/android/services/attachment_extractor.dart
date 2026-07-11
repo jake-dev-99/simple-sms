@@ -93,6 +93,48 @@ class AttachmentExtractor {
         .toList(growable: false);
   }
 
+  /// Batched variant of [listMmsParts] — fetches parts for MANY MMS ids in a
+  /// single `mid IN (...)` query, grouped by owning MMS id.
+  ///
+  /// Conversation-list enrichment hydrates every thread's latest-MMS parts;
+  /// doing that with one [listMmsParts] per thread fired N concurrent
+  /// `content://mms/part` queries and made large inboxes slow (UNFY-250). This
+  /// collapses them into one query. A malformed / unknown-MIME part row is
+  /// skipped (logged) rather than failing the whole batch — the same per-row
+  /// guard the [listMmsParts] doc asks many-message callers to apply.
+  Future<Map<int, List<MmsPart>>> listMmsPartsForMessages(
+    List<int> mmsIds,
+  ) async {
+    if (mmsIds.isEmpty) return const {};
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: [
+          QueryFilterCondition(
+            field: 'mid',
+            operator: QueryFilterOperator.inList,
+            value: mmsIds.map((id) => id.toString()).toList(),
+          ),
+        ],
+        platformData: {'contentUri': _mmsPartUri},
+      ),
+    );
+    final byMid = <int, List<MmsPart>>{};
+    for (final row in response.records) {
+      try {
+        final part = MmsPart.fromRaw(Map<String, dynamic>.from(row));
+        final mid = part.messageId;
+        if (mid == null) continue;
+        (byMid[mid] ??= <MmsPart>[]).add(part);
+      } catch (e) {
+        debugPrint(
+          '[diag][simple-sms] listMmsPartsForMessages skipped a bad part row: $e',
+        );
+      }
+    }
+    return byMid;
+  }
+
   /// Extracts the binary content of a single MMS part to [outputDirectory],
   /// returning the resulting [File]. The file is named [filename] if given,
   /// otherwise a name is derived from the part id + mime type.

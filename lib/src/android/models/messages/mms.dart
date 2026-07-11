@@ -21,8 +21,14 @@ class Mms {
 
   final String parentId;
 
-  /// The individual parts/attachments of the MMS
-  final List<MmsPart>? parts;
+  /// The individual parts/attachments of the MMS.
+  ///
+  /// Mutable so a row from a bare list query (`content://mms`, which does not
+  /// join the `mms/part` table) can be lazily hydrated with its parts after
+  /// the fact — see `ConversationLookup._enrichConversation`, which attaches
+  /// the latest MMS's parts so its body/attachments resolve for the
+  /// conversation-list preview, at parity with `latestSms.body` (UNFY-250).
+  List<MmsPart>? parts;
 
   final String body;
 

@@ -9,6 +9,7 @@ import '../models/filters/sort_direction.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contactables.dart';
+import 'attachment_extractor.dart';
 import 'contact_lookup.dart';
 import 'message_lookup.dart';
 
@@ -168,7 +169,12 @@ class ConversationLookup {
 
       if (!enrich) return bare;
 
-      return Future.wait(bare.map(_enrichConversation));
+      final enriched = await Future.wait(bare.map(_enrichConversation));
+      // Hydrate every thread's latest-MMS parts in ONE batched query rather
+      // than one `listMmsParts` per thread (UNFY-250 perf) so the MMS body
+      // resolves for the conversation-list preview at parity with SMS.
+      await _hydrateLatestMmsParts(enriched);
+      return enriched;
     } catch (e, s) {
       // Per the file-level contract on lookup_service.dart: query
       // methods do NOT swallow exceptions. The previous
@@ -182,6 +188,37 @@ class ConversationLookup {
       );
       debugPrint(s.toString());
       rethrow;
+    }
+  }
+
+  /// Attaches each conversation's latest-MMS parts, fetched in a single batched
+  /// query ([AttachmentExtractor.listMmsPartsForMessages]). The bare
+  /// `content://mms` list query doesn't join the part table, so without this
+  /// the MMS body is empty for the conversation-list preview. Best-effort: a
+  /// batch failure leaves parts null (empty preview) rather than failing the
+  /// whole list (UNFY-250).
+  Future<void> _hydrateLatestMmsParts(
+    List<AndroidSimpleConversation> conversations,
+  ) async {
+    final latestMmsIds = <int>[
+      for (final c in conversations)
+        if (c.latestMms != null) c.latestMms!.id,
+    ];
+    if (latestMmsIds.isEmpty) return;
+    try {
+      final partsByMid = await AttachmentExtractor.instance
+          .listMmsPartsForMessages(latestMmsIds);
+      for (final c in conversations) {
+        final latestMms = c.latestMms;
+        if (latestMms != null) {
+          latestMms.parts = partsByMid[latestMms.id];
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        '[diag][simple-sms] batch latest-MMS parts hydration failed '
+        '(${latestMmsIds.length} ids): $e',
+      );
     }
   }
 
