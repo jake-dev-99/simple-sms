@@ -264,7 +264,7 @@ class NormalizedMessage {
   /// **The caller owns user-visible filtering** ([MmsMessageType.isUserVisible]).
   /// Filtering MMS before this call lets the caller skip the per-MMS parts +
   /// addresses round-trips on transport-only PDUs — see
-  /// [LookupService.getNormalizedMessagesByThread]. This method normalizes
+  /// [LookupService.getNormalizedThreadPage]. This method normalizes
   /// what it is given.
   ///
   /// MMS hydration is supplied by the caller: [partsByMmsId] /
