@@ -347,6 +347,15 @@ class MessageLookup {
         ),
       );
     }
+    if (filter.idBefore != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.lessThan,
+          value: filter.idBefore!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -356,7 +365,13 @@ class MessageLookup {
       SmsSortField.date => 'date',
       SmsSortField.threadId => 'thread_id',
     };
-    return [QuerySort(field: column, direction: _dir(sort.direction))];
+    return [
+      QuerySort(field: column, direction: _dir(sort.direction)),
+      // Apply the normalized comparator's id tie-break BEFORE the provider
+      // limit. Otherwise an arbitrary subset of a date tie can be skipped.
+      if (column == 'date')
+        QuerySort(field: '_id', direction: _dir(sort.direction)),
+    ];
   }
 
   /// Translate an [MmsFilter] to [QueryFilterCondition]s.
@@ -442,6 +457,15 @@ class MessageLookup {
         ),
       );
     }
+    if (filter.idBefore != null) {
+      conditions.add(
+        QueryFilterCondition(
+          field: '_id',
+          operator: QueryFilterOperator.lessThan,
+          value: filter.idBefore!.toString(),
+        ),
+      );
+    }
     return conditions;
   }
 
@@ -451,7 +475,13 @@ class MessageLookup {
       MmsSortField.date => 'date',
       MmsSortField.threadId => 'thread_id',
     };
-    return [QuerySort(field: column, direction: _dir(sort.direction))];
+    return [
+      QuerySort(field: column, direction: _dir(sort.direction)),
+      // Apply the normalized comparator's id tie-break BEFORE the provider
+      // limit. Otherwise an arbitrary subset of a date tie can be skipped.
+      if (column == 'date')
+        QuerySort(field: '_id', direction: _dir(sort.direction)),
+    ];
   }
 
   QuerySortDirection _dir(SortDirection d) =>

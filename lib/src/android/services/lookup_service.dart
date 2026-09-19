@@ -16,6 +16,7 @@ import '../models/messages/message_change_event.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/mms_part.dart';
 import '../models/messages/normalized_message.dart';
+import '../models/messages/thread_page_cursor.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
@@ -196,12 +197,23 @@ class LookupService {
   /// the cursor's boundary second. Rows with a null native date cannot be
   /// ordered against a cursor, so they appear only on a first page. This
   /// read-through path hits the provider on each call.
+  ///
+  /// [cursor] resumes after the complete ordering key, including rows tied
+  /// on timestamp. Supply either [before] or [cursor], never both. Each raw
+  /// provider read is bounded by [limit]; only the final page is hydrated.
   Future<List<NormalizedMessage>> getNormalizedThreadPage(
     int threadId, {
     required int limit,
     DateTime? before,
+    ThreadPageCursor? cursor,
   }) async {
-    final exclusiveDateTo = before?.subtract(const Duration(milliseconds: 1));
+    if (before != null && cursor != null) {
+      throw ArgumentError('Supply either before or cursor, not both');
+    }
+    if (limit < 0) throw RangeError.value(limit, 'limit', 'Must be nonnegative');
+    if (limit == 0) return const [];
+    final boundary = cursor?.sentAt ?? before;
+    final exclusiveDateTo = boundary?.subtract(const Duration(milliseconds: 1));
     // The two provider scans are independent. Each is bounded before the
     // ordering pass so a long thread never hydrates historical MMS rows.
     final results = await Future.wait<Object>([
@@ -220,8 +232,46 @@ class LookupService {
         limit: limit,
       ),
     ]);
-    final sms = results[0] as List<Sms>;
-    final mms = results[1] as List<Mms>;
+    final sms = <Sms>[...results[0] as List<Sms>];
+    final mms = <Mms>[...results[1] as List<Mms>];
+    if (cursor != null) {
+      // Drain the boundary timestamp separately from strictly older rows.
+      // AND-only typed filters keep these reads on the existing query API.
+      // The lower channel index follows the cursor when native ids collide.
+      int idBefore(SmsMmsType channel) =>
+          cursor.id + (channel.index < cursor.channel.index ? 1 : 0);
+      final at = cursor.sentAt;
+      final ties = await Future.wait<Object>([
+        listSms(
+          filter: SmsFilter(
+            threadId: threadId,
+            dateFrom: at,
+            dateTo: at,
+            idBefore: idBefore(SmsMmsType.sms),
+          ),
+          sort: const SmsSort(), // native id descending
+          limit: limit,
+        ),
+        // MMS dates have whole-second precision. A fractional SMS boundary
+        // cannot tie an MMS; its second is already in the older-row query.
+        if (at.microsecondsSinceEpoch % Duration.microsecondsPerSecond == 0)
+          listMms(
+            filter: MmsFilter(
+              threadId: threadId,
+              dateFrom: at,
+              dateTo: at,
+              idBefore: idBefore(SmsMmsType.mms),
+              types: MmsMessageType.userVisibleValues,
+            ),
+            sort: const MmsSort(),
+            limit: limit,
+          )
+        else
+          Future<List<Mms>>.value(const []),
+      ]);
+      sms.addAll(ties[0] as List<Sms>);
+      mms.addAll(ties[1] as List<Mms>);
+    }
 
     // assembleThread owns the cross-provider comparator. Missing hydration is
     // intentional in this ordering-only pass.

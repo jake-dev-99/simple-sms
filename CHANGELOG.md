@@ -2,6 +2,12 @@
 
 ### Added
 
+- **Bounded thread pages with a composite cursor (UNFY-209).**
+  `LookupService.getNormalizedThreadPage` accepts `ThreadPageCursor` to resume
+  through timestamp ties using native id and SMS/MMS channel. Native date
+  ordering includes an id tie-break before limiting; only returned MMS rows
+  are hydrated. Timestamp-only `before` remains supported and exclusive.
+
 - **Native mark-unread write surface.** `AndroidAction.markMessageAsUnread`
   (channel-qualified, symmetric to `markMessageAsRead`) and
   `AndroidAction.markConversationAsUnread` set the native `READ` flag back to

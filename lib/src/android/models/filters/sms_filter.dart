@@ -26,6 +26,7 @@ class SmsFilter {
     this.addressContains,
     this.subscriptionId,
     this.idAfter,
+    this.idBefore,
   });
 
   /// Match any of these database ids (`_id IN (...)`).
@@ -69,6 +70,10 @@ class SmsFilter {
   /// [SmsSortField.id] to make cursor pagination correct.
   final int? idAfter;
 
+  /// Match only rows where `_id < idBefore`. Used with an exact date range
+  /// and descending id order to resume within a timestamp tie.
+  final int? idBefore;
+
   SmsFilter copyWith({
     List<int>? ids,
     int? threadId,
@@ -79,6 +84,7 @@ class SmsFilter {
     String? addressContains,
     int? subscriptionId,
     int? idAfter,
+    int? idBefore,
   }) => SmsFilter(
     ids: ids ?? this.ids,
     threadId: threadId ?? this.threadId,
@@ -89,6 +95,7 @@ class SmsFilter {
     addressContains: addressContains ?? this.addressContains,
     subscriptionId: subscriptionId ?? this.subscriptionId,
     idAfter: idAfter ?? this.idAfter,
+    idBefore: idBefore ?? this.idBefore,
   );
 
   @override
@@ -97,7 +104,7 @@ class SmsFilter {
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
       'dateFrom: $dateFrom, dateTo: $dateTo, '
       'addressContains: $addressContains, subscriptionId: $subscriptionId, '
-      'idAfter: $idAfter)';
+      'idAfter: $idAfter, idBefore: $idBefore)';
 }
 
 /// Sort column for SMS listings.
