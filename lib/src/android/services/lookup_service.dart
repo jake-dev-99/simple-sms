@@ -16,6 +16,7 @@ import '../models/messages/message_change_event.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/mms_part.dart';
 import '../models/messages/normalized_message.dart';
+import '../models/messages/thread_page_cursor.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
@@ -188,59 +189,141 @@ class LookupService {
         offset: offset,
       );
 
-  /// Returns a single thread's messages already normalized into the
-  /// source-agnostic [NormalizedMessage] contract (ADR-0014): SMS plus the
-  /// user-visible MMS in the thread, each with body extracted, direction and
-  /// delivery-state derived, participants split, and attachments described —
-  /// merged and sorted by send/receive time (newest first unless
-  /// [ascending]). Transport-only MMS PDUs are dropped
-  /// ([MmsMessageType.isUserVisible]).
+  /// Returns a bounded newest-first normalized thread page without hydrating
+  /// MMS rows outside the page.
   ///
-  /// This is the read-through path: each call hits the provider. User-visible
-  /// MMS rows are hydrated with their parts + addresses (one round-trip each)
-  /// before normalization; SMS needs no hydration. The host consumes the
-  /// returned [NormalizedMessage]s directly — it does not parse SMIL, derive
-  /// direction, or split participants.
-  Future<List<NormalizedMessage>> getNormalizedMessagesByThread(
+  /// [before] is exclusive on [NormalizedMessage.sentAt]. The provider cut is
+  /// one microsecond earlier so MMS's second-granularity date filter excludes
+  /// the cursor's boundary second. Rows with a null native date cannot be
+  /// ordered against a cursor, so they appear only on a first page. This
+  /// read-through path hits the provider on each call.
+  ///
+  /// [cursor] resumes after the complete ordering key, including rows tied
+  /// on timestamp. Supply either [before] or [cursor], never both. Each raw
+  /// provider read is bounded by [limit]; only the final page is hydrated.
+  Future<List<NormalizedMessage>> getNormalizedThreadPage(
     int threadId, {
-    bool ascending = false,
+    required int limit,
+    DateTime? before,
+    ThreadPageCursor? cursor,
   }) async {
-    // SMS + MMS lists in parallel — independent provider queries.
-    final results = await Future.wait([getSmsByThread(threadId), getMmsByThread(threadId)]);
-    final sms = results[0] as List<Sms>;
-    final mms = results[1] as List<Mms>;
-    // Filter to user-visible MMS HERE (single owner) so we don't pay the
-    // per-MMS hydration round-trips on transport PDUs like notificationInd —
-    // those exist for every incoming MMS and would otherwise double the
-    // round-trip count for nothing. `assembleThread` trusts this input.
-    final visible = mms
-        .where((m) => m.type?.isUserVisible ?? false)
-        .toList(growable: false);
+    if (before != null && cursor != null) {
+      throw ArgumentError('Supply either before or cursor, not both');
+    }
+    if (limit < 0) {
+      throw RangeError.value(limit, 'limit', 'Must be nonnegative');
+    }
+    if (limit == 0) return const [];
+    final boundary = cursor?.sentAt ?? before;
+    final exclusiveDateTo = boundary?.subtract(const Duration(microseconds: 1));
+    // The two provider scans are independent. Each is bounded before the
+    // ordering pass so a long thread never hydrates historical MMS rows.
+    final results = await Future.wait<Object>([
+      listSms(
+        filter: SmsFilter(threadId: threadId, dateTo: exclusiveDateTo),
+        sort: SmsSort.newestFirst,
+        limit: limit,
+      ),
+      listMms(
+        filter: MmsFilter(
+          threadId: threadId,
+          dateTo: exclusiveDateTo,
+          types: MmsMessageType.userVisibleValues,
+        ),
+        sort: MmsSort.newestFirst,
+        limit: limit,
+      ),
+    ]);
+    final sms = <Sms>[...results[0] as List<Sms>];
+    final mms = <Mms>[...results[1] as List<Mms>];
+    if (cursor != null) {
+      // Drain the boundary timestamp separately from strictly older rows.
+      // AND-only typed filters keep these reads on the existing query API.
+      // The lower channel index follows the cursor when native ids collide.
+      int idBefore(SmsMmsType channel) =>
+          cursor.id + (channel.index < cursor.channel.index ? 1 : 0);
+      final at = cursor.sentAt;
+      final ties = await Future.wait<Object>([
+        listSms(
+          filter: SmsFilter(
+            threadId: threadId,
+            dateFrom: at,
+            dateTo: at,
+            idBefore: idBefore(SmsMmsType.sms),
+          ),
+          sort: const SmsSort(), // native id descending
+          limit: limit,
+        ),
+        // MMS dates have whole-second precision. A fractional SMS boundary
+        // cannot tie an MMS; its second is already in the older-row query.
+        if (at.microsecondsSinceEpoch % Duration.microsecondsPerSecond == 0)
+          listMms(
+            filter: MmsFilter(
+              threadId: threadId,
+              dateFrom: at,
+              dateTo: at,
+              idBefore: idBefore(SmsMmsType.mms),
+              types: MmsMessageType.userVisibleValues,
+            ),
+            sort: const MmsSort(),
+            limit: limit,
+          )
+        else
+          Future<List<Mms>>.value(const []),
+      ]);
+      sms.addAll(ties[0] as List<Sms>);
+      mms.addAll(ties[1] as List<Mms>);
+    }
 
-    // Hydrate parts + addresses for all visible MMS concurrently — each pair
-    // is independent. Sequential awaits made a long thread O(n) round-trips
-    // when the underlying provider can serve them in parallel.
-    final partsList = await Future.wait(
-      visible.map((m) => listMmsParts(mmsId: m.id)),
-    );
-    final addressesList = await Future.wait(
-      visible.map((m) => listMmsAddressesByMessage(m.id)),
-    );
-    final partsByMmsId = <int, List<MmsPart>>{
-      for (var i = 0; i < visible.length; i++) visible[i].id: partsList[i],
-    };
-    // Interface-typed to match assembleThread's param exactly (no reliance on
-    // covariant Map upcast); MmsParticipant implements MessageParticipant.
-    final addressesByMmsId = <int, List<MessageParticipant>>{
-      for (var i = 0; i < visible.length; i++) visible[i].id: addressesList[i],
-    };
-
-    return NormalizedMessage.assembleThread(
+    // assembleThread owns the cross-provider comparator. Missing hydration is
+    // intentional in this ordering-only pass.
+    final ordered = NormalizedMessage.assembleThread(
       sms: sms,
-      mms: visible,
+      mms: mms,
+      partsByMmsId: const {},
+      addressesByMmsId: const {},
+      ascending: false,
+    );
+    final page = ordered.take(limit).toList(growable: false);
+    final smsIds = <int>{
+      for (final message in page)
+        if (message.channel == SmsMmsType.sms) message.id,
+    };
+    final mmsIds = <int>{
+      for (final message in page)
+        if (message.channel == SmsMmsType.mms) message.id,
+    };
+    final pageSms = sms.where((message) => smsIds.contains(message.id)).toList(
+          growable: false,
+        );
+    final pageMms = mms.where((message) => mmsIds.contains(message.id)).toList(
+          growable: false,
+        );
+
+    // Per-MMS parts and addresses are independent. Hydrate only the page's
+    // visible MMS rows, concurrently, before the final normalized assembly.
+    final hydrated = await Future.wait<Object>([
+      Future.wait(pageMms.map((message) => listMmsParts(mmsId: message.id))),
+      Future.wait(
+        pageMms.map((message) => listMmsAddressesByMessage(message.id)),
+      ),
+    ]);
+    final partsList = hydrated[0] as List<List<MmsPart>>;
+    final addressesList = hydrated[1] as List<List<MmsParticipant>>;
+    final partsByMmsId = <int, List<MmsPart>>{
+      for (var index = 0; index < pageMms.length; index++)
+        pageMms[index].id: partsList[index],
+    };
+    final addressesByMmsId = <int, List<MessageParticipant>>{
+      for (var index = 0; index < pageMms.length; index++)
+        pageMms[index].id: addressesList[index],
+    };
+    return NormalizedMessage.assembleThread(
+      sms: pageSms,
+      mms: pageMms,
       partsByMmsId: partsByMmsId,
       addressesByMmsId: addressesByMmsId,
-      ascending: ascending,
+      ascending: false,
     );
   }
 

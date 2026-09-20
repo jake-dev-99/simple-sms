@@ -16,6 +16,7 @@ class MmsFilter {
     this.dateTo,
     this.subscriptionId,
     this.idAfter,
+    this.idBefore,
   });
 
   /// Match any of these database ids (`_id IN (...)`).
@@ -45,6 +46,10 @@ class MmsFilter {
   /// [MmsSortField.id] ordering so "after this id" is well-defined.
   final int? idAfter;
 
+  /// Match only rows where `_id < idBefore`. Used with an exact date range
+  /// and descending id order to resume within a timestamp tie.
+  final int? idBefore;
+
   MmsFilter copyWith({
     List<int>? ids,
     int? threadId,
@@ -54,6 +59,7 @@ class MmsFilter {
     DateTime? dateTo,
     int? subscriptionId,
     int? idAfter,
+    int? idBefore,
   }) => MmsFilter(
     ids: ids ?? this.ids,
     threadId: threadId ?? this.threadId,
@@ -63,6 +69,7 @@ class MmsFilter {
     dateTo: dateTo ?? this.dateTo,
     subscriptionId: subscriptionId ?? this.subscriptionId,
     idAfter: idAfter ?? this.idAfter,
+    idBefore: idBefore ?? this.idBefore,
   );
 
   @override
@@ -70,7 +77,7 @@ class MmsFilter {
       'MmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
       'dateFrom: $dateFrom, dateTo: $dateTo, subscriptionId: $subscriptionId, '
-      'idAfter: $idAfter)';
+      'idAfter: $idAfter, idBefore: $idBefore)';
 }
 
 /// Sort column for MMS listings.

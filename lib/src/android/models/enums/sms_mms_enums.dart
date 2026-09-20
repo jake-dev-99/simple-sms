@@ -299,15 +299,19 @@ enum MmsMessageType {
   const MmsMessageType({required this.value});
   final int value;
 
+  /// PDU types whose rows represent user-visible conversation messages.
+  static const List<MmsMessageType> userVisibleValues = <MmsMessageType>[
+    MmsMessageType.sendRequest,
+    MmsMessageType.retrieveConfirmationInd,
+  ];
+
   /// Whether this PDU type represents a row that should be persisted
   /// as a user-visible conversation message. Only outbound `sendRequest`
   /// (m_type=0x80) and inbound `retrieveConfirmationInd` (m_type=0x84)
   /// carry body + parts + addresses; the rest are transport-only
   /// notifications, acknowledgements, or status reports that pollute
   /// conversation views with empty rows.
-  bool get isUserVisible =>
-      this == MmsMessageType.sendRequest ||
-      this == MmsMessageType.retrieveConfirmationInd;
+  bool get isUserVisible => userVisibleValues.contains(this);
 }
 
 /// General SMS/MMS message type as used in Android's message table.
