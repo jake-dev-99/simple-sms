@@ -1,5 +1,15 @@
 ## 0.5.0
 
+### Changed (breaking)
+
+- **Normalized thread reads are now bounded and newest-first (UNFY-209).**
+  Replace `LookupService.getNormalizedMessagesByThread(threadId, ascending: ...)`
+  with `getNormalizedThreadPage(threadId, limit: pageSize)`. The replacement
+  requires `limit`, always returns newest-first pages, and removes caller-selected
+  ascending order. Resume with
+  `cursor: ThreadPageCursor.fromMessage(previousPage.last)` until a page contains
+  fewer than `pageSize` messages.
+
 ### Added
 
 - **Bounded thread pages with a composite cursor (UNFY-209).**

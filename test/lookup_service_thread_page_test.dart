@@ -28,12 +28,12 @@ void main() {
     ]);
     expect(
       lookup.smsFilter?.dateTo,
-      boundary.subtract(const Duration(milliseconds: 1)),
+      boundary.subtract(const Duration(microseconds: 1)),
       reason: 'the provider gets an exact exclusive cut via its inclusive API',
     );
     expect(
       lookup.mmsFilter?.dateTo,
-      boundary.subtract(const Duration(milliseconds: 1)),
+      boundary.subtract(const Duration(microseconds: 1)),
       reason: 'the MMS seconds filter receives the same exact exclusive cut',
     );
     expect(lookup.mmsFilter?.types,
@@ -68,6 +68,28 @@ void main() {
     ]);
     expect(lookup.hydratedMmsIds, [9],
         reason: 'off-page MMS rows must not trigger parts hydration');
+  });
+
+  test('sub-millisecond before boundary keeps older provider rows', () async {
+    final providerTimestamp = DateTime.utc(2026, 8, 1, 12);
+    final before = providerTimestamp.add(const Duration(microseconds: 1));
+    final lookup = _ThreadPageLookup(
+      sms: [_sms(id: 3, sentAt: providerTimestamp)],
+      mms: [_mms(id: 9, sentAt: providerTimestamp)],
+    );
+
+    final page = await lookup.getNormalizedThreadPage(
+      7,
+      limit: 2,
+      before: before,
+    );
+
+    expect(page.map((message) => (message.channel, message.id)), [
+      (SmsMmsType.mms, 9),
+      (SmsMmsType.sms, 3),
+    ]);
+    expect(lookup.smsFilter?.dateTo, providerTimestamp);
+    expect(lookup.mmsFilter?.dateTo, providerTimestamp);
   });
 }
 

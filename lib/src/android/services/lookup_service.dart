@@ -193,7 +193,7 @@ class LookupService {
   /// MMS rows outside the page.
   ///
   /// [before] is exclusive on [NormalizedMessage.sentAt]. The provider cut is
-  /// one millisecond earlier so MMS's second-granularity date filter excludes
+  /// one microsecond earlier so MMS's second-granularity date filter excludes
   /// the cursor's boundary second. Rows with a null native date cannot be
   /// ordered against a cursor, so they appear only on a first page. This
   /// read-through path hits the provider on each call.
@@ -210,10 +210,12 @@ class LookupService {
     if (before != null && cursor != null) {
       throw ArgumentError('Supply either before or cursor, not both');
     }
-    if (limit < 0) throw RangeError.value(limit, 'limit', 'Must be nonnegative');
+    if (limit < 0) {
+      throw RangeError.value(limit, 'limit', 'Must be nonnegative');
+    }
     if (limit == 0) return const [];
     final boundary = cursor?.sentAt ?? before;
-    final exclusiveDateTo = boundary?.subtract(const Duration(milliseconds: 1));
+    final exclusiveDateTo = boundary?.subtract(const Duration(microseconds: 1));
     // The two provider scans are independent. Each is bounded before the
     // ordering pass so a long thread never hydrates historical MMS rows.
     final results = await Future.wait<Object>([
