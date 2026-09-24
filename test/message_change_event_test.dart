@@ -12,12 +12,16 @@ ObserveEvent ev(
   ObserveChangeType t, {
   List<String> ids = const [],
   DateTime? at,
+  bool? selfChange,
 }) =>
     ObserveEvent(
       domain: QueryDomain.platformSpecific,
       changeType: t,
       timestamp: at ?? DateTime.fromMillisecondsSinceEpoch(0),
       ids: ids,
+      metadata: selfChange != null
+          ? <String, Object?>{'selfChange': selfChange}
+          : null,
     );
 
 void main() {
@@ -60,6 +64,35 @@ void main() {
         channel: SmsMmsType.sms,
       );
       expect(m.ids, isEmpty);
+      expect(m.changeType, MessageChangeType.updated);
+    });
+
+    test('selfChange flag is carried through from metadata', () {
+      final m = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, selfChange: true),
+        channel: SmsMmsType.sms,
+      );
+      expect(m.selfChange, isTrue);
+      final m2 = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, selfChange: false),
+        channel: SmsMmsType.mms,
+      );
+      expect(m2.selfChange, isFalse);
+      // Missing metadata → defaults to false.
+      final m3 = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.insert),
+        channel: SmsMmsType.sms,
+      );
+      expect(m3.selfChange, isFalse);
+    });
+
+    test('ids with selfChange are both preserved', () {
+      final m = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, ids: ['7'], selfChange: true),
+        channel: SmsMmsType.sms,
+      );
+      expect(m.ids, [7]);
+      expect(m.selfChange, isTrue);
       expect(m.changeType, MessageChangeType.updated);
     });
 
