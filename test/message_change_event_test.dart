@@ -13,23 +13,23 @@ ObserveEvent ev(
   List<String> ids = const [],
   DateTime? at,
   bool? selfChange,
-}) =>
-    ObserveEvent(
-      domain: QueryDomain.platformSpecific,
-      changeType: t,
-      timestamp: at ?? DateTime.fromMillisecondsSinceEpoch(0),
-      ids: ids,
-      metadata: selfChange != null
-          ? <String, Object?>{'selfChange': selfChange}
-          : null,
-    );
+}) => ObserveEvent(
+  domain: QueryDomain.platformSpecific,
+  changeType: t,
+  timestamp: at ?? DateTime.fromMillisecondsSinceEpoch(0),
+  ids: ids,
+  metadata:
+      selfChange != null ? <String, Object?>{'selfChange': selfChange} : null,
+);
 
 void main() {
   group('MessageChangeEvent.fromObserveEvent', () {
     test('maps every ObserveChangeType to the normalized vocabulary', () {
       MessageChangeType convert(ObserveChangeType raw) =>
-          MessageChangeEvent.fromObserveEvent(ev(raw), channel: SmsMmsType.sms)
-              .changeType;
+          MessageChangeEvent.fromObserveEvent(
+            ev(raw),
+            channel: SmsMmsType.sms,
+          ).changeType;
       expect(convert(ObserveChangeType.insert), MessageChangeType.created);
       expect(convert(ObserveChangeType.update), MessageChangeType.updated);
       expect(convert(ObserveChangeType.delete), MessageChangeType.deleted);
@@ -96,8 +96,7 @@ void main() {
       expect(m.changeType, MessageChangeType.updated);
     });
 
-    test('ids list is unmodifiable so external mutation cannot corrupt it',
-        () {
+    test('ids list is unmodifiable so external mutation cannot corrupt it', () {
       final m = MessageChangeEvent.fromObserveEvent(
         ev(ObserveChangeType.insert, ids: ['1', '2']),
         channel: SmsMmsType.sms,
@@ -108,38 +107,40 @@ void main() {
   });
 
   group('MessageChangeEvent.merge', () {
-    test('multiplexes per-channel events in arrival order with channel tags',
-        () async {
-      final smsCtl = StreamController<ObserveEvent>();
-      final mmsCtl = StreamController<ObserveEvent>();
-      final merged = MessageChangeEvent.merge([
-        (stream: smsCtl.stream, channel: SmsMmsType.sms),
-        (stream: mmsCtl.stream, channel: SmsMmsType.mms),
-      ]);
+    test(
+      'multiplexes per-channel events in arrival order with channel tags',
+      () async {
+        final smsCtl = StreamController<ObserveEvent>();
+        final mmsCtl = StreamController<ObserveEvent>();
+        final merged = MessageChangeEvent.merge([
+          (stream: smsCtl.stream, channel: SmsMmsType.sms),
+          (stream: mmsCtl.stream, channel: SmsMmsType.mms),
+        ]);
 
-      final received = <MessageChangeEvent>[];
-      final sub = merged.listen(received.add);
+        final received = <MessageChangeEvent>[];
+        final sub = merged.listen(received.add);
 
-      smsCtl.add(ev(ObserveChangeType.insert, ids: ['1']));
-      mmsCtl.add(ev(ObserveChangeType.update, ids: ['9']));
-      smsCtl.add(ev(ObserveChangeType.delete, ids: ['2']));
-      await Future<void>.delayed(Duration.zero);
+        smsCtl.add(ev(ObserveChangeType.insert, ids: ['1']));
+        mmsCtl.add(ev(ObserveChangeType.update, ids: ['9']));
+        smsCtl.add(ev(ObserveChangeType.delete, ids: ['2']));
+        await Future<void>.delayed(Duration.zero);
 
-      // Project to (channel, changeType, idsCsv) — record equality falls
-      // back to List reference equality for nested lists, so flatten the
-      // ids into a primitive String for the deep-equals match.
-      String key(MessageChangeEvent e) =>
-          '${e.channel.name}|${e.changeType.name}|${e.ids.join(",")}';
-      expect(received.map(key).toList(), [
-        'sms|created|1',
-        'mms|updated|9',
-        'sms|deleted|2',
-      ]);
+        // Project to (channel, changeType, idsCsv) — record equality falls
+        // back to List reference equality for nested lists, so flatten the
+        // ids into a primitive String for the deep-equals match.
+        String key(MessageChangeEvent e) =>
+            '${e.channel.name}|${e.changeType.name}|${e.ids.join(",")}';
+        expect(received.map(key).toList(), [
+          'sms|created|1',
+          'mms|updated|9',
+          'sms|deleted|2',
+        ]);
 
-      await sub.cancel();
-      await smsCtl.close();
-      await mmsCtl.close();
-    });
+        await sub.cancel();
+        await smsCtl.close();
+        await mmsCtl.close();
+      },
+    );
 
     test('completes only after every source completes', () async {
       final a = StreamController<ObserveEvent>();
@@ -173,57 +174,62 @@ void main() {
       await ctl.close();
     });
 
-    test('cancelling the merged subscription detaches every upstream', () async {
-      final a = StreamController<ObserveEvent>();
-      final b = StreamController<ObserveEvent>();
-      final sub = MessageChangeEvent.merge([
-        (stream: a.stream, channel: SmsMmsType.sms),
-        (stream: b.stream, channel: SmsMmsType.mms),
-      ]).listen((_) {});
+    test(
+      'cancelling the merged subscription detaches every upstream',
+      () async {
+        final a = StreamController<ObserveEvent>();
+        final b = StreamController<ObserveEvent>();
+        final sub = MessageChangeEvent.merge([
+          (stream: a.stream, channel: SmsMmsType.sms),
+          (stream: b.stream, channel: SmsMmsType.mms),
+        ]).listen((_) {});
 
-      await Future<void>.delayed(Duration.zero); // let listens attach
-      expect(a.hasListener, true);
-      expect(b.hasListener, true);
+        await Future<void>.delayed(Duration.zero); // let listens attach
+        expect(a.hasListener, true);
+        expect(b.hasListener, true);
 
-      await sub.cancel();
-      expect(a.hasListener, false);
-      expect(b.hasListener, false);
+        await sub.cancel();
+        expect(a.hasListener, false);
+        expect(b.hasListener, false);
 
-      await a.close();
-      await b.close();
-    });
+        await a.close();
+        await b.close();
+      },
+    );
 
     test('empty source list yields an immediately-done stream', () async {
       final events = await MessageChangeEvent.merge([]).toList();
       expect(events, isEmpty);
     });
 
-    test('pause/resume on the merged stream propagates to every upstream',
-        () async {
-      final a = StreamController<ObserveEvent>();
-      final b = StreamController<ObserveEvent>();
-      final sub = MessageChangeEvent.merge([
-        (stream: a.stream, channel: SmsMmsType.sms),
-        (stream: b.stream, channel: SmsMmsType.mms),
-      ]).listen((_) {});
+    test(
+      'pause/resume on the merged stream propagates to every upstream',
+      () async {
+        final a = StreamController<ObserveEvent>();
+        final b = StreamController<ObserveEvent>();
+        final sub = MessageChangeEvent.merge([
+          (stream: a.stream, channel: SmsMmsType.sms),
+          (stream: b.stream, channel: SmsMmsType.mms),
+        ]).listen((_) {});
 
-      await Future<void>.delayed(Duration.zero); // let listens attach
-      expect(a.isPaused, false);
-      expect(b.isPaused, false);
+        await Future<void>.delayed(Duration.zero); // let listens attach
+        expect(a.isPaused, false);
+        expect(b.isPaused, false);
 
-      sub.pause();
-      await Future<void>.delayed(Duration.zero);
-      expect(a.isPaused, true, reason: 'sms upstream should be paused');
-      expect(b.isPaused, true, reason: 'mms upstream should be paused');
+        sub.pause();
+        await Future<void>.delayed(Duration.zero);
+        expect(a.isPaused, true, reason: 'sms upstream should be paused');
+        expect(b.isPaused, true, reason: 'mms upstream should be paused');
 
-      sub.resume();
-      await Future<void>.delayed(Duration.zero);
-      expect(a.isPaused, false);
-      expect(b.isPaused, false);
+        sub.resume();
+        await Future<void>.delayed(Duration.zero);
+        expect(a.isPaused, false);
+        expect(b.isPaused, false);
 
-      await sub.cancel();
-      await a.close();
-      await b.close();
-    });
+        await sub.cancel();
+        await a.close();
+        await b.close();
+      },
+    );
   });
 }

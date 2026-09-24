@@ -96,8 +96,7 @@ class MessageChangeEvent {
       for (final s in event.ids)
         if (int.tryParse(s) case final n?) n,
     ];
-    final selfChange =
-        (event.metadata?['selfChange'] as bool?) ?? false;
+    final selfChange = (event.metadata?['selfChange'] as bool?) ?? false;
     return MessageChangeEvent(
       channel: channel,
       changeType: _mapChangeType(event.changeType),
@@ -138,16 +137,18 @@ class MessageChangeEvent {
       }
       for (final source in sources) {
         final channel = source.channel;
-        subs.add(source.stream.listen(
-          (event) => controller.add(
-            MessageChangeEvent.fromObserveEvent(event, channel: channel),
+        subs.add(
+          source.stream.listen(
+            (event) => controller.add(
+              MessageChangeEvent.fromObserveEvent(event, channel: channel),
+            ),
+            onError: controller.addError,
+            onDone: () {
+              doneCount += 1;
+              if (doneCount >= total) controller.close();
+            },
           ),
-          onError: controller.addError,
-          onDone: () {
-            doneCount += 1;
-            if (doneCount >= total) controller.close();
-          },
-        ));
+        );
       }
     }
 
