@@ -1,3 +1,16 @@
+## 0.5.1
+
+### Added
+
+- `MessageChangeEvent.selfChange` now carries provider self-write identity
+  through the public Dart event model. Consumers can avoid redundant
+  reconciliation after writes that already perform a post-write refresh.
+
+### Fixed
+
+- Corrected the event documentation to reflect row identifiers supplied by
+  Android row URI notifications.
+
 ## 0.5.0
 
 ### Added
