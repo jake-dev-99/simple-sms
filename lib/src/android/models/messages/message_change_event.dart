@@ -39,9 +39,9 @@ enum MessageChangeType {
 /// Events carry the affected native row [ids] when the platform supplied
 /// them (the trailing integer segment of a row URI like
 /// `content://sms/1571`); an empty [ids] list means "something changed in
-/// this [channel] — reconcile by re-reading." The [selfChange] flag lets
-/// consumers skip a redundant reconcile when the write that triggered
-/// this event is already covered by the post-write reconcile path.
+/// this [channel] — reconcile by re-reading." The [selfChange] flag reports
+/// Android observer-notification provenance; it does not identify which
+/// application initiated the write.
 class MessageChangeEvent {
   const MessageChangeEvent({
     required this.channel,
@@ -65,9 +65,9 @@ class MessageChangeEvent {
   /// reconcile-by-re-read signal, not a malformed event.
   final List<int> ids;
 
-  /// Whether this change originated from our own writes (vs. an external
-  /// app or the system). Self-writes are already covered by the post-write
-  /// reconcile, so the consumer can skip a redundant pass.
+  /// Whether Android marked this notification as a self-change for its
+  /// observer. This does not identify an application write. Consumers need
+  /// separate write correlation before suppressing a reconciliation.
   final bool selfChange;
 
   /// Translate a raw `simple_query` [ObserveEvent] into the normalized event
@@ -85,9 +85,9 @@ class MessageChangeEvent {
   /// what matters). A non-integer id arriving here would indicate a
   /// platform-bridge regression, not a contract issue with this translator.
   ///
-  /// [ObserveEvent.metadata] carries `selfChange` (a boolean set by the
-  /// Android platform layer) so the consumer can skip redundant
-  /// reconciles for writes that already run a post-write reconcile pass.
+  /// [ObserveEvent.metadata] carries `selfChange`, the raw Android observer
+  /// self-change marker. Missing metadata defaults to false. Neither value
+  /// establishes whether an application has already reconciled the change.
   factory MessageChangeEvent.fromObserveEvent(
     ObserveEvent event, {
     required SmsMmsType channel,

@@ -1,10 +1,14 @@
 ## 0.5.1
 
+- Require `simple_query ^0.2.2`, whose Android implementation preserves
+  observer row identifiers, notification flags, and `selfChange`.
+
 ### Added
 
-- `MessageChangeEvent.selfChange` now carries provider self-write identity
-  through the public Dart event model. Consumers can avoid redundant
-  reconciliation after writes that already perform a post-write refresh.
+- `MessageChangeEvent.selfChange` now preserves the raw Android observer
+  self-change marker in the public Dart event model. It does not identify
+  application writes; suppressing reconciliation requires separate write
+  correlation.
 
 ### Fixed
 
@@ -13,7 +17,23 @@
 
 ## 0.5.0
 
+### Changed (breaking)
+
+- **Normalized thread reads are now bounded and newest-first (UNFY-209).**
+  Replace `LookupService.getNormalizedMessagesByThread(threadId, ascending: ...)`
+  with `getNormalizedThreadPage(threadId, limit: pageSize)`. The replacement
+  requires `limit`, always returns newest-first pages, and removes caller-selected
+  ascending order. Resume with
+  `cursor: ThreadPageCursor.fromMessage(previousPage.last)` until a page contains
+  fewer than `pageSize` messages.
+
 ### Added
+
+- **Bounded thread pages with a composite cursor (UNFY-209).**
+  `LookupService.getNormalizedThreadPage` accepts `ThreadPageCursor` to resume
+  through timestamp ties using native id and SMS/MMS channel. Native date
+  ordering includes an id tie-break before limiting; only returned MMS rows
+  are hydrated. Timestamp-only `before` remains supported and exclusive.
 
 - **Native mark-unread write surface.** `AndroidAction.markMessageAsUnread`
   (channel-qualified, symmetric to `markMessageAsRead`) and

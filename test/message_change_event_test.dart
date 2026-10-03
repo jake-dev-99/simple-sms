@@ -108,6 +108,41 @@ void main() {
 
   group('MessageChangeEvent.merge', () {
     test(
+      'preserves observer identity and root fallback through the stream',
+      () async {
+        final timestamp = DateTime.utc(2026, 9, 24, 12, 30);
+        final received =
+            await MessageChangeEvent.merge([
+              (
+                stream: Stream.fromIterable([
+                  ev(
+                    ObserveChangeType.update,
+                    ids: ['17'],
+                    at: timestamp,
+                    selfChange: true,
+                  ),
+                  // A root/legacy notification still requests a broad refresh.
+                  ev(ObserveChangeType.unknown, at: timestamp),
+                ]),
+                channel: SmsMmsType.mms,
+              ),
+            ]).toList();
+
+        expect(received, hasLength(2));
+        expect(received.first.ids, [17]);
+        expect(received.first.channel, SmsMmsType.mms);
+        expect(received.first.changeType, MessageChangeType.updated);
+        expect(received.first.timestamp, timestamp);
+        expect(received.first.selfChange, isTrue);
+        expect(received.last.ids, isEmpty);
+        expect(received.last.channel, SmsMmsType.mms);
+        expect(received.last.changeType, MessageChangeType.unknown);
+        expect(received.last.timestamp, timestamp);
+        expect(received.last.selfChange, isFalse);
+      },
+    );
+
+    test(
       'multiplexes per-channel events in arrival order with channel tags',
       () async {
         final smsCtl = StreamController<ObserveEvent>();
