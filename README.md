@@ -128,6 +128,41 @@ final contact = await service.lookupContactableByAddress('+15551234567');
 final messages = await service.getSmsByThread(threadId);
 ```
 
+### Mark messages and conversations read or unread
+
+Read-state actions write the authoritative Android SMS/MMS store. Obtain the
+`DefaultSmsApp` role through `simple_permissions_native` before calling them;
+these methods do not request permissions.
+
+```dart
+import 'package:simple_sms_native/android.dart';
+
+// The native ID is unique within its SMS or MMS table, so always pass its type.
+await AndroidAction.markMessageAsUnread('42', channel: SmsMmsType.sms);
+await AndroidAction.markMessageAsRead('42', channel: SmsMmsType.sms);
+await AndroidAction.markMessageAsUnread('17', channel: SmsMmsType.mms);
+await AndroidAction.markMessageAsRead('17', channel: SmsMmsType.mms);
+
+// Conversation IDs are native thread IDs; these actions update both tables.
+await AndroidAction.markConversationAsUnread('123');
+await AndroidAction.markConversationAsRead('123');
+```
+
+Each method returns `Future<bool>`: `true` means the provider reported updated
+rows; `false` means no rows were updated. Conversation actions update only rows
+whose read flag differs, so repeating an action on an unchanged conversation
+returns `false`. A missing message or conversation also returns `false`.
+
+Marking read sets `READ=1` and `SEEN=1`. Marking unread sets `READ=0` and preserves
+`SEEN`, restoring the follow-up cue without making the message newly unseen.
+Provider failures throw `PlatformException` with `MARK_READ_FAILED` or
+`MARK_UNREAD_FAILED`; callers must handle these errors. Conversation writes
+update SMS and MMS separately, so a provider failure can leave one table
+updated. Retrying the same action safely sets the requested flags again.
+
+The explicit read/unread method pairs provide the symmetric API. Existing
+`markMessageAsRead` and `markConversationAsRead` callers remain supported.
+
 ### Background message handling
 
 When your app is the default SMS app, messages arrive even when the app is killed. Define a top-level entrypoint:
