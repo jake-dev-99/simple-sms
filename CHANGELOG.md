@@ -1,3 +1,20 @@
+## 0.5.1
+
+- Require `simple_query ^0.2.2`, whose Android implementation preserves
+  observer row identifiers, notification flags, and `selfChange`.
+
+### Added
+
+- `MessageChangeEvent.selfChange` now preserves the raw Android observer
+  self-change marker in the public Dart event model. It does not identify
+  application writes; suppressing reconciliation requires separate write
+  correlation.
+
+### Fixed
+
+- Corrected the event documentation to reflect row identifiers supplied by
+  Android row URI notifications.
+
 ## 0.5.0
 
 ### Changed (breaking)

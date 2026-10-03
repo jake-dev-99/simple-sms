@@ -12,20 +12,24 @@ ObserveEvent ev(
   ObserveChangeType t, {
   List<String> ids = const [],
   DateTime? at,
-}) =>
-    ObserveEvent(
-      domain: QueryDomain.platformSpecific,
-      changeType: t,
-      timestamp: at ?? DateTime.fromMillisecondsSinceEpoch(0),
-      ids: ids,
-    );
+  bool? selfChange,
+}) => ObserveEvent(
+  domain: QueryDomain.platformSpecific,
+  changeType: t,
+  timestamp: at ?? DateTime.fromMillisecondsSinceEpoch(0),
+  ids: ids,
+  metadata:
+      selfChange != null ? <String, Object?>{'selfChange': selfChange} : null,
+);
 
 void main() {
   group('MessageChangeEvent.fromObserveEvent', () {
     test('maps every ObserveChangeType to the normalized vocabulary', () {
       MessageChangeType convert(ObserveChangeType raw) =>
-          MessageChangeEvent.fromObserveEvent(ev(raw), channel: SmsMmsType.sms)
-              .changeType;
+          MessageChangeEvent.fromObserveEvent(
+            ev(raw),
+            channel: SmsMmsType.sms,
+          ).changeType;
       expect(convert(ObserveChangeType.insert), MessageChangeType.created);
       expect(convert(ObserveChangeType.update), MessageChangeType.updated);
       expect(convert(ObserveChangeType.delete), MessageChangeType.deleted);
@@ -63,8 +67,36 @@ void main() {
       expect(m.changeType, MessageChangeType.updated);
     });
 
-    test('ids list is unmodifiable so external mutation cannot corrupt it',
-        () {
+    test('selfChange flag is carried through from metadata', () {
+      final m = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, selfChange: true),
+        channel: SmsMmsType.sms,
+      );
+      expect(m.selfChange, isTrue);
+      final m2 = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, selfChange: false),
+        channel: SmsMmsType.mms,
+      );
+      expect(m2.selfChange, isFalse);
+      // Missing metadata → defaults to false.
+      final m3 = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.insert),
+        channel: SmsMmsType.sms,
+      );
+      expect(m3.selfChange, isFalse);
+    });
+
+    test('ids with selfChange are both preserved', () {
+      final m = MessageChangeEvent.fromObserveEvent(
+        ev(ObserveChangeType.update, ids: ['7'], selfChange: true),
+        channel: SmsMmsType.sms,
+      );
+      expect(m.ids, [7]);
+      expect(m.selfChange, isTrue);
+      expect(m.changeType, MessageChangeType.updated);
+    });
+
+    test('ids list is unmodifiable so external mutation cannot corrupt it', () {
       final m = MessageChangeEvent.fromObserveEvent(
         ev(ObserveChangeType.insert, ids: ['1', '2']),
         channel: SmsMmsType.sms,
@@ -75,38 +107,75 @@ void main() {
   });
 
   group('MessageChangeEvent.merge', () {
-    test('multiplexes per-channel events in arrival order with channel tags',
-        () async {
-      final smsCtl = StreamController<ObserveEvent>();
-      final mmsCtl = StreamController<ObserveEvent>();
-      final merged = MessageChangeEvent.merge([
-        (stream: smsCtl.stream, channel: SmsMmsType.sms),
-        (stream: mmsCtl.stream, channel: SmsMmsType.mms),
-      ]);
+    test(
+      'preserves observer identity and root fallback through the stream',
+      () async {
+        final timestamp = DateTime.utc(2026, 9, 24, 12, 30);
+        final received =
+            await MessageChangeEvent.merge([
+              (
+                stream: Stream.fromIterable([
+                  ev(
+                    ObserveChangeType.update,
+                    ids: ['17'],
+                    at: timestamp,
+                    selfChange: true,
+                  ),
+                  // A root/legacy notification still requests a broad refresh.
+                  ev(ObserveChangeType.unknown, at: timestamp),
+                ]),
+                channel: SmsMmsType.mms,
+              ),
+            ]).toList();
 
-      final received = <MessageChangeEvent>[];
-      final sub = merged.listen(received.add);
+        expect(received, hasLength(2));
+        expect(received.first.ids, [17]);
+        expect(received.first.channel, SmsMmsType.mms);
+        expect(received.first.changeType, MessageChangeType.updated);
+        expect(received.first.timestamp, timestamp);
+        expect(received.first.selfChange, isTrue);
+        expect(received.last.ids, isEmpty);
+        expect(received.last.channel, SmsMmsType.mms);
+        expect(received.last.changeType, MessageChangeType.unknown);
+        expect(received.last.timestamp, timestamp);
+        expect(received.last.selfChange, isFalse);
+      },
+    );
 
-      smsCtl.add(ev(ObserveChangeType.insert, ids: ['1']));
-      mmsCtl.add(ev(ObserveChangeType.update, ids: ['9']));
-      smsCtl.add(ev(ObserveChangeType.delete, ids: ['2']));
-      await Future<void>.delayed(Duration.zero);
+    test(
+      'multiplexes per-channel events in arrival order with channel tags',
+      () async {
+        final smsCtl = StreamController<ObserveEvent>();
+        final mmsCtl = StreamController<ObserveEvent>();
+        final merged = MessageChangeEvent.merge([
+          (stream: smsCtl.stream, channel: SmsMmsType.sms),
+          (stream: mmsCtl.stream, channel: SmsMmsType.mms),
+        ]);
 
-      // Project to (channel, changeType, idsCsv) — record equality falls
-      // back to List reference equality for nested lists, so flatten the
-      // ids into a primitive String for the deep-equals match.
-      String key(MessageChangeEvent e) =>
-          '${e.channel.name}|${e.changeType.name}|${e.ids.join(",")}';
-      expect(received.map(key).toList(), [
-        'sms|created|1',
-        'mms|updated|9',
-        'sms|deleted|2',
-      ]);
+        final received = <MessageChangeEvent>[];
+        final sub = merged.listen(received.add);
 
-      await sub.cancel();
-      await smsCtl.close();
-      await mmsCtl.close();
-    });
+        smsCtl.add(ev(ObserveChangeType.insert, ids: ['1']));
+        mmsCtl.add(ev(ObserveChangeType.update, ids: ['9']));
+        smsCtl.add(ev(ObserveChangeType.delete, ids: ['2']));
+        await Future<void>.delayed(Duration.zero);
+
+        // Project to (channel, changeType, idsCsv) — record equality falls
+        // back to List reference equality for nested lists, so flatten the
+        // ids into a primitive String for the deep-equals match.
+        String key(MessageChangeEvent e) =>
+            '${e.channel.name}|${e.changeType.name}|${e.ids.join(",")}';
+        expect(received.map(key).toList(), [
+          'sms|created|1',
+          'mms|updated|9',
+          'sms|deleted|2',
+        ]);
+
+        await sub.cancel();
+        await smsCtl.close();
+        await mmsCtl.close();
+      },
+    );
 
     test('completes only after every source completes', () async {
       final a = StreamController<ObserveEvent>();
@@ -140,57 +209,62 @@ void main() {
       await ctl.close();
     });
 
-    test('cancelling the merged subscription detaches every upstream', () async {
-      final a = StreamController<ObserveEvent>();
-      final b = StreamController<ObserveEvent>();
-      final sub = MessageChangeEvent.merge([
-        (stream: a.stream, channel: SmsMmsType.sms),
-        (stream: b.stream, channel: SmsMmsType.mms),
-      ]).listen((_) {});
+    test(
+      'cancelling the merged subscription detaches every upstream',
+      () async {
+        final a = StreamController<ObserveEvent>();
+        final b = StreamController<ObserveEvent>();
+        final sub = MessageChangeEvent.merge([
+          (stream: a.stream, channel: SmsMmsType.sms),
+          (stream: b.stream, channel: SmsMmsType.mms),
+        ]).listen((_) {});
 
-      await Future<void>.delayed(Duration.zero); // let listens attach
-      expect(a.hasListener, true);
-      expect(b.hasListener, true);
+        await Future<void>.delayed(Duration.zero); // let listens attach
+        expect(a.hasListener, true);
+        expect(b.hasListener, true);
 
-      await sub.cancel();
-      expect(a.hasListener, false);
-      expect(b.hasListener, false);
+        await sub.cancel();
+        expect(a.hasListener, false);
+        expect(b.hasListener, false);
 
-      await a.close();
-      await b.close();
-    });
+        await a.close();
+        await b.close();
+      },
+    );
 
     test('empty source list yields an immediately-done stream', () async {
       final events = await MessageChangeEvent.merge([]).toList();
       expect(events, isEmpty);
     });
 
-    test('pause/resume on the merged stream propagates to every upstream',
-        () async {
-      final a = StreamController<ObserveEvent>();
-      final b = StreamController<ObserveEvent>();
-      final sub = MessageChangeEvent.merge([
-        (stream: a.stream, channel: SmsMmsType.sms),
-        (stream: b.stream, channel: SmsMmsType.mms),
-      ]).listen((_) {});
+    test(
+      'pause/resume on the merged stream propagates to every upstream',
+      () async {
+        final a = StreamController<ObserveEvent>();
+        final b = StreamController<ObserveEvent>();
+        final sub = MessageChangeEvent.merge([
+          (stream: a.stream, channel: SmsMmsType.sms),
+          (stream: b.stream, channel: SmsMmsType.mms),
+        ]).listen((_) {});
 
-      await Future<void>.delayed(Duration.zero); // let listens attach
-      expect(a.isPaused, false);
-      expect(b.isPaused, false);
+        await Future<void>.delayed(Duration.zero); // let listens attach
+        expect(a.isPaused, false);
+        expect(b.isPaused, false);
 
-      sub.pause();
-      await Future<void>.delayed(Duration.zero);
-      expect(a.isPaused, true, reason: 'sms upstream should be paused');
-      expect(b.isPaused, true, reason: 'mms upstream should be paused');
+        sub.pause();
+        await Future<void>.delayed(Duration.zero);
+        expect(a.isPaused, true, reason: 'sms upstream should be paused');
+        expect(b.isPaused, true, reason: 'mms upstream should be paused');
 
-      sub.resume();
-      await Future<void>.delayed(Duration.zero);
-      expect(a.isPaused, false);
-      expect(b.isPaused, false);
+        sub.resume();
+        await Future<void>.delayed(Duration.zero);
+        expect(a.isPaused, false);
+        expect(b.isPaused, false);
 
-      await sub.cancel();
-      await a.close();
-      await b.close();
-    });
+        await sub.cancel();
+        await a.close();
+        await b.close();
+      },
+    );
   });
 }
