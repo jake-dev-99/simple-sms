@@ -37,17 +37,18 @@ enum MessageChangeType {
 /// `/query` channel.
 ///
 /// Events carry the affected native row [ids] when the platform supplied
-/// them; an empty [ids] list means "something changed in this [channel] —
-/// reconcile by re-reading." Consumers should always handle the empty-ids
-/// case: Android's `ContentObserver` callback does not include the changed
-/// uri's row id, so an [ObserveEvent] from the underlying transport will
-/// often have no ids attached.
+/// them (the trailing integer segment of a row URI like
+/// `content://sms/1571`); an empty [ids] list means "something changed in
+/// this [channel] — reconcile by re-reading." The [selfChange] flag reports
+/// Android observer-notification provenance; it does not identify which
+/// application initiated the write.
 class MessageChangeEvent {
   const MessageChangeEvent({
     required this.channel,
     required this.changeType,
     required this.timestamp,
     required this.ids,
+    this.selfChange = false,
   });
 
   /// Which underlying store changed — `content://sms` or `content://mms`.
@@ -64,6 +65,11 @@ class MessageChangeEvent {
   /// reconcile-by-re-read signal, not a malformed event.
   final List<int> ids;
 
+  /// Whether Android marked this notification as a self-change for its
+  /// observer. This does not identify an application write. Consumers need
+  /// separate write correlation before suppressing a reconciliation.
+  final bool selfChange;
+
   /// Translate a raw `simple_query` [ObserveEvent] into the normalized event
   /// the host consumes. [channel] is the source the observation was attached
   /// to (the wrapper observes one URI per channel, so it knows which one
@@ -78,6 +84,10 @@ class MessageChangeEvent {
   /// event is still a valid reconcile signal (the channel changed; re-read
   /// what matters). A non-integer id arriving here would indicate a
   /// platform-bridge regression, not a contract issue with this translator.
+  ///
+  /// [ObserveEvent.metadata] carries `selfChange`, the raw Android observer
+  /// self-change marker. Missing metadata defaults to false. Neither value
+  /// establishes whether an application has already reconciled the change.
   factory MessageChangeEvent.fromObserveEvent(
     ObserveEvent event, {
     required SmsMmsType channel,
@@ -86,12 +96,14 @@ class MessageChangeEvent {
       for (final s in event.ids)
         if (int.tryParse(s) case final n?) n,
     ];
+    final selfChange = (event.metadata?['selfChange'] as bool?) ?? false;
     return MessageChangeEvent(
       channel: channel,
       changeType: _mapChangeType(event.changeType),
       timestamp: event.timestamp,
       // Unmodifiable to preserve the otherwise-immutable value-type contract.
       ids: List.unmodifiable(ids),
+      selfChange: selfChange,
     );
   }
 
@@ -125,16 +137,18 @@ class MessageChangeEvent {
       }
       for (final source in sources) {
         final channel = source.channel;
-        subs.add(source.stream.listen(
-          (event) => controller.add(
-            MessageChangeEvent.fromObserveEvent(event, channel: channel),
+        subs.add(
+          source.stream.listen(
+            (event) => controller.add(
+              MessageChangeEvent.fromObserveEvent(event, channel: channel),
+            ),
+            onError: controller.addError,
+            onDone: () {
+              doneCount += 1;
+              if (doneCount >= total) controller.close();
+            },
           ),
-          onError: controller.addError,
-          onDone: () {
-            doneCount += 1;
-            if (doneCount >= total) controller.close();
-          },
-        ));
+        );
       }
     }
 
