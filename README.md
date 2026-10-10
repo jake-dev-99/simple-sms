@@ -203,6 +203,11 @@ The migration check rejects production Java, retired upstream package names,
 and the removed carrier XML files. These local gates compile and test the
 code, but do not establish carrier interoperability.
 
+Android hosts must declare an `ACTION_SENDTO` activity to qualify for the
+default-SMS role. Include the `sms`, `smsto`, `mms`, and `mmsto` schemes, as the
+example manifest demonstrates; see [Android's Telephony requirements](https://developer.android.com/reference/android/provider/Telephony).
+The example targets Android 16 (API 36), matching Unify.
+
 For a Samsung Galaxy S24 Ultra with an active Verizon SIM, connect the phone
 and record the tested commit, Android/One UI build, active SMS/data SIM, and
 network state. Obtain the device ID with `flutter devices`, then run:
