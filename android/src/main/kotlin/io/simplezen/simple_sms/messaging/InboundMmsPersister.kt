@@ -6,10 +6,10 @@ import android.content.Context
 import android.net.Uri
 import android.provider.Telephony.Mms
 import android.util.Log
-import com.google.android.mms.MmsException
-import com.google.android.mms.pdu_alt.PduHeaders
-import com.google.android.mms.pdu_alt.PduPersister
-import com.google.android.mms.pdu_alt.RetrieveConf
+import io.simplezen.simple_sms.mms.MmsException
+import io.simplezen.simple_sms.mms.codec.PduHeaders
+import io.simplezen.simple_sms.mms.codec.PduPersister
+import io.simplezen.simple_sms.mms.codec.RetrieveConf
 import io.simplezen.simple_sms.queries.Query
 import io.simplezen.simple_sms.queries.QueryObj
 
@@ -59,7 +59,7 @@ internal fun buildOrphanNotificationIndSelection(
  *
  * Delegates the heavy column-write work to [PduPersister.persist], which
  * is the canonical AOSP implementation we have vendored at
- * `com.google.android.mms.pdu_alt.PduPersister`. After persist, we follow
+ * `io.simplezen.simple_sms.mms.codec.PduPersister`. After persist, we follow
  * the AOSP `MmsUtils.insertReceivedMmsMessage` recipe of overriding
  * `Mms.DATE` with local receive time (clock-drift mitigation per AOSP
  * comment) and pinning `Mms.TRANSACTION_ID` + `Mms.EXPIRY` so future

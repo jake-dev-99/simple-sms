@@ -10,7 +10,9 @@ Keep it short and true.
 inbound/outbound messaging, a lookup service, and conversation enrichment.
 It is a **Simple Zen Plugin** (a library, not a consumer app), consumed by
 **Unify Messages+**. Governance: the Simple Zen SOP family in Notion
-(Documentation Standard, Code Quality Standards, Toolchain Architecture).
+([Documentation Standard](https://www.notion.so/3673802ee6ba81e0b892f7cfae1216b9),
+[Code Quality Standard](https://www.notion.so/3673802ee6ba81b1af59f02aece61595),
+[Toolchain Architecture](https://www.notion.so/3673802ee6ba81cfb3f9d8d000115a52)).
 As `Type = Plugin`, the App-only gates (Linear project, Figma, consumer
 Category, GTM/brand) do **not** apply; code-quality, semver/API-stability,
 tests, and docs do.
@@ -39,6 +41,13 @@ tool/        # repo tooling (one-off scripts)
 scripts/     # lint scripts run by CI + the verify gate
 ```
 
+Retained MMS internals live under `io.simplezen.simple_sms.mms`: `codec`,
+`storage`, `sending`, and `support`, with shared types in `mms`. They are Kotlin
+ports/adaptations of android-smsmms/AOSP, still governed by Apache-2.0; see
+[`NOTICE`](NOTICE) and [`LICENSE`](LICENSE). The public Dart API and channel
+contracts remain stable. Carrier transfer limits, APNs, and HTTP parameters
+come from Android's platform MMS stack, not bundled carrier XML.
+
 Single-package plugin (not federated — the four sister repos above are
 each their own published package; "federation" here describes the
 inter-package layering contract, not Flutter's federated-plugin
@@ -52,6 +61,7 @@ Mirror CI (`.github/workflows/verify.yml`). Before any push:
 flutter pub get
 flutter analyze --no-fatal-warnings
 flutter test
+./scripts/verify_mms_migration.sh
 flutter pub publish --dry-run     # keep it publishable
 ```
 
@@ -86,7 +96,7 @@ change — don't wait for CI to tell you.
   schemas (esp. on Samsung OEM builds) are full of footguns — verify column
   names/types/URIs against real device data before coding, never guess.
 - `analysis_options.yaml` is the lint baseline; analyze must be clean.
-- Design rationale lives in the [**Unify Messages+ → Architecture** concern](https://www.notion.so/3683802ee6ba8180b59ec1d07727308f)
+- Design rationale lives in the [**Unify Messages+ → Technical Architecture** concern](https://www.notion.so/3683802ee6ba8180b59ec1d07727308f)
   in Notion (Simple Zen internal — ADRs, not a repo doc, per the Documentation
   Standard): **ADR-0012** (MMS-port fidelity deviations) and **ADR-0013**
   (per-concern platform channels).
@@ -123,8 +133,8 @@ See [`doc/RELEASE.md`](doc/RELEASE.md).
   (insert/update/delete) stay on `ContentResolver`** — `simple_query` is
   read-only by design. Two documented read exceptions: (1) the **binary bytes
   stream** (`openInputStream` on a part) — only the bytes, not the content-type
-  probe; (2) the **vendored MMS PDU codec** (`pdu_alt.PduPersister` + its
-  `SqliteWrapper` / `RateController` / `SubscriptionIdChecker` helpers), whose
+  probe; (2) the **retained MMS PDU implementation** (`mms.codec.PduPersister`
+  + `mms.storage.SqliteWrapper` / `mms.support.SubscriptionIdChecker`), whose
   reads are binary PDU reconstruction (positional column-index + BLOB +
   exact-type + `Cursor.count`/exception semantics that `ContentQuery` can't
   represent) — direct by design (UNFY-156), sanctioned in
@@ -135,6 +145,12 @@ See [`doc/RELEASE.md`](doc/RELEASE.md).
   shapes; Samsung OEM columns/types).
 - **Don't break the public Dart API without a semver-appropriate bump** —
   Unify Messages+ and pub.dev consumers depend on it.
+- **Don't restore retired source packages, Java, or carrier tables.** Run
+  `scripts/verify_mms_migration.sh`; Android owns MMS carrier configuration.
+  Preserve the Verizon content-location completion and its native tests.
+- **Don't strip inherited licenses when porting source.** Preserve source
+  copyright/attribution and prominent modification notices; keep `NOTICE`
+  and the complete license texts in `LICENSE` current and publishable.
 - **Don't push without the verify gate green.** CI is a backstop, not
   discovery.
 - **Don't commit secrets.**

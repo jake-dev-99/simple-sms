@@ -11,9 +11,9 @@ import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import com.google.android.mms.pdu_alt.NotificationInd
-import com.google.android.mms.pdu_alt.PduParser
-import com.google.android.mms.pdu_alt.RetrieveConf
+import io.simplezen.simple_sms.mms.codec.NotificationInd
+import io.simplezen.simple_sms.mms.codec.PduParser
+import io.simplezen.simple_sms.mms.codec.RetrieveConf
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors

@@ -2,15 +2,15 @@ package io.simplezen.simple_sms.codec
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.google.android.mms.ContentType
-import com.google.android.mms.pdu_alt.CharacterSets
-import com.google.android.mms.pdu_alt.EncodedStringValue
-import com.google.android.mms.pdu_alt.PduBody
-import com.google.android.mms.pdu_alt.PduComposer
-import com.google.android.mms.pdu_alt.PduHeaders
-import com.google.android.mms.pdu_alt.PduParser
-import com.google.android.mms.pdu_alt.PduPart
-import com.google.android.mms.pdu_alt.SendReq
+import io.simplezen.simple_sms.mms.ContentType
+import io.simplezen.simple_sms.mms.codec.CharacterSets
+import io.simplezen.simple_sms.mms.codec.EncodedStringValue
+import io.simplezen.simple_sms.mms.codec.PduBody
+import io.simplezen.simple_sms.mms.codec.PduComposer
+import io.simplezen.simple_sms.mms.codec.PduHeaders
+import io.simplezen.simple_sms.mms.codec.PduParser
+import io.simplezen.simple_sms.mms.codec.PduPart
+import io.simplezen.simple_sms.mms.codec.SendReq
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

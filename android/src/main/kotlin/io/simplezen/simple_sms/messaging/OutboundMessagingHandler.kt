@@ -22,11 +22,11 @@ import android.provider.Telephony.BaseMmsColumns.MESSAGE_BOX_INBOX
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.google.android.mms.pdu_alt.EncodedStringValue
-import com.google.android.mms.pdu_alt.SendReq
-import com.klinker.android.send_message.Message
-import com.klinker.android.send_message.Settings
-import com.klinker.android.send_message.Transaction
+import io.simplezen.simple_sms.mms.codec.EncodedStringValue
+import io.simplezen.simple_sms.mms.codec.SendReq
+import io.simplezen.simple_sms.mms.sending.Message
+import io.simplezen.simple_sms.mms.sending.Settings
+import io.simplezen.simple_sms.mms.sending.Transaction
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_sms.messaging.MmsDatabaseWriter.insertSms

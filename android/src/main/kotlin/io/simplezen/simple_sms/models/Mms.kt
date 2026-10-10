@@ -4,8 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.provider.Telephony.BaseMmsColumns.MESSAGE_BOX_INBOX
 import android.provider.Telephony.Mms
-import com.google.android.mms.pdu_alt.EncodedStringValue
-import com.google.android.mms.pdu_alt.RetrieveConf
+import io.simplezen.simple_sms.mms.codec.EncodedStringValue
+import io.simplezen.simple_sms.mms.codec.RetrieveConf
 import android.telephony.SmsManager
 
 data class MmsObject(

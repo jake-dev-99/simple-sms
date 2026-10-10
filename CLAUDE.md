@@ -1,10 +1,6 @@
-# CLAUDE.md
-
 @AGENTS.md
 
-The line above imports **[AGENTS.md](AGENTS.md)** — the canonical repo guide
-(what this plugin is, the layering contract, build/test/verify, and the
-"What NOT to do" rulings). Claude Code expands it into context
-automatically; AGENTS.md is canonical so non-Claude tools read the same
-source. Durable repo rulings auto-load from [`docs/memory/`](docs/memory/).
-Put Claude-specific rulings below this import.
+`AGENTS.md` is the canonical repository guide: package layout, layering,
+build/test/verify commands, licensing, and binding implementation rules.
+Durable architecture decisions live in the linked Notion concern. Keep
+Claude-specific instructions here only when the shared guide cannot own them.

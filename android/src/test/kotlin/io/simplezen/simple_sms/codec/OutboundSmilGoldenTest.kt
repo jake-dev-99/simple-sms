@@ -1,7 +1,7 @@
 package io.simplezen.simple_sms.codec
 
-import com.google.android.mms.pdu_alt.PduBody
-import com.google.android.mms.pdu_alt.PduPart
+import io.simplezen.simple_sms.mms.codec.PduBody
+import io.simplezen.simple_sms.mms.codec.PduPart
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

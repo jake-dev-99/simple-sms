@@ -2,7 +2,7 @@
 
 A modern SMS / MMS plugin for Android that provides comprehensive messaging functionality for Flutter applications.
 
-> **Contributing / agents:** see [`AGENTS.md`](AGENTS.md) for build·test·verify, the four-package layering contract, and the "What NOT to do" rulings (Claude Code reads it via [`CLAUDE.md`](CLAUDE.md)). Governed by the Simple Zen SOP family (Notion).
+> **Contributing / agents:** see [`AGENTS.md`](AGENTS.md) for build·test·verify, the four-package layering contract, and the "What NOT to do" rulings (Claude Code reads it via [`CLAUDE.md`](CLAUDE.md)). Governed by the Simple Zen [Documentation Standard](https://www.notion.so/3673802ee6ba81e0b892f7cfae1216b9), [Code Quality Standard](https://www.notion.so/3673802ee6ba81b1af59f02aece61595), and [Toolchain Architecture](https://www.notion.so/3673802ee6ba81cfb3f9d8d000115a52) in Notion.
 
 ## Features
 
@@ -27,7 +27,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  simple_sms_native: ^0.1.0
+  simple_sms_native: ^0.5.1
 ```
 
 ### Permissions
@@ -106,16 +106,6 @@ final result = await Android.instance.messaging.sendMessage(
 );
 ```
 
-### Request permissions
-
-```dart
-// Request SMS permissions
-await AndroidPermissions.requestPermissions(Intention.texting);
-
-// Request default SMS app role (required for full send/receive)
-await AndroidPermissions.requestRole(Intention.texting);
-```
-
 ### Look up contacts and messages
 
 ```dart
@@ -179,25 +169,84 @@ void initializeApp() {
 
 See `example/lib/background_example.dart` for the full pattern.
 
+## Android implementation and validation
+
+The retained SMS/MMS code is maintained as Kotlin under
+`io.simplezen.simple_sms.mms`: `codec` holds PDU parsing and composition,
+`storage` holds persistence helpers, `sending` holds the outbound transaction
+layer, and `support` holds the shared helpers. This internal namespace change
+preserves the public Dart API, models, imports, and platform-channel contracts.
+
+MMS transfer uses Android's `SmsManager`. The platform and the selected SIM's
+carrier configuration own maximum-message-size and HTTP parameters; the plugin
+does not ship a carrier APN table, `mms_config.xml`, or an 800 KiB size override.
+The Verizon content-location completion in `resolveVerizonDownloadUrl` remains
+part of inbound notification handling and is covered by native unit tests.
+
+With `simple-permissions` and `simple-query` checked out beside this repo, run
+the local gates before pushing:
+
+```sh
+flutter pub get
+flutter analyze --no-fatal-warnings
+flutter test
+./scripts/verify_mms_migration.sh
+flutter pub publish --dry-run
+(cd example && flutter pub get && flutter build apk --debug)
+(cd example/android && ./gradlew :simple_sms_native:testDebugUnitTest --console=plain)
+```
+
+Check that the publish dry-run includes root `LICENSE` and `NOTICE`. `LICENSE`
+contains every retained license so Flutter can include them in the consuming
+app's license bundle; a standalone `NOTICE` is not automatically collected.
+The migration check rejects production Java, retired upstream package names,
+and the removed carrier XML files. These local gates compile and test the
+code, but do not establish carrier interoperability.
+
+For a Samsung Galaxy S24 Ultra with an active Verizon SIM, connect the phone
+and record the tested commit, Android/One UI build, active SMS/data SIM, and
+network state. Obtain the device ID with `flutter devices`, then run:
+
+```sh
+cd example
+flutter run -d <device-id>
+```
+
+In the example, tap **Grant Permissions** and **Set as Default SMS App**. Use
+test recipients and messages, and keep the Flutter console open: inbound
+callbacks print there. Repeat the following checks with mobile data available,
+first with Wi-Fi off and then with Wi-Fi on:
+
+| Check | Evidence to record |
+| --- | --- |
+| Send and receive short SMS, Unicode SMS, and a multipart-length body | Recipient sees the complete text; returned native record and inbound callback match the SMS provider row. |
+| Tap **Send MMS** with one image, then **Send MMS (Multiple Attachments)** with two distinct images | Recipient sees the text and all attachments; the returned record reports the actual send outcome. |
+| Receive image MMS and a group MMS from another phone | One inbox record per message, expected sender/recipients, body and attachment MIME types; no duplicate record from paired WAP-push broadcasts. |
+| Background the app and receive SMS/MMS | Provider persistence and callbacks still complete. For a terminated-process check, use the `initializeApp` entrypoint pattern in `background_example.dart`; swiping away the app is distinct from Android force-stop. |
+| Deny SMS access or remove the default-SMS role and retry the affected operation | The permission state and operation error are visible; no false success or unintended provider write. Restore access before the next case. |
+
+Inspect provider records through `LookupService`/`simple_query` in the test
+host, including message ID, thread ID, type, read/seen state, and MMS part
+count. The stock example is an interactive send/receive harness, not an
+automated device suite or a provider-inspection screen. Record actual device
+results separately from JVM/Dart test results; no Samsung/Verizon sign-off is
+implied by a successful build or package dry-run.
+
 ## Acknowledgements
 
-simple-sms's Android SMS/MMS internals build directly on
-[**android-smsmms**](https://github.com/klinkerapps/android-smsmms) by
-**Jacob Klinker** ([Klinker Apps](https://github.com/klinkerapps)), licensed
-under the Apache License 2.0. Klinker's library was the primary driver for —
-and the reference while reverse-engineering — how this plugin talks to the
-Android messaging stack:
+The Android SMS/MMS internals contain Kotlin ports and adaptations of
+[**android-smsmms**](https://github.com/klinker41/android-smsmms) by **Jacob
+Klinker**, including the AOSP MMS stack it carried. The sending layer, PDU
+codec, persistence helpers, and associated types are derived licensed code.
+Their Apache-2.0 obligations remain after translation and namespace changes.
 
-- The outbound send / transaction layer under
-  `com.klinker.android.send_message` (e.g. `Transaction`, `Message`,
-  `SmsManagerFactory`, `Utils`) derives from android-smsmms.
-- The MMS PDU codec under `com.google.android.mms` (`pdu_alt` / `util_alt`)
-  is the AOSP messaging codec that android-smsmms vendored; those files
-  retain their upstream Apache-2.0 headers.
-
-Those components remain under the Apache License 2.0; this project as a whole
-is BSD-3-Clause (see [License](#license)).
+Retained source notices also name **The Android Open Source Project**,
+**Esmertec AG**, and **The Linux Foundation**. Android Gradle scaffolding
+retains **The Flutter Authors**' BSD attribution. See [NOTICE](NOTICE) for the
+component inventory and [LICENSE](LICENSE) for the complete license texts.
 
 ## License
 
-BSD 3-Clause. See [LICENSE](LICENSE) for details.
+Original Simple Zen code is BSD 3-Clause. Retained android-smsmms/AOSP-derived
+components remain Apache-2.0, and Flutter scaffolding retains its upstream BSD
+terms. All license texts are included in [LICENSE](LICENSE).

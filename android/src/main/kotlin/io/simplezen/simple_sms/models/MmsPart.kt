@@ -3,8 +3,8 @@ package io.simplezen.simple_sms.models
 import android.content.ContentValues
 import android.content.Context
 import android.provider.Telephony.Mms
-import com.google.android.mms.pdu_alt.CharacterSets
-import com.google.android.mms.pdu_alt.PduPart
+import io.simplezen.simple_sms.mms.codec.CharacterSets
+import io.simplezen.simple_sms.mms.codec.PduPart
 import java.io.File
 import java.nio.charset.Charset
 

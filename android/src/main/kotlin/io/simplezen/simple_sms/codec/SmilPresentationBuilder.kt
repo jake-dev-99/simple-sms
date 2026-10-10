@@ -1,21 +1,17 @@
 package io.simplezen.simple_sms.codec
 
 import android.util.Log
-import com.google.android.mms.ContentType
-import com.google.android.mms.pdu_alt.PduBody
-import com.google.android.mms.pdu_alt.PduPart
+import io.simplezen.simple_sms.mms.ContentType
+import io.simplezen.simple_sms.mms.codec.PduBody
+import io.simplezen.simple_sms.mms.codec.PduPart
 
 /**
  * Builds the SMIL presentation document for an **outbound** MMS body.
  *
- * First-party Kotlin replacement for the vendored AOSP/Klinker SMIL stack
- * (`com.google.android.mms.smil.SmilHelper` +
- * `com.android.mms.dom.smil.parser.SmilXmlSerializer` and the ~40-file
- * `com.android.mms.dom.*` / `org.w3c.dom.smil.*` generic-DOM subsystem they
- * dragged in). MMS only ever needed a tiny, fixed-shape document — a single
- * `<head><layout/>` and a sequence of `<par>` groups referencing the parts —
- * so the entire generic SMIL DOM was dead weight. This emits that document
- * directly.
+ * First-party Kotlin replacement for the AOSP/Klinker SMIL helper and
+ * generic DOM serializer. MMS needs a fixed document: a single
+ * `<head><layout/>` and a sequence of `<par>` groups referencing its parts.
+ * This emits that document directly; see NOTICE for upstream attribution.
  *
  * Output is pinned **byte-for-byte** against the vendored implementation's
  * real output by `OutboundSmilGoldenTest` (the golden bytes there were

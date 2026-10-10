@@ -1,7 +1,7 @@
 package io.simplezen.simple_sms.messaging
 
 import android.provider.Telephony.Mms
-import com.google.android.mms.pdu_alt.PduHeaders
+import io.simplezen.simple_sms.mms.codec.PduHeaders
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

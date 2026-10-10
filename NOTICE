@@ -1,0 +1,38 @@
+simple_sms_native — retained third-party source
+
+The Android MMS implementation contains Kotlin ports and adaptations of
+android-smsmms by Jacob Klinker and the Android Open Source Project (AOSP)
+MMS stack vendored by that library. These are derived implementations,
+not merely references or inspiration. Moving the classes to the plugin's
+namespace and translating them to Kotlin does not change their license.
+
+Upstream android-smsmms:
+https://github.com/klinker41/android-smsmms
+
+Retained components under android/src/main/kotlin/io/simplezen/simple_sms/:
+
+- mms/sending/: android-smsmms message, transaction, SMS-manager, broadcast,
+  settings, status-receiver, utility, and accent-transliteration code.
+- mms/codec/: the AOSP-derived MMS PDU composer, parser, model, header,
+  character-set, Base64, and quoted-printable code carried by android-smsmms.
+- mms/storage/: the PDU persister's cache, SQLite, and DRM helpers carried
+  by android-smsmms.
+- mms/support/: the retained logging, subscription-column, and download
+  constant helpers carried by android-smsmms/AOSP.
+- mms/: the content-type definitions, MMS part holder, and exception types.
+
+Retained source notices identify Jacob Klinker, The Android Open Source
+Project, Esmertec AG, and The Linux Foundation. In particular, ContentType
+retains the Esmertec/AOSP 2007–2008 notices and The Linux Foundation's 2013
+notice; MmsException and InvalidHeaderValueException retain the Esmertec/AOSP
+2007 notices. The per-file headers preserve the applicable copyright years.
+These components are licensed under the Apache License, Version 2.0; the
+complete license and retained copyright notices are included in LICENSE.
+
+The repository also retains Android Gradle scaffolding attributed to
+Copyright 2014 The Flutter Authors. All rights reserved. Its upstream BSD
+license text is reproduced in LICENSE, including the Google Inc.
+non-endorsement condition.
+
+Original Simple Zen code is licensed under the BSD 3-Clause terms in LICENSE.
+This NOTICE provides attribution information and does not alter any license.
