@@ -78,6 +78,23 @@ MmsPart buildPart({
     );
 
 void main() {
+  test('persisted sent MMS normalizes as sent with SEND_REQ unchanged', () {
+    final message = NormalizedMessage.fromMms(buildMms(
+      type: MmsMessageType.sendRequest,
+      messageBox: MessageBox.sent,
+    ));
+    expect(message.direction, MessageDirection.outbound);
+    expect(message.deliveryState, MessageDeliveryState.sent);
+  });
+
+  test('delivery report remains delivered even when stored in the sent box', () {
+    final message = NormalizedMessage.fromMms(buildMms(
+      type: MmsMessageType.deliveryInd,
+      messageBox: MessageBox.sent,
+    ));
+    expect(message.deliveryState, MessageDeliveryState.delivered);
+  });
+
   group('NormalizedMessage.fromSms', () {
     test('inbound: direction inbound, delivered, sender carries the address',
         () {

@@ -47,6 +47,8 @@ on:
       # UNFY-162 closes).
       - 'pubspec.yaml'
       - 'pubspec_overrides.yaml'
+      - 'example/pubspec.yaml'
+      - 'example/pubspec_overrides.yaml'
       - '.github/workflows/verify-native.yml'
   # Manual override for re-running the native gate against a specific ref.
   workflow_dispatch:
@@ -74,6 +76,10 @@ jobs:
       # sibling-drift flakiness becomes a real cost, tighten across all three
       # workflows (verify-native.yml / verify.yml / deploy.yml) to pinned
       # revisions (pubspec.lock / pubspec_overrides) or release tags.
+      - name: Verify first-party MMS source and resources
+        working-directory: simple-sms
+        run: ./scripts/verify_mms_migration.sh
+
       - name: Checkout simple-permissions (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

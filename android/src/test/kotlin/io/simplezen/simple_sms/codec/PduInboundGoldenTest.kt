@@ -1,8 +1,8 @@
 package io.simplezen.simple_sms.codec
 
-import com.google.android.mms.pdu_alt.NotificationInd
-import com.google.android.mms.pdu_alt.PduParser
-import com.google.android.mms.pdu_alt.RetrieveConf
+import io.simplezen.simple_sms.mms.codec.NotificationInd
+import io.simplezen.simple_sms.mms.codec.PduParser
+import io.simplezen.simple_sms.mms.codec.RetrieveConf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -393,6 +393,10 @@ MessageDeliveryState _mmsDeliveryState(MmsMessageType? type, MessageBox? box) {
   // MMS) and can't represent a send failure — that only shows in `msg_box`.
   // So a failed box overrides the type-derived state (UNFY-178).
   if (box == MessageBox.failed) return MessageDeliveryState.failed;
+  // SEND_REQ describes the PDU, while msg_box records the send outcome.
+  if (box == MessageBox.sent && type == MmsMessageType.sendRequest) {
+    return MessageDeliveryState.sent;
+  }
   switch (type) {
     case MmsMessageType.sendRequest:
     case MmsMessageType.notificationInd:

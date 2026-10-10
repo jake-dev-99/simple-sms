@@ -23,6 +23,7 @@ android {
     defaultConfig {
         applicationId = "com.example.simple_sms_example"
         minSdk = 30
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
         // You can update the following values to match your application needs.

@@ -6,11 +6,9 @@ name: Deploy
 # eliminates the orphan-tag drift class that plagued the previous
 # auto-tag flow.
 #
-# subosito/flutter-action + flutter pub publish --force
-# --skip-validation. `--skip-validation` lets pub publish work for
-# Flutter packages (skips resolution which trips on `sdk: flutter`);
-# pub.dev's server still enforces version monotonicity, ownership,
-# and OIDC binding.
+# dart-lang/setup-dart configures pub.dev's temporary OIDC credential.
+# flutter-action supplies the Flutter SDK for dependency resolution and
+# validated publishing; no dependency-validation bypass is used.
 
 on:
   push:
@@ -123,6 +121,10 @@ jobs:
       # sibling-drift flakiness becomes a real cost, tighten across all three
       # workflows (verify-native.yml / verify.yml / deploy.yml) to pinned
       # revisions (pubspec.lock / pubspec_overrides) or release tags.
+      - name: Verify first-party MMS source and resources
+        working-directory: simple-sms
+        run: ./scripts/verify_mms_migration.sh
+
       - name: Checkout simple-permissions (sibling dep)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -248,6 +250,9 @@ jobs:
             exit 1
           fi
 
+      - name: Configure pub.dev OIDC authentication
+        uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1
+
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
@@ -264,18 +269,15 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: flutter pub get
+        # These development-only files are excluded by .pubignore. Resolving
+        # without them verifies the root and bundled example against pub.dev.
+        run: |
+          rm pubspec_overrides.yaml example/pubspec_overrides.yaml
+          flutter pub get --no-example
+          (cd example && flutter pub get)
 
       - name: Publish
-        # `dart pub publish` (not `flutter pub publish`) — this is
-        # dart-lang's canonical automated-publishing invocation. The
-        # earlier `flutter pub` choice was because dart pub refuses to
-        # resolve a Flutter-SDK-pinned package, but `--skip-validation`
-        # skips the resolution step that throws. Going through dart pub
-        # removes one layer of indirection between the OIDC env vars
-        # (`ACTIONS_ID_TOKEN_REQUEST_*`, injected by `id-token: write`)
-        # and the pub binary that uses them. 2-min cap so an OAuth
-        # fallback fails fast instead of waiting on a prompt nobody
-        # will answer.
+        # Flutter sets FLUTTER_ROOT for pub's SDK dependency validation.
+        # setup-dart has already registered the temporary pub.dev credential.
         timeout-minutes: 2
-        run: dart pub publish --force --skip-validation
+        run: flutter pub publish --force
