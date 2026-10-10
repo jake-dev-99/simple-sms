@@ -18,24 +18,18 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.MediaStore
 import android.provider.Telephony
-import android.provider.Telephony.BaseMmsColumns.MESSAGE_BOX_INBOX
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.ContextCompat
-import io.simplezen.simple_sms.mms.codec.EncodedStringValue
-import io.simplezen.simple_sms.mms.codec.SendReq
 import io.simplezen.simple_sms.mms.sending.Message
 import io.simplezen.simple_sms.mms.sending.Settings
 import io.simplezen.simple_sms.mms.sending.Transaction
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_sms.messaging.MmsDatabaseWriter.insertSms
-import io.simplezen.simple_sms.models.MmsObject
-import io.simplezen.simple_sms.models.MmsPart
 import io.simplezen.simple_sms.queries.Query
 import io.simplezen.simple_sms.queries.QueryObj
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 // Define these constants here or import them
@@ -133,10 +127,26 @@ internal fun routeMessage(hasAttachments: Boolean, recipientCount: Int): Outboun
 internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
     explicit ?: default()
 
+/** A synchronous initiation error must settle any row already persisted. */
+internal fun markPersistedSendFailed(context: Context, uri: Uri) {
+    val values = ContentValues().apply {
+        when (uri.authority) {
+            Telephony.Mms.CONTENT_URI.authority ->
+                put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_FAILED)
+            Telephony.Sms.CONTENT_URI.authority ->
+                put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED)
+            else -> throw IllegalArgumentException("Unexpected message URI: $uri")
+        }
+    }
+    check(context.contentResolver.update(uri, values, null, null) == 1) {
+        "Failed to mark persisted message as failed: $uri"
+    }
+}
+
 class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     private lateinit var context: Context // Use application context for receivers
     private var messageStatusReceiver: OutboundMessagingReceiver? = null
-    private val channelResultMap = ConcurrentHashMap<Int, MessageRequestDetails>()
+    private val channelResultMap = ConcurrentHashMap<Uri, MessageRequestDetails>()
 
     data class MessageRequestDetails(
             val threadId: Long,
@@ -146,12 +156,9 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val attachmentPaths: List<String>? = null,
             var sentPendingIntent: PendingIntent?,
             var deliveredPendingIntent: PendingIntent?,
-            val flutterResult: MethodChannel.Result
+            val flutterResult: MethodChannel.Result,
+            var messageUri: Uri? = null,
     )
-
-    companion object {
-        var msgId = UUID.randomUUID().mostSignificantBits.toInt()
-    }
 
     // Constructor used by Flutter plugin registration
     constructor(context: Context) : this() {
@@ -224,7 +231,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 //
                 // Successful sends are ACKed asynchronously by the
                 // OutboundMessagingReceiver broadcast handler, which reads
-                // channelResultMap[msgId].flutterResult.
+                // channelResultMap[messageUri].flutterResult.
                 try {
                     val route =
                             routeMessage(
@@ -239,9 +246,22 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                 sendSms(smsManager = smsManager, requestDetails = requestDetails)
                     }
                 } catch (e: Exception) {
-                    channelResultMap.remove(msgId)
+                    requestDetails.messageUri?.let { uri ->
+                        channelResultMap.remove(uri)
+                        try {
+                            markPersistedSendFailed(context, uri)
+                        } catch (stateError: Exception) {
+                            Log.e(TAG, "Failed to settle message after send initiation error: $uri", stateError)
+                            e.addSuppressed(stateError)
+                        }
+                    }
                     val (code, message, details) = mapSendException(e)
-                    result.error(code, message, details)
+                    val errorDetails = if (e.suppressed.isEmpty()) details else mapOf(
+                        "sendDetails" to details,
+                        "messageUri" to requestDetails.messageUri?.toString(),
+                        "providerStateErrors" to e.suppressed.map { it.message },
+                    )
+                    result.error(code, message, errorDetails)
                 }
             }
             else -> result.notImplemented()
@@ -319,11 +339,13 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                                                         Telephony.Sms.TYPE,
                                                         Telephony.Sms.MESSAGE_TYPE_FAILED
                                                 )
-                                        eventType == SENTMMS_ACTION ->
-                                                put(
-                                                        Telephony.Mms.Sent.STATUS,
-                                                        Telephony.TextBasedSmsColumns.STATUS_COMPLETE
-                                                )
+                                        eventType == SENTMMS_ACTION -> {
+                                            put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_SENT)
+                                            put(Telephony.Mms.STATUS, Telephony.Sms.STATUS_COMPLETE)
+                                            put(Telephony.Mms.READ, 1)
+                                            put(Telephony.Mms.SEEN, 1)
+                                            put(Telephony.Mms.DATE_SENT, System.currentTimeMillis() / 1000L)
+                                        }
                                         else ->
                                                 put(
                                                         Telephony.Sms.Sent.STATUS,
@@ -376,8 +398,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                         }
 
                         val finalMessageStr = AnySerializer.encodeToString(finalMessage)
-                        val flutterResult = channelResultMap[messageId]?.flutterResult
-                        channelResultMap.remove(messageId) // Clean up stored result
+                        val flutterResult = channelResultMap.remove(messageUri)?.flutterResult
                         flutterResult?.success(finalMessageStr)
                     }
 
@@ -442,8 +463,9 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             Log.d("OutboundMessagingHandler", "Sending SMS to ${requestDetails.addresses.size} recipient(s)")
             val newSms = insertSms(context, requestDetails)
             val newUri = newSms["uri"] as Uri
-            msgId = ContentUris.parseId(newUri).toInt()
-            channelResultMap[msgId] = requestDetails
+            val msgId = ContentUris.parseId(newUri).toInt()
+            requestDetails.messageUri = newUri
+            channelResultMap[newUri] = requestDetails
 
             val outboundIntent =
                     Intent(SENTSMS_ACTION)
@@ -535,123 +557,11 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private fun sendMms(smsManager: SmsManager, requestDetails: MessageRequestDetails) {
         try {
-            // Create a message with attachments
-            var i = 0
-
-            val parts = mutableListOf<MmsPart>()
-            // Build Message Parts
-            val bodyParts = smsManager.divideMessage(requestDetails.body)
-            for (bodyPart in bodyParts) {
-                parts.add(
-                        MmsPart(
-                                seq = i,
-                                mimeType = "text/plain",
-                                filename = "$i.txt",
-                                contentLocation = "$i.txt",
-                                text = bodyPart,
-                                size = bodyPart.length.toLong(),
-                                contentId = "",
-                                contentDisposition = "",
-                                name = "",
-                                charset = 106,
-                                data = byteArrayOf()
-                        )
-                )
-                i++
-            }
-
-            // Build Attachment Parts
-            val attachments = requestDetails.attachmentPaths ?: emptyList<String>()
-            for (attachment in attachments) {
-                val mimeType = getMimeType(attachment)
-                val file = File(attachment)
-                // CRITICAL: never substitute empty bytes here. A failed
-                // read must abort the send so the recipient never sees
-                // a zero-byte attachment. The throw propagates to the
-                // sendMms outer catch which maps it to a typed
-                // PlatformException for the Dart UI.
-                val bytes = try {
-                    file.readBytes()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to read attachment $attachment for DB record: ${e.message}", e)
-                    throw AttachmentUnreadableException(attachment, e)
-                }
-                val name = file.name
-                parts.add(
-                        MmsPart(
-                                seq = i,
-                                mimeType = mimeType ?: "application/octet-stream",
-                                filename = name,
-                                contentLocation = name,
-                                text = "",
-                                size = bytes.size.toLong(),
-                                contentId = "",
-                                contentDisposition = "",
-                                name = name,
-                                charset = 106,
-                                data = bytes
-                        )
-                )
-                i++
-            }
-
-            // Build MMS
-            val threadId = requestDetails.threadId
-            val mms =
-                    MmsObject(
-                            contentLocation = EncodedStringValue(""),
-                            status = Telephony.Sms.STATUS_PENDING,
-                            read = 0,
-                            seen = 1,
-                            date = System.currentTimeMillis(),
-                            messageBox = MESSAGE_BOX_INBOX,
-                            messageSize = 0,
-                            priority = 0,
-                            subscriptionId = smsManager.subscriptionId,
-                            textOnly = if (attachments.isEmpty()) 1 else 0,
-                            threadId = threadId
-                    )
-
-            val newMms = MmsDatabaseWriter.insertMms(context, mms).toMutableMap()
-            msgId = newMms["_id"].toString().toLong().toInt()
-            channelResultMap[msgId] = requestDetails
-
-            // Build AddressesParts
-            val newAddrs: List<Map<String, Any?>> =
-                    MmsDatabaseWriter.insertMmsAddrs(
-                            context,
-                            msgId.toLong(),
-                            setOf(),
-                            requestDetails.addresses.toSet(),
-                            "",
-                            106
-                    )
-            val newParts: List<Map<String, Any?>> =
-                    MmsDatabaseWriter.insertMmsParts(context, msgId.toLong(), parts)
-
-            // Preserve raw values when formatNumber can't normalize
-            // (shortcodes, alphanumeric senders). Downstream comparisons
-            // tolerate both forms via PhoneNumberUtils.areSamePhoneNumber.
-            val cleanedRecipients = requestDetails.addresses.map { formatNumber(context, it) ?: it }
-
-            newMms["parts"] = newParts
-            newMms["addrs"] = newAddrs
-
-            val sendReq =
-                    SendReq().apply {
-                        // Address headers – *one* EncodedStringValue per recipient
-                        val encoded =
-                                cleanedRecipients.map { EncodedStringValue(it) }.toTypedArray()
-                        // `to`/`date` are now read-only `val` getters on the Kotlin
-                        // MultimediaMessagePdu base, so set them via the methods (the
-                        // getX/setX pair the Java class exposed) rather than property
-                        // assignment — behaviour-identical (setTo is SendReq's own).
-                        setTo(encoded)
-                        setDate(System.currentTimeMillis() / 1000L)
-                    }
-
+            // Persist the composed PDU once in Transaction. The result callback
+            // is bound below to that exact row, including its wire attachments.
             val sendSettings = Settings()
             sendSettings.useSystemSending = true
+            sendSettings.setSubscriptionId(smsManager.subscriptionId)
 
             val message: Message =
                     Message(
@@ -692,19 +602,13 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 }
             }
 
-            val outboundIntent =
-                    Intent(SENTMMS_ACTION)
-                            .apply {
-                                putExtra("messageID", msgId)
-                                putExtra("message", AnySerializer.encodeToString(newMms))
-                                putExtra("parts", AnySerializer.encodeToString(newParts))
-                                putExtra("addrs", AnySerializer.encodeToString(newAddrs))
-                                putExtra("uri", "${Telephony.Mms.CONTENT_URI}/$msgId")
-                            }
-                            .also { it.`package` = context.packageName }
-
+            val outboundIntent = Intent(SENTMMS_ACTION).setPackage(context.packageName)
             val sendTransaction = Transaction(context, sendSettings)
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
+            sendTransaction.setMmsPersistedCallback { uri ->
+                requestDetails.messageUri = uri
+                channelResultMap[uri] = requestDetails
+            }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
         } catch (e: AttachmentUnreadableException) {
             // The send is aborted before any wire activity — recipient

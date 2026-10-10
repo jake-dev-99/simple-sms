@@ -188,6 +188,11 @@ does not ship a carrier APN table, `mms_config.xml`, or an 800 KiB size override
 The Verizon content-location completion in `resolveVerizonDownloadUrl` remains
 part of inbound notification handling and is covered by native unit tests.
 
+Outbound MMS persists the composed PDU once. Its send result reads that same
+record, including the stored parts and addresses, through a canonical MMS URI.
+Successful sends move it to the sent box; failures move it to the failed box.
+The PDU type stays `SEND_REQ`, while the message box determines send status.
+
 With `simple-permissions` and `simple-query` checked out beside this repo, run
 the local gates before pushing:
 

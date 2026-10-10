@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-// Modified by Simple Zen: Kotlin port maintained in the first-party MMS namespace (UNFY-123).
+// Modified by Simple Zen: Kotlin port maintained in the first-party MMS namespace,
+// with one persisted MMS row bound to the first-party send result (UNFY-123).
 
 package io.simplezen.simple_sms.mms.sending
 
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.ContentValues
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -58,9 +60,19 @@ import java.util.Random
 import kotlin.math.abs
 import kotlin.math.ceil
 
+/** Canonical row URI remains queryable after outbox -> sent/failed transitions. */
+internal fun bindMmsSentIntent(intent: Intent, persistedUri: Uri): Uri {
+    val id = ContentUris.parseId(persistedUri)
+    val recordUri = ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, id)
+    intent.putExtra("messageID", id.toInt())
+    intent.putExtra("uri", recordUri.toString())
+    return recordUri
+}
+
 /**
  * Processes transaction requests for sending SMS/MMS. First-party Kotlin port of
- * the vendored Klinker `Transaction`; behaviour preserved.
+ * the vendored Klinker `Transaction`. The first-party adapter binds the result
+ * to its single persisted PDU and propagates initiation errors (UNFY-123).
  *
  * Provider access: all **reads** route through `simple_query`
  * (`Query`/`QueryObj` → `ContentQuery`) per the layering contract — the `_id`
@@ -78,6 +90,7 @@ class Transaction(private val context: Context, settings: Settings) {
     private var explicitSentSmsReceiver: Intent? = null
     private var explicitSentMmsReceiver: Intent? = null
     private var explicitDeliveredSmsReceiver: Intent? = null
+    private var onMmsPersisted: ((Uri) -> Unit)? = null
 
     private var saveMessage = true
 
@@ -152,6 +165,12 @@ class Transaction(private val context: Context, settings: Settings) {
 
     fun setExplicitBroadcastForSentMms(intent: Intent): Transaction {
         explicitSentMmsReceiver = intent
+        return this
+    }
+
+    /** Bind the caller's result to the same MMS row that is composed and sent. */
+    internal fun setMmsPersistedCallback(callback: (Uri) -> Unit): Transaction {
+        onMmsPersisted = callback
         return this
     }
 
@@ -431,7 +450,7 @@ class Transaction(private val context: Context, settings: Settings) {
                     "Settings.useSystemSending=false is no longer supported.",
             )
         }
-        sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri)
+        sendMmsThroughSystem(context, subject, data, fromAddress, addresses, explicitSentMmsReceiver, save, messageUri, onMmsPersisted)
     }
 
     class MessageInfo {
@@ -507,6 +526,7 @@ class Transaction(private val context: Context, settings: Settings) {
             explicitSentMmsReceiver: Intent?,
             save: Boolean,
             existingMessageUri: Uri?,
+            onPersisted: ((Uri) -> Unit)?,
         ) {
             try {
                 val fileName = "send." + abs(Random().nextLong()).toString() + ".dat"
@@ -543,11 +563,18 @@ class Transaction(private val context: Context, settings: Settings) {
                     intent = explicitSentMmsReceiver
                 }
 
+                if (onPersisted != null) {
+                    // The first-party sender owns the result callback. Its URI,
+                    // parts and addresses must all refer to this persisted PDU.
+                    val recordUri = bindMmsSentIntent(intent, requireNotNull(messageUri))
+                    onPersisted(recordUri)
+                }
+
                 intent.putExtra(MmsSentReceiver.EXTRA_CONTENT_URI, messageUri.toString())
                 intent.putExtra(MmsSentReceiver.EXTRA_FILE_PATH, mSendFile.path)
                 // Android 12+ requires FLAG_IMMUTABLE / FLAG_MUTABLE (see SMS-side note).
                 val pendingIntent = PendingIntent.getBroadcast(
-                    context, 0, intent,
+                    context, ContentUris.parseId(requireNotNull(messageUri)).toInt(), intent,
                     PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 
@@ -615,6 +642,7 @@ class Transaction(private val context: Context, settings: Settings) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "error using system sending method", e)
+                throw e
             }
         }
 
