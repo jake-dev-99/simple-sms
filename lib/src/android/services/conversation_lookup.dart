@@ -195,8 +195,9 @@ class ConversationLookup {
   /// query ([AttachmentExtractor.listMmsPartsForMessages]). The bare
   /// `content://mms` list query doesn't join the part table, so without this
   /// the MMS body is empty for the conversation-list preview. Best-effort: a
-  /// batch failure leaves parts null (empty preview) rather than failing the
-  /// whole list (UNFY-250).
+  /// batch failure leaves each latest MMS with the empty parts list its bare
+  /// row carries (empty preview) rather than failing the whole list
+  /// (UNFY-250).
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
   ) async {

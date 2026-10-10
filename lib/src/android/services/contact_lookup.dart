@@ -16,9 +16,8 @@ import '../models/people/contactables.dart';
 /// LookupService keeps its public API for backward-compat — every
 /// method on this class is reached via [LookupService] delegation.
 ///
-/// **Future work — `SimpleQuery` injection.** Documented at
-/// [AttachmentExtractor]: deferred until a plugin-wide DI pass
-/// flips every `SimpleQuery.instance` callsite at once.
+/// **Testing.** Through the `SimpleQueryPlatform` seam documented at
+/// [AttachmentExtractor]; no `SimpleQuery` injection needed.
 
 // File-private content URIs. Single-site source of truth so future
 // AOSP provider URI changes are one edit.

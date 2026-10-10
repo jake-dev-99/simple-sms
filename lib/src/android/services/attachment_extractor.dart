@@ -41,13 +41,11 @@ BinaryRequest mmsPartBinaryRequest(int partId) => BinaryRequest(
 /// LookupService keeps its public API for backward-compat — it now
 /// delegates to [AttachmentExtractor.instance].
 ///
-/// **Future work — `SimpleQuery` injection.** Sourcery review on PR
-/// #89 suggested taking `SimpleQuery` as a constructor parameter so
-/// this class can be unit-tested with a fake. Deferred because the
-/// rest of the plugin (LookupService, AndroidMessaging, every other
-/// `SimpleQuery.instance` callsite) uses the singleton directly;
-/// flipping just AttachmentExtractor would be inconsistent. Tracked
-/// for a future plugin-wide DI pass.
+/// **Testing.** `SimpleQuery.instance` delegates every read to
+/// `SimpleQueryPlatform.instance`, so tests swap that one instance for
+/// in-memory provider tables instead of injecting `SimpleQuery` here
+/// (`test/support/fake_content_provider_platform.dart`, UNFY-253). The
+/// same seam covers every other `SimpleQuery.instance` callsite.
 class AttachmentExtractor {
   AttachmentExtractor._();
 

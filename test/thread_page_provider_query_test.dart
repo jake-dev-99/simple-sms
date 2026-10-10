@@ -2,29 +2,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_sms_native/android.dart';
 
+import 'support/fake_content_provider_platform.dart';
+
 void main() {
-  late SimpleQueryPlatform original;
-  late _Provider provider;
+  late FakeContentProviderPlatform provider;
   final at = DateTime.utc(2026, 9, 1, 12);
 
-  setUp(() {
-    original = SimpleQueryPlatform.instance;
-    provider = _Provider();
-    SimpleQueryPlatform.instance = provider;
-  });
-  tearDown(() => SimpleQueryPlatform.instance = original);
+  setUp(() => provider = FakeContentProviderPlatform.install());
 
   test(
     'real query filters and sorting drain same-date, same-id SMS/MMS ties',
     () async {
       // Ascending input deliberately disagrees with the required native order.
-      for (var id = 1; id <= 9; id++) {
-        provider.sms.add(_sms(id, at));
-        provider.mms.add(_mms(id, at));
-      }
-      provider.sms.add(_sms(99, at.subtract(const Duration(seconds: 1))));
-      provider.mms.add({..._mms(100, at), 'm_type': 0x82}); // transport-only
-      provider.sms.add({..._sms(101, at), 'thread_id': 8});
+      _seedThread(
+        provider,
+        sms: [
+          for (var id = 1; id <= 9; id++) _sms(id, at),
+          _sms(99, at.subtract(const Duration(seconds: 1))),
+          {..._sms(101, at), 'thread_id': 8},
+        ],
+        mms: [
+          for (var id = 1; id <= 9; id++) _mms(id, at),
+          {..._mms(100, at), 'm_type': 0x82}, // transport-only
+        ],
+      );
       final lookup = LookupService();
       ThreadPageCursor? cursor;
       final seen = <(SmsMmsType, int)>[];
@@ -46,11 +47,11 @@ void main() {
         (SmsMmsType.sms, 99),
       ]);
       expect(
-        provider.messageQueries.map((q) => q.page?.limit),
+        _messageQueries(provider).map((q) => q.page?.limit),
         everyElement(3),
       );
       expect(
-        provider.hydrated,
+        _hydratedMmsIds(provider),
         unorderedEquals([for (var id = 1; id <= 9; id++) id]),
       );
     },
@@ -60,8 +61,11 @@ void main() {
     'fractional SMS cursor includes older MMS in the same second once',
     () async {
       final smsAt = at.add(const Duration(milliseconds: 500));
-      provider.sms.addAll([_sms(2, smsAt), _sms(1, smsAt)]);
-      provider.mms.add(_mms(7, at));
+      _seedThread(
+        provider,
+        sms: [_sms(2, smsAt), _sms(1, smsAt)],
+        mms: [_mms(7, at)],
+      );
       final lookup = LookupService();
       final first = await lookup.getNormalizedThreadPage(7, limit: 1);
       final second = await lookup.getNormalizedThreadPage(
@@ -73,19 +77,16 @@ void main() {
         (SmsMmsType.sms, 1),
         (SmsMmsType.mms, 7),
       ]);
-      expect(provider.hydrated, [7]);
+      expect(_hydratedMmsIds(provider), [7]);
     },
   );
 
   test('timestamp-only callers keep an exclusive boundary', () async {
-    provider.sms.addAll([
-      _sms(3, at),
-      _sms(2, at.subtract(const Duration(milliseconds: 1))),
-    ]);
-    provider.mms.addAll([
-      _mms(3, at),
-      _mms(2, at.subtract(const Duration(seconds: 1))),
-    ]);
+    _seedThread(
+      provider,
+      sms: [_sms(3, at), _sms(2, at.subtract(const Duration(milliseconds: 1)))],
+      mms: [_mms(3, at), _mms(2, at.subtract(const Duration(seconds: 1)))],
+    );
     final page = await LookupService().getNormalizedThreadPage(
       7,
       limit: 5,
@@ -115,7 +116,7 @@ void main() {
         ),
         throwsArgumentError,
       );
-      expect(provider.messageQueries, isEmpty);
+      expect(_messageQueries(provider), isEmpty);
     },
   );
 }
@@ -134,66 +135,48 @@ Map<String, Object?> _mms(int id, DateTime at) => {
   'read': 1,
 };
 
-// Execute the generated typed queries against small raw provider tables. This
-// exercises MessageLookup's filter/sort translation as well as page assembly.
-class _Provider extends SimpleQueryPlatform {
-  final sms = <Map<String, Object?>>[];
-  final mms = <Map<String, Object?>>[];
-  final messageQueries = <QueryRequest>[];
-  final hydrated = <int>[];
-
-  @override
-  Future<QueryResult> query(QueryRequest request) async {
-    final uri = request.platformData?['contentUri'];
-    if (uri != 'content://sms' && uri != 'content://mms') {
-      if (uri == 'content://mms/part') {
-        hydrated.add(int.parse(request.filters.single.value.toString()));
-      }
-      return const QueryResult(records: []);
-    }
-    messageQueries.add(request);
-    final source = uri == 'content://sms' ? sms : mms;
-    final rows =
-        source
-            .where(
-              (row) => request.filters.every((f) {
-                final value = row[f.field];
-                if (f.operator == QueryFilterOperator.inList) {
-                  return (f.value as List).contains(value.toString());
-                }
-                if (value == null) return false;
-                final comparison = (value as int).compareTo(
-                  int.parse(f.value.toString()),
-                );
-                return switch (f.operator) {
-                  QueryFilterOperator.equals => comparison == 0,
-                  QueryFilterOperator.lessThan => comparison < 0,
-                  QueryFilterOperator.lessThanOrEqual => comparison <= 0,
-                  QueryFilterOperator.greaterThanOrEqual => comparison >= 0,
-                  _ =>
-                    throw UnsupportedError('Unexpected operator ${f.operator}'),
-                };
-              }),
-            )
-            .toList();
-    rows.sort((a, b) {
-      for (final sort in request.sort) {
-        final comparison = (a[sort.field] as int).compareTo(
-          b[sort.field] as int,
-        );
-        if (comparison != 0) {
-          return sort.direction == QuerySortDirection.ascending
-              ? comparison
-              : -comparison;
-        }
-      }
-      return 0;
-    });
-    return QueryResult(
-      records: rows.take(request.page?.limit ?? rows.length).toList(),
-    );
+/// Purpose: seeds every table `getNormalizedThreadPage` reads — the SMS and
+/// MMS rows, plus an empty parts table and an empty address table per MMS row
+/// for the page's hydration reads.
+///
+/// @param provider the installed fake.
+/// @param sms raw `content://sms` rows.
+/// @param mms raw `content://mms` rows.
+/// @returns nothing.
+/// @throws [ArgumentError] when an MMS row has no int `_id`.
+void _seedThread(
+  FakeContentProviderPlatform provider, {
+  required List<Map<String, Object?>> sms,
+  required List<Map<String, Object?>> mms,
+}) {
+  provider
+    ..seed(ProviderUris.sms, sms)
+    ..seed(ProviderUris.mms, mms)
+    ..seed(ProviderUris.mmsParts, const [], columns: const ['mid']);
+  for (final row in mms) {
+    final id = row['_id'];
+    if (id is! int) throw ArgumentError.value(row, 'mms', 'row has no int _id');
+    provider.seed(ProviderUris.mmsAddresses(id), const []);
   }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+/// Purpose: lists the paged SMS and MMS list queries the lookup issued.
+///
+/// @param provider the installed fake.
+/// @returns the `content://sms` then `content://mms` requests.
+/// @throws nothing.
+List<QueryRequest> _messageQueries(FakeContentProviderPlatform provider) => [
+  ...provider.requestsTo(ProviderUris.sms),
+  ...provider.requestsTo(ProviderUris.mms),
+];
+
+/// Purpose: lists the MMS ids whose parts were hydrated, one per
+/// `mid = ?` parts query.
+///
+/// @param provider the installed fake.
+/// @returns the hydrated MMS ids, in request order.
+/// @throws [FormatException] when a parts query binds a non-integer `mid`.
+List<int> _hydratedMmsIds(FakeContentProviderPlatform provider) => [
+  for (final request in provider.requestsTo(ProviderUris.mmsParts))
+    int.parse(request.filters.single.value.toString()),
+];
