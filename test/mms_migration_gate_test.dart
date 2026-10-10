@@ -51,6 +51,13 @@ void main() {
     });
   }
 
+  test('rejects Java-named paths regardless of their file type', () async {
+    Directory('${source.path}/Legacy.java').createSync();
+    final result = await check();
+    expect(result.exitCode, 1);
+    expect(result.stderr, contains('Legacy.java'));
+  });
+
   test('fails when the source directory is missing', () async {
     final result = await Process.run('bash', [gate, '${source.path}/missing']);
     expect(result.exitCode, 2);

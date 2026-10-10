@@ -6,7 +6,7 @@ repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source_root="${1:-$repository_root/android/src/main}"
 [[ -d "$source_root" ]] || { echo "Missing Android source directory: $source_root" >&2; exit 2; }
 
-remnants="$(find "$source_root" -type f \( -name '*.java' -o -name 'mms_config.xml' -o -name 'apns.xml' \) -print)"
+remnants="$(find "$source_root" \( -name '*.java' -o -name 'mms_config.xml' -o -name 'apns.xml' \) -print)"
 if [[ -n "$remnants" ]]; then
     echo "MMS migration contains obsolete source or carrier resources:" >&2
     echo "$remnants" >&2
