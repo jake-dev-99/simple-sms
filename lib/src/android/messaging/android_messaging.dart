@@ -25,9 +25,13 @@ class AndroidMessaging {
   static AndroidMessaging? _instance;
 
   /// Callback invoked for each incoming MMS message.
+  /// A void callback acknowledges successful completion. Boolean callbacks
+  /// preserve their explicit acknowledgement, including `false`.
   Function(Mms) mmsCallback;
 
   /// Callback invoked for each incoming SMS message.
+  /// A void callback acknowledges successful completion. Boolean callbacks
+  /// preserve their explicit acknowledgement, including `false`.
   Function(Sms) smsCallback;
 
   AndroidMessaging._internal({
@@ -123,9 +127,9 @@ class AndroidMessaging {
     try {
       switch (methodCall.method) {
         case 'receiveInboundSmsMessage':
-          return await smsCallback(Sms.fromRaw(messageData));
+          return await _invokeCallback(smsCallback, Sms.fromRaw(messageData));
         case 'receiveInboundMmsMessage':
-          return await mmsCallback(Mms.fromRaw(messageData));
+          return await _invokeCallback(mmsCallback, Mms.fromRaw(messageData));
         default:
           throw PlatformException(
             code: 'UNKNOWN_METHOD',
@@ -151,5 +155,17 @@ class AndroidMessaging {
         },
       );
     }
+  }
+
+  /// Waits for the handler before acknowledging delivery to Android.
+  /// Exceptions propagate through the existing platform-error contract.
+  Future<bool> _invokeCallback<T>(Function(T) callback, T message) async {
+    final result = await callback(message);
+    if (result == null) return true;
+    if (result is bool) return result;
+    throw StateError(
+      'Inbound callbacks must return void or bool, synchronously or '
+      'asynchronously; received ${result.runtimeType}.',
+    );
   }
 }

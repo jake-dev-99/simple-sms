@@ -169,6 +169,11 @@ void initializeApp() {
 
 See `example/lib/background_example.dart` for the full pattern.
 
+Inbound callbacks may return `void` or `bool`, synchronously or asynchronously.
+The plugin waits for completion, acknowledges a successful void callback, and
+preserves an explicit Boolean acknowledgement. Callback exceptions remain
+visible through `INBOUND_MESSAGE_PROCESSING_ERROR`.
+
 ## Android implementation and validation
 
 The retained SMS/MMS code is maintained as Kotlin under
