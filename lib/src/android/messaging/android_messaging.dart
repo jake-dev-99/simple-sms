@@ -88,7 +88,12 @@ class AndroidMessaging {
   /// ```
   ///
   /// Throws a [PlatformException] if the device lacks telephony capability
-  /// or if sending fails.
+  /// or if sending fails. Code `MESSAGE_ROW_MISSING` means the carrier
+  /// reported a send outcome but the message row could not be read back.
+  /// Its `details['sent']` is the carrier result the send was settled on
+  /// (`false` means the send failed); for a multipart SMS that is the first
+  /// part's result, as for a successful send. `details` also carry
+  /// `messageUri`, `eventType`, `resultCode`, and `statusString`.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
   }) async {

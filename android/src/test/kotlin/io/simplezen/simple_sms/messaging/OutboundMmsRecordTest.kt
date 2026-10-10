@@ -77,10 +77,7 @@ class OutboundMmsRecordTest {
             deliveredPendingIntent = null,
             flutterResult = result,
         )
-        val field = OutboundMessagingHandler::class.java.getDeclaredField("channelResultMap")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val requests = field.get(handler) as MutableMap<Uri, OutboundMessagingHandler.MessageRequestDetails>
+        val requests = handler.channelResultMap
         requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {

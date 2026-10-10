@@ -20,6 +20,7 @@ import android.provider.MediaStore
 import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import io.simplezen.simple_sms.mms.sending.Message
 import io.simplezen.simple_sms.mms.sending.Settings
@@ -53,6 +54,10 @@ const val ERR_ATTACHMENT_UNREADABLE = "ATTACHMENT_UNREADABLE"
 const val ERR_INVALID_MESSAGE = "INVALID_MESSAGE"
 const val ERR_PERMISSION_DENIED = "PERMISSION_DENIED"
 const val ERR_SEND_INITIATION = "SEND_INITIATION_ERROR" // generic fallback
+// The send-status broadcast arrived, but the message row could not be read
+// back to build the ack. Details carry the carrier outcome (`sent`) so Dart
+// can tell an accepted send from a failed one (UNFY-160).
+const val ERR_MESSAGE_ROW_MISSING = "MESSAGE_ROW_MISSING"
 
 /**
  * Thrown when an outbound MMS attachment file cannot be read. Surfaces
@@ -66,13 +71,34 @@ class AttachmentUnreadableException(
 ) : RuntimeException("Cannot read attachment '$attachmentPath': ${cause.message}", cause)
 
 /**
- * Maps an exception thrown from [sendSms] / [sendMms] into the typed
- * `(code, message, details)` triple consumed by [MethodChannel.Result.error].
+ * Raised on the send-status broadcast path when the message row cannot be
+ * read back to build the ack — deleted between the status `update` and the
+ * re-read, or the provider returned no cursor (the two are indistinguishable
+ * through `simple_query`). Mirrors the missing-just-persisted-row check in
+ * [InboundMmsPersister]: the pending send is settled with an error, never
+ * acked as a success carrying only the URI (UNFY-160).
+ *
+ * The carrier outcome is real regardless of the row: [sent] is false only
+ * when the SENT broadcast reported a failure. [eventType] disambiguates
+ * [resultCode], whose enum differs between SMS and MMS broadcasts.
+ */
+internal class MessageRowMissingException(
+    val messageUri: Uri,
+    val eventType: String,
+    val resultCode: Int,
+    val statusString: String,
+    val sent: Boolean,
+) : IllegalStateException("Message row missing on read-back after $eventType: $messageUri")
+
+/**
+ * Maps an exception thrown from [sendSms] / [sendMms], or raised by the
+ * send-status ack path, into the typed `(code, message, details)` triple
+ * consumed by [MethodChannel.Result.error].
  *
  * Single source of truth for the outbound exception → Dart error
- * contract — referenced by the [onMethodCall] catch block. Add new
- * exception types here when introducing new error codes; do not
- * inline new mappings at the call site.
+ * contract — referenced by the [onMethodCall] catch block and the
+ * send-status receiver. Add new exception types here when introducing new
+ * error codes; do not inline new mappings at the call site.
  */
 internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when (e) {
     is AttachmentUnreadableException -> Triple(
@@ -81,6 +107,17 @@ internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when
         mapOf(
             "attachmentPath" to e.attachmentPath,
             "cause" to (e.cause?.message ?: e.message ?: "unknown")
+        )
+    )
+    is MessageRowMissingException -> Triple(
+        ERR_MESSAGE_ROW_MISSING,
+        e.message ?: "Message row missing on read-back: ${e.messageUri}",
+        mapOf(
+            "messageUri" to e.messageUri.toString(),
+            "eventType" to e.eventType,
+            "resultCode" to e.resultCode,
+            "statusString" to e.statusString,
+            "sent" to e.sent,
         )
     )
     is SecurityException -> Triple(
@@ -146,7 +183,8 @@ internal fun markPersistedSendFailed(context: Context, uri: Uri) {
 class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     private lateinit var context: Context // Use application context for receivers
     private var messageStatusReceiver: OutboundMessagingReceiver? = null
-    private val channelResultMap = ConcurrentHashMap<Uri, MessageRequestDetails>()
+    @VisibleForTesting
+    internal val channelResultMap = ConcurrentHashMap<Uri, MessageRequestDetails>()
 
     data class MessageRequestDetails(
             val threadId: Long,
@@ -362,6 +400,13 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             )
                         }
 
+                        // Only a pending send needs an ack. Later broadcasts for the same
+                        // message (multipart parts, delivery reports) and other handler
+                        // instances' receivers have nothing to settle, so skip the re-read.
+                        val flutterResult =
+                                channelResultMap.remove(messageUri)?.flutterResult
+                                        ?: return@OutboundMessagingReceiver
+
                         // Read the just-updated row back through simple_query (Rule 1).
                         // The manual FIELD_TYPE_* walk this replaces was an inlined
                         // re-implementation of ContentQuery.drainRows; the
@@ -369,12 +414,25 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                         // Message rows (content://sms/N, content://mms/N) are INTEGER/TEXT
                         // only — no BLOB columns — so ContentQuery's BLOB-coalescing is
                         // moot here (verified vs the AOSP sms/pdu schema + codec; UNFY-156).
-                        val finalMessage: MutableMap<String, Any?> =
+                        val row =
                                 Query(context)
                                         .query(QueryObj(contentUri = messageUri.toString()))
                                         .firstOrNull()
-                                        ?.toMutableMap()
-                                        ?: mutableMapOf()
+                        if (row == null) {
+                            val missing =
+                                    MessageRowMissingException(
+                                            messageUri = messageUri,
+                                            eventType = eventType,
+                                            resultCode = resultCode,
+                                            statusString = statusString,
+                                            sent = !sendFailed,
+                                    )
+                            Log.w(TAG, "${missing.message} (resultCode=$resultCode, $statusString)")
+                            val (code, message, details) = mapSendException(missing)
+                            flutterResult.error(code, message, details)
+                            return@OutboundMessagingReceiver
+                        }
+                        val finalMessage: MutableMap<String, Any?> = row.toMutableMap()
 
                         finalMessage["uri"] = messageUri.toString()
                         if (eventType == SENTMMS_ACTION) {
@@ -397,9 +455,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                             finalMessage["recipients"] = Query(context).query(addrQueryObj)
                         }
 
-                        val finalMessageStr = AnySerializer.encodeToString(finalMessage)
-                        val flutterResult = channelResultMap.remove(messageUri)?.flutterResult
-                        flutterResult?.success(finalMessageStr)
+                        flutterResult.success(AnySerializer.encodeToString(finalMessage))
                     }
 
             val intentFilter =
