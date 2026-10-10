@@ -47,6 +47,8 @@ on:
       # UNFY-162 closes).
       - 'pubspec.yaml'
       - 'pubspec_overrides.yaml'
+      - 'example/pubspec.yaml'
+      - 'example/pubspec_overrides.yaml'
       - '.github/workflows/verify-native.yml'
   # Manual override for re-running the native gate against a specific ref.
   workflow_dispatch:

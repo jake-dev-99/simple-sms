@@ -80,7 +80,7 @@ so build once to inject the wrapper + `local.properties`, then test:
 
 On CI, the Dart gate (`verify.yml`) runs per-PR, and a path-gated **PR-time**
 native gate — `verify-native.yml`, triggered by `android/**`, the example
-Android project, and the `pubspec*.yaml` manifests — now runs the native build +
+Android project, and root/example dependency manifests — now runs the native build +
 unit tests on **every PR that touches the native side** (UNFY-162). The *full*
 APK build still also runs **at tag time** as the pre-publish gate in `deploy.yml`
 (matching `verify.yml`'s own header). CI enforces this now, but the local native
@@ -114,6 +114,11 @@ merges, the **Cut Release** workflow ([`release.yml`](.github/workflows/release.
 manual `workflow_dispatch`) tags the commit, and the resulting tag push
 fires [`deploy.yml`](.github/workflows/deploy.yml) (OIDC pub.dev publish).
 See [`doc/RELEASE.md`](doc/RELEASE.md).
+
+Release validation must resolve the root package and bundled example against
+pub.dev, without `pubspec_overrides.yaml` files. Local sibling builds do not
+prove published compatibility. The MMS migration keeps its public contracts,
+so its release is a minor bump; device send/receive regression must pass first.
 
 ## What NOT to do (binding rulings)
 

@@ -34,43 +34,6 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
 
-dependency_overrides:
-  # Force path resolution of simple_permissions_native + its federated
-  # platform packages, and simple_query. Overriding only the facade
-  # root isn't enough — Flutter's plugin-loader registers Gradle
-  # project paths per federated platform package, so a pub.dev pull
-  # of simple_permissions_android (1.2.0) would end up on the
-  # classpath alongside the local facade (1.4.0) and you'd get
-  # "unresolved reference" on new Kotlin API (PermissionGuards).
-  simple_permissions_native:
-    path: ../../simple-permissions
-  simple_permissions_platform_interface:
-    path: ../../simple-permissions/packages/simple_permissions_platform_interface
-  simple_permissions_android:
-    path: ../../simple-permissions/packages/simple_permissions_android
-  simple_permissions_ios:
-    path: ../../simple-permissions/packages/simple_permissions_ios
-  simple_permissions_macos:
-    path: ../../simple-permissions/packages/simple_permissions_macos
-  simple_permissions_web:
-    path: ../../simple-permissions/packages/simple_permissions_web
-  simple_query:
-    path: ../../simple-query/packages/simple_query
-  simple_query_platform_interface:
-    path: ../../simple-query/packages/simple_query_platform_interface
-  simple_query_android:
-    path: ../../simple-query/packages/simple_query_android
-  simple_query_ios:
-    path: ../../simple-query/packages/simple_query_ios
-  simple_query_macos:
-    path: ../../simple-query/packages/simple_query_macos
-  simple_query_linux:
-    path: ../../simple-query/packages/simple_query_linux
-  simple_query_windows:
-    path: ../../simple-query/packages/simple_query_windows
-  simple_query_shared:
-    path: ../../simple-query/packages/simple_query_shared
-
 dev_dependencies:
   integration_test:
     sdk: flutter

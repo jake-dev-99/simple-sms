@@ -232,6 +232,21 @@ automated device suite or a provider-inspection screen. Record actual device
 results separately from JVM/Dart test results; no Samsung/Verizon sign-off is
 implied by a successful build or package dry-run.
 
+## Release requirements
+
+The MMS migration preserves the public Dart API and channel contracts, so the
+next release uses a **minor** bump (`0.5.1` to `0.6.0`). The Cut Release workflow
+owns the version and tag; follow [Release flow](doc/RELEASE.md) after the device
+regression and code review pass.
+
+Local sibling overrides validate development sources, not the published
+dependency graph. Release and publish workflows resolve the package and
+bundled example without those overrides. `simple_query ^0.2.2` is required for
+the native `ContentQuery` API; published `0.2.0` lacks it and also has an
+incompatible permissions constraint. Publish the required sibling versions
+before cutting this release. Do not lower the constraint or bypass dependency
+validation to make publication succeed.
+
 ## Acknowledgements
 
 The Android SMS/MMS internals contain Kotlin ports and adaptations of

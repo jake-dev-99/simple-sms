@@ -29,14 +29,23 @@ publishing) runs on **tag push**, not on the merge.
    ([`release.yml`](../.github/workflows/release.yml)) on `main` via
    the GitHub Actions UI (`workflow_dispatch`). Pick the bump
    (`patch` / `minor` / `major`). The workflow:
+   - Resolves root and example dependencies against pub.dev, without local
+     sibling overrides. An unpublished or incompatible dependency stops the
+     workflow before it creates a release commit or tag.
    - Bumps `pubspec.yaml` per the selected semver level.
    - Generates a `CHANGELOG.md` entry from git log since the last tag.
    - Commits the bump + entry, tags the commit, pushes both.
 3. The tag push fires
    [`deploy.yml`](../.github/workflows/deploy.yml), which verifies the
-   tag version matches `pubspec.yaml` and runs `dart pub publish
-   --force`. pub.dev authenticates via OIDC — no long-lived
-   credentials.
+   tag version matches `pubspec.yaml`, resolves published dependencies again,
+   and runs `flutter pub publish --force` with validation enabled.
+   `dart-lang/setup-dart` configures pub.dev's temporary OIDC credential;
+   Flutter supplies the SDK used by the package.
+
+For the first-party MMS migration (UNFY-123), the public Dart API and channel
+contracts remain stable: select **minor** (`0.5.1` → `0.6.0`). Complete the
+Samsung/Verizon send-and-receive regression before cutting the release, then
+bump Unify's dependency only after the version is available on pub.dev.
 
 The old `auto-tag.yml` flow was retired — tags only exist now when a
 human deliberately invokes this workflow.
@@ -53,12 +62,18 @@ simple-sms is a single-package repo (not federated):
 
 Before the first tag-triggered release, configure pub.dev:
 
-1. Visit `https://pub.dev/packages/simple_sms_native/admin`.
-2. Enable **Automated publishing** → *Publishing from GitHub Actions*.
-3. Fill in:
+1. If the package does not exist yet, an authorized uploader must publish its
+   first version interactively with `flutter pub publish` from the reviewed
+   release commit, without local sibling overrides. Pub.dev cannot automate
+   the creation of a new package.
+2. Visit `https://pub.dev/packages/simple_sms_native/admin`.
+3. Enable **Automated publishing** → *Publishing from GitHub Actions*.
+4. Fill in:
    - **Repository**: `<owner>/simple-sms`
    - **Tag pattern**: `simple_sms_native-v{{version}}`
-4. Save.
+5. Save.
+
+See [Dart's automated publishing instructions](https://dart.dev/tools/pub/automated-publishing).
 
 Without this, `dart pub publish` from the workflow errors with
 `missing OIDC authorization` and the release fails cleanly — the
