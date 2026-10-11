@@ -16,11 +16,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Pins UNFY-241: the stateless action channels are registered on any engine
- * the plugin attaches to — including a headless one with no Activity, such as
- * flutter_local_notifications' notification-action dispatcher — so "Mark Read"
- * from a notification can write native read-state without opening the app.
- * The stateful messaging channel is not part of that set.
+ * Pins UNFY-241: the actions channel is registered by the engine-attach work
+ * every engine runs — including a headless one with no Activity, such as
+ * flutter_local_notifications' notification-action dispatcher — so "Mark
+ * Read" from a notification can write native read-state without opening the
+ * app. The messaging and destructive channels stay off that path, and the
+ * actions channel has a single registration owner.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -51,10 +52,12 @@ class ActionChannelRegistrationTest {
         fun invokeExpectingError(channel: String, call: MethodCall): String {
             val handler = handlers[channel]
             assertNotNull("no handler on $channel", handler)
+            // The codec leaves the encoded buffer positioned at its end; a
+            // real messenger hands the handler a buffer read from the start.
+            val request = StandardMethodCodec.INSTANCE.encodeMethodCall(call)
+            request.rewind()
             var reply: ByteBuffer? = null
-            handler!!.onMessage(StandardMethodCodec.INSTANCE.encodeMethodCall(call)) {
-                reply = it
-            }
+            handler!!.onMessage(request) { reply = it }
             val bytes = reply
             assertNotNull("no reply on $channel", bytes)
             bytes!!.rewind()
@@ -66,21 +69,18 @@ class ActionChannelRegistrationTest {
     }
 
     @Test
-    fun registersOnlyTheStatelessActionChannels() {
+    fun engineAttachRegistersOnlyTheActionsChannel() {
         val messenger = RecordingMessenger()
 
-        SimpleSmsPlugin.initializeActionChannelsStatic(context, messenger)
+        SimpleSmsPlugin().attachActionsChannel(context, messenger)
 
-        assertEquals(
-            setOf(SimpleSmsPlugin.ACTIONS_CHANNEL, SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL),
-            messenger.handlers.keys,
-        )
+        assertEquals(setOf(SimpleSmsPlugin.ACTIONS_CHANNEL), messenger.handlers.keys)
     }
 
     @Test
-    fun markReadReachesDeviceActionsOnAHeadlessEngine() {
+    fun markReadReachesDeviceActionsWithoutAnActivity() {
         val messenger = RecordingMessenger()
-        SimpleSmsPlugin.initializeActionChannelsStatic(context, messenger)
+        SimpleSmsPlugin().attachActionsChannel(context, messenger)
 
         // No arguments: DeviceActions answers with its own validation error,
         // which proves the call reached the handler instead of failing with
@@ -91,5 +91,23 @@ class ActionChannelRegistrationTest {
         )
 
         assertEquals("INVALID_ARGUMENT", code)
+    }
+
+    @Test
+    fun activityAndBackgroundChannelSetupLeavesTheActionsChannelToEngineAttach() {
+        val messenger = RecordingMessenger()
+        try {
+            SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
+
+            assertEquals(
+                setOf(
+                    SimpleSmsPlugin.MESSAGING_CHANNEL,
+                    SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL,
+                ),
+                messenger.handlers.keys,
+            )
+        } finally {
+            SimpleSmsPlugin.releaseHandler(messenger)
+        }
     }
 }

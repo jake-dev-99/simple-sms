@@ -32,7 +32,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   // Method Channels
   private lateinit var messageChannel: MethodChannel
-  private lateinit var actionsChannel: MethodChannel
   private lateinit var destructiveActionsChannel: MethodChannel
 
   companion object {
@@ -128,26 +127,13 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
         .setMethodCallHandler(outboundHandler)
 
-      initializeActionChannelsStatic(appContext, binaryMessenger)
-    }
-
-    /**
-     * Register the stateless action channels (read-state and delete writes)
-     * on [binaryMessenger]. Their handlers own no receivers or caches, so
-     * every engine gets them from [onAttachedToEngine] — including headless
-     * engines with no Activity, such as flutter_local_notifications'
-     * notification-action dispatcher, which must mark a message read without
-     * opening the app (UNFY-241). The stateful messaging channel stays on the
-     * Activity engine and [BackgroundEngineManager] engines only.
-     */
-    fun initializeActionChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
-      val appContext = context.applicationContext
-
-      MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
-        .setMethodCallHandler(DeviceActions(appContext))
-
       MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
         .setMethodCallHandler(DestructiveActions(appContext))
+
+      // The actions channel is not registered here: [onAttachedToEngine]
+      // registers it on every engine, and both callers' engines attach the
+      // plugin (the Activity engine, and BackgroundEngineManager's
+      // `FlutterEngine(appContext)`, which registers plugins automatically).
     }
 
     /**
@@ -177,11 +163,24 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // dispatcher, BackgroundEngineManager-spawned bg engines) attach
     // here too, and used to clobber the foreground reference.
     ownBinding = binding
-    applicationContext = binding.applicationContext
-    actionsChannel = MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL)
-    destructiveActionsChannel =
-      MethodChannel(binding.binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
-    initializeActionChannelsStatic(applicationContext, binding.binaryMessenger)
+    attachActionsChannel(binding.applicationContext, binding.binaryMessenger)
+  }
+
+  /**
+   * The engine-attach work shared by every engine, Activity or not. Registers
+   * the actions channel (read-state writes, contact lookups): its handler owns
+   * no receivers or caches, so it is safe on any engine — including headless
+   * ones such as flutter_local_notifications' notification-action dispatcher,
+   * which must mark a message read without opening the app (UNFY-241). The
+   * channel's `launchAddContact` starts an Activity, which Android may block
+   * from a headless engine; read-state writes have no such limit. The
+   * stateful messaging channel and the destructive channel stay on the
+   * Activity engine and BackgroundEngineManager engines only.
+   */
+  internal fun attachActionsChannel(context: Context, binaryMessenger: BinaryMessenger) {
+    applicationContext = context
+    MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
+      .setMethodCallHandler(DeviceActions(context.applicationContext))
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -190,15 +189,16 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // its BroadcastReceiver is unregistered. Without this, every engine
     // teardown would leave a live receiver in the Android registry.
     releaseHandler(binding.binaryMessenger)
-    // The action channels are set in onAttachedToEngine, but `messageChannel`
-    // is only populated in onAttachedToActivity (via initializeMethodChannels).
-    // A background FlutterEngine — e.g. the one Workmanager spins up for a
-    // headless sync task — attaches and detaches from the engine without ever
-    // seeing an Activity, so it may legitimately be unset here. Guard each
+    // The actions channel is registered on every engine in onAttachedToEngine.
+    MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)
+    // The other channel `lateinit var`s are only populated in
+    // onAttachedToActivity (via initializeMethodChannels). A background
+    // FlutterEngine — e.g. the one Workmanager spins up for a headless sync
+    // task — attaches and detaches from the engine without ever seeing an
+    // Activity, so these channels may legitimately be unset here. Guard each
     // access instead of crashing with UninitializedPropertyAccessException on
     // engine teardown.
     if (::messageChannel.isInitialized) messageChannel.setMethodCallHandler(null)
-    if (::actionsChannel.isInitialized) actionsChannel.setMethodCallHandler(null)
     if (::destructiveActionsChannel.isInitialized) destructiveActionsChannel.setMethodCallHandler(null)
     // Only clear `foregroundBinding` if this instance was the one that
     // owned it. Headless-engine detaches must not clobber the
@@ -283,7 +283,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     applicationContext = context
 
     messageChannel = MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
-    actionsChannel = MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
     destructiveActionsChannel = MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
 
     initializeMethodChannelsStatic(applicationContext, binaryMessenger)
