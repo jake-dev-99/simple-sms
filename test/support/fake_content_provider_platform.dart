@@ -237,6 +237,7 @@ final class _ProviderTable {
     _rejectUnmodelled(request);
     // Dart-side backend checks precede the statement's SQLite checks.
     final predicates = request.filters.map(_predicateFor).toList();
+    sort.map((key) => key.field).forEach(_requireValidFieldName);
     _validateStatement(request, sort);
     final matches = <(int, QueryRecord)>[
       for (final (index, row) in _rows.indexed)
@@ -358,9 +359,7 @@ QueryRecord _copyRow(QueryRecord row) => row.map(
 /// @throws [SimpleQueryError] (`invalidQuery`) for a malformed field name or
 /// an empty `inList`.
 bool Function(QueryRecord) _predicateFor(QueryFilterCondition filter) {
-  if (!_validFieldName.hasMatch(filter.field)) {
-    throw _invalidQuery('invalid field name: ${filter.field}');
-  }
+  _requireValidFieldName(filter.field);
   final argument = filter.value?.toString() ?? '';
   final comparisonHolds = _comparisonTests[filter.operator];
   final test = switch (filter.operator) {
@@ -374,6 +373,18 @@ bool Function(QueryRecord) _predicateFor(QueryFilterCondition filter) {
     null => false,
     final Object cell => test(cell),
   };
+}
+
+/// Purpose: applies the backend's Dart-side field-name check to a filter or
+/// sort field.
+///
+/// @param field the referenced field.
+/// @returns nothing.
+/// @throws [SimpleQueryError] (`invalidQuery`) for a malformed name.
+void _requireValidFieldName(String field) {
+  if (!_validFieldName.hasMatch(field)) {
+    throw _invalidQuery('invalid field name: $field');
+  }
 }
 
 /// Each comparison operator as a test on `cell <=> argument`.

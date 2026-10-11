@@ -375,5 +375,15 @@ void main() {
         ),
       ),
     );
+    await expectLater(
+      ids(const [], sort: const [QuerySort(field: 'date DESC')]),
+      throwsA(
+        isA<SimpleQueryError>().having(
+          (e) => e.message,
+          'message',
+          contains('invalid field name'),
+        ),
+      ),
+    );
   });
 }

@@ -170,9 +170,9 @@ class ConversationLookup {
       if (!enrich) return bare;
 
       final enriched = await Future.wait(bare.map(_enrichConversation));
-      // Hydrate every thread's latest-MMS parts in ONE batched query rather
-      // than one `listMmsParts` per thread (UNFY-250 perf) so the MMS body
-      // resolves for the conversation-list preview at parity with SMS.
+      // Hydrate every thread's latest-MMS parts in batched `mid IN` queries
+      // rather than one `listMmsParts` per thread (UNFY-250 perf) so the MMS
+      // body resolves for the conversation-list preview at parity with SMS.
       await _hydrateLatestMmsParts(enriched);
       return enriched;
     } catch (e, s) {
@@ -192,9 +192,9 @@ class ConversationLookup {
   }
 
   /// Attaches each conversation's latest-MMS parts, fetched in batched
-  /// `mid IN (…)` queries ([AttachmentExtractor.listMmsPartsForMessages]). The
-  /// bare
-  /// `content://mms` list query doesn't join the part table, so without this
+  /// `mid IN (…)` queries ([AttachmentExtractor.listMmsPartsForMessages]).
+  /// The bare `content://mms` list query doesn't join the part table, so
+  /// without this
   /// the MMS body is empty for the conversation-list preview. A latest MMS
   /// with no part rows gets an empty list, the same as its bare row.
   ///
