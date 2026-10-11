@@ -623,22 +623,24 @@ class Transaction(private val context: Context, settings: Settings) {
 
                     val configOverrides = settings.toMmsConfigOverrides()
 
-                    // Whether the platform took the send file: its SENT result
-                    // then deletes it (UNFY-311).
+                    // Returning hands the send file to the platform: its SENT
+                    // result then deletes it (UNFY-311).
                     if (contentUri != null) {
                         SmsManagerFactory.createSmsManager(settings).sendMultimediaMessage(
                             context,
                             contentUri, null, configOverrides, pendingIntent,
                         )
-                        true
                     } else {
                         Log.e(TAG, "Error writing sending Mms")
                         try {
                             pendingIntent.send(SmsManager.MMS_ERROR_IO_ERROR)
-                            true
                         } catch (ex: PendingIntent.CanceledException) {
-                            Log.e(TAG, "Mms pending intent cancelled?", ex)
-                            false
+                            // No SENT result will report this failed send, so
+                            // fail it here: the caller marks its row failed.
+                            throw IllegalStateException(
+                                "MMS send file not handed to the platform, and its result intent was cancelled",
+                                ex,
+                            )
                         }
                     }
                 }

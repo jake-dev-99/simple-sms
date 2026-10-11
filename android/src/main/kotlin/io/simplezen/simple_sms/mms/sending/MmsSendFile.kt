@@ -16,21 +16,50 @@ private const val TAG = "MmsSendFile"
 
 /**
  * Runs [send] with a new, empty send file in [Context.getCacheDir]. [send]
- * writes the PDU and hands the file to the platform, returning true once the
- * platform owns it — the send's SENT result then deletes it (see
- * [deleteMmsSendFile]). In every other case — [send] returns false or throws
- * anything — no SENT result will name the file, so it is deleted here.
+ * writes the PDU and hands the file to the platform; once it returns, the
+ * platform owns the file and the send's SENT result deletes it (see
+ * [deleteMmsSendFile]). If [send] throws anything, no SENT result will name
+ * the file, so it is deleted here.
  */
-internal fun useMmsSendFile(context: Context, send: (File) -> Boolean) {
+internal fun useMmsSendFile(context: Context, send: (File) -> Unit) {
     val file = File.createTempFile(SEND_FILE_PREFIX, SEND_FILE_SUFFIX, context.cacheDir)
     var handedOff = false
     try {
-        handedOff = send(file)
+        send(file)
+        handedOff = true
     } finally {
         if (!handedOff && !file.delete()) {
             Log.w(TAG, "MMS send file ${file.path} was not deleted (exists=${file.exists()}).")
         }
     }
+}
+
+/**
+ * Deletes send files last written more than [maxAgeMs] before [now]: their
+ * SENT result was lost (a reboot or radio crash mid-send), so nothing else
+ * will. Run with the stale-outbox sweep, which fails those sends' rows at
+ * the same age. Returns how many were deleted.
+ */
+internal fun deleteStaleMmsSendFiles(
+    context: Context,
+    maxAgeMs: Long,
+    now: Long = System.currentTimeMillis(),
+): Int {
+    val stale = context.cacheDir.listFiles { file ->
+        file.isFile &&
+            file.name.startsWith(SEND_FILE_PREFIX) &&
+            file.name.endsWith(SEND_FILE_SUFFIX) &&
+            now - file.lastModified() > maxAgeMs
+    } ?: return 0
+    var deleted = 0
+    for (file in stale) {
+        if (file.delete()) {
+            deleted++
+        } else {
+            Log.w(TAG, "Stale MMS send file ${file.path} was not deleted.")
+        }
+    }
+    return deleted
 }
 
 /**

@@ -43,6 +43,15 @@ class InboundSubscriptionIdTest {
     }
 
     @Test
+    fun fallsBackToTheLegacyExtraWhenThePlatformIndexIsInvalid() {
+        val intent = deliver()
+            .putExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1)
+            .putExtra("subscription", 3)
+
+        assertEquals(3, inboundSubscriptionId(intent))
+    }
+
+    @Test
     fun treatsAMissingOrInvalidIdAsUnknown() {
         assertNull(inboundSubscriptionId(deliver()))
         assertNull(

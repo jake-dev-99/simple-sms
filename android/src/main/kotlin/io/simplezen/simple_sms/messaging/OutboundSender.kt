@@ -266,6 +266,17 @@ internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
 internal fun statusReceiverIntent(context: Context, action: String): Intent =
     Intent(action).setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
 
+/**
+ * [raw] as a list of strings, or null when absent. Anything else throws
+ * [IllegalArgumentException], which maps to [ERR_INVALID_MESSAGE].
+ */
+internal fun stringList(raw: Any?, name: String): List<String>? =
+    raw?.let { value ->
+        (value as? List<*>)?.map {
+            it as? String ?: throw IllegalArgumentException("$name must be strings")
+        } ?: throw IllegalArgumentException("$name must be a list")
+    }
+
 /** The SENT and DELIVERED status broadcasts for one outbound SMS row. */
 internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingIntent)
 
@@ -616,17 +627,20 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                 // codes by extending mapSendException, NOT by adding catch arms
                 // here.
                 //
-                // Building the request is inside the catch too: a bad argument,
-                // an unresolvable recipient set or a revoked permission there
-                // also maps to its ERR_* code (UNFY-306).
+                // Building the request is inside the catch too: malformed
+                // arguments (ERR_INVALID_MESSAGE), an unresolvable recipient
+                // set or a revoked permission there also map to their ERR_*
+                // code (UNFY-306).
                 //
                 // Successful sends are ACKed asynchronously by the
                 // OutboundMessagingReceiver broadcast handler, which reads
                 // channelResultMap[messageUri].flutterResult.
                 var requestDetails: MessageRequestDetails? = null
                 try {
-                    val message = call.arguments as Map<String, Any?>
-                    val recipients = message["recipients"] as List<String>
+                    val message = call.arguments as? Map<*, *>
+                            ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
+                    val recipients = stringList(message["recipients"], "recipients")
+                            ?: throw IllegalArgumentException("sendMessage has no recipients")
                     val details =
                             MessageRequestDetails(
                                     threadId =
@@ -635,9 +649,13 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                                                     recipients.toSet(),
                                             ),
                                     addresses = recipients,
-                                    body = message["body"] as String,
-                                    subscriptionId = message["subscriptionId"] as Int?,
-                                    attachmentPaths = message["attachmentPaths"] as List<String>?,
+                                    body = message["body"] as? String
+                                            ?: throw IllegalArgumentException("sendMessage has no body"),
+                                    subscriptionId = message["subscriptionId"]?.let {
+                                        it as? Int
+                                                ?: throw IllegalArgumentException("subscriptionId must be an int")
+                                    },
+                                    attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
                                     flutterResult = result,
                             )
                     requestDetails = details

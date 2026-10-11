@@ -15,19 +15,20 @@ import io.simplezen.simple_sms.queries.QueryObj
 
 /**
  * The subscription id of the SIM an SMS_DELIVER [intent] arrived on, or null
- * when it carries none (or an invalid, negative one). Android sets
+ * when it carries no valid (non-negative) one. Android sets
  * [SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX] on API 30+, and the legacy
- * `subscription` extra — which the MMS path also reads — throughout.
+ * `subscription` extra — which the MMS path also reads — throughout; the
+ * legacy one is used when the new one is missing or invalid.
  */
 internal fun inboundSubscriptionId(intent: Intent): Int? {
-    val id = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            intent.hasExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX) ->
+    val index =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1)
-        intent.hasExtra("subscription") -> intent.getIntExtra("subscription", -1)
-        else -> -1
-    }
-    return id.takeIf { it >= 0 }
+        } else {
+            -1
+        }
+    if (index >= 0) return index
+    return intent.getIntExtra("subscription", -1).takeIf { it >= 0 }
 }
 
 // Inbound SMS Messages

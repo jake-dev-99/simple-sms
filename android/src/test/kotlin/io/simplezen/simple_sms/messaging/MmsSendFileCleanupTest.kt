@@ -7,6 +7,7 @@ import android.telephony.SmsManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
 import io.simplezen.simple_sms.mms.sending.deleteMmsSendFile
+import io.simplezen.simple_sms.mms.sending.deleteStaleMmsSendFiles
 import io.simplezen.simple_sms.mms.sending.useMmsSendFile
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -21,8 +22,9 @@ import org.robolectric.annotation.Config
 
 /**
  * UNFY-311: the encoded PDU an outbound MMS is sent from is deleted once its
- * SENT result arrives, whatever the result, or at once when the platform never
- * took it — and nothing outside the cache's send files is ever deleted.
+ * SENT result arrives, whatever the result; at once when the platform never
+ * took it; or by the stale-outbox sweep when its result was lost — and nothing
+ * outside the cache's send files is ever deleted.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -36,7 +38,6 @@ class MmsSendFileCleanupTest {
         useMmsSendFile(context) { file ->
             file.writeBytes(byteArrayOf(1, 2, 3))
             taken = file
-            true
         }
         return taken!!
     }
@@ -122,19 +123,6 @@ class MmsSendFileCleanupTest {
     }
 
     @Test
-    fun aFileThePlatformDidNotTake_isDeleted() {
-        var used: File? = null
-
-        useMmsSendFile(context) { file ->
-            file.writeBytes(byteArrayOf(1))
-            used = file
-            false
-        }
-
-        assertFalse(used!!.exists())
-    }
-
-    @Test
     fun aSendThatThrows_deletesItsFileAndRethrows() {
         var used: File? = null
 
@@ -162,5 +150,22 @@ class MmsSendFileCleanupTest {
         }
 
         assertFalse(used!!.exists())
+    }
+
+    @Test
+    fun theSweepDeletesSendFilesWhoseResultWasLost() {
+        val now = 100 * STALE_OUTBOX_AGE_MS
+        val lost = sendFile().apply { setLastModified(now - STALE_OUTBOX_AGE_MS - 1) }
+        val inFlight = sendFile().apply { setLastModified(now - 1) }
+        val other = File(context.cacheDir, "photo.jpg").apply {
+            writeBytes(byteArrayOf(1))
+            setLastModified(now - STALE_OUTBOX_AGE_MS - 1)
+        }
+
+        assertEquals(1, deleteStaleMmsSendFiles(context, STALE_OUTBOX_AGE_MS, now))
+
+        assertFalse(lost.exists())
+        assertTrue(inFlight.exists())
+        assertTrue(other.exists())
     }
 }

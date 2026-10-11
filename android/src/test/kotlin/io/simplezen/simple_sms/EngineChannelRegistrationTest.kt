@@ -2,11 +2,13 @@ package io.simplezen.simple_sms
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.FlutterException
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.StandardMethodCodec
+import io.simplezen.simple_sms.messaging.ERR_INVALID_MESSAGE
 import io.simplezen.simple_sms.messaging.ERR_NO_TELEPHONY
 import io.simplezen.simple_sms.messaging.OutboundMessagingReceiver
 import java.nio.ByteBuffer
@@ -159,6 +161,29 @@ class EngineChannelRegistrationTest {
         )
 
         assertEquals(ERR_NO_TELEPHONY, code)
+    }
+
+    @Test
+    fun aMalformedSendIsAnInvalidMessage() {
+        shadowOf(context.packageManager)
+            .setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
+        val messenger = RecordingMessenger()
+        attachedForTest(messenger)
+
+        for (arguments in listOf(
+            null,
+            mapOf("recipients" to "5551234", "body" to "hi"),
+            mapOf("recipients" to listOf(5551234), "body" to "hi"),
+            mapOf("recipients" to listOf("5551234")),
+            mapOf("recipients" to listOf("5551234"), "body" to "hi", "subscriptionId" to "2"),
+        )) {
+            val code = messenger.invokeExpectingError(
+                SimpleSmsPlugin.MESSAGING_CHANNEL,
+                MethodCall("sendMessage", arguments),
+            )
+
+            assertEquals("$arguments", ERR_INVALID_MESSAGE, code)
+        }
     }
 
     @Test
