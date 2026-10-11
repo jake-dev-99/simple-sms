@@ -55,7 +55,7 @@ internal object SendResultRouter {
         resultCode: Int,
         part: SmsPartRef?,
     ) {
-        if (eventType == SENTSMS_ACTION && part == null && isStaleUntrackedSmsResult(context, messageId.toLong())) {
+        if (eventType == SENTSMS_ACTION && isStaleUntrackedSmsResult(context, part, messageId.toLong())) {
             Log.i(TAG, "SENT result for $messageUri from a send made before parts were tracked; ignored")
             return
         }

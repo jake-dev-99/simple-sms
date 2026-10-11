@@ -296,11 +296,12 @@ internal class SmsPartLedger(
 }
 
 /**
- * Whether an SMS result without a part token for the row [rowId] is stale: a
- * tracked send to that row is under way, and its own results all carry its
- * token (UNFY-180). Such a result comes from a send made before parts were
- * tracked, whose status intents outlived an app update while the provider
- * reused its row id.
+ * Whether an SMS result is stale: it carries no [part] token, while a tracked
+ * send to its row [rowId] is under way, whose own results all carry its token
+ * (UNFY-180). Such a result comes from a send made before parts were tracked,
+ * whose status intents outlived an app update while the provider reused its
+ * row id, and was on its way before they were cancelled
+ * ([cancelUntrackedStatusIntents]).
  */
-internal fun isStaleUntrackedSmsResult(context: Context, rowId: Long): Boolean =
-    SmsPartLedger.forApp(context).tracks(rowId)
+internal fun isStaleUntrackedSmsResult(context: Context, part: SmsPartRef?, rowId: Long?): Boolean =
+    part == null && rowId != null && SmsPartLedger.forApp(context).tracks(rowId)

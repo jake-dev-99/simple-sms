@@ -285,8 +285,10 @@ internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingI
  *   data, which a fill-in cannot replace.
  *
  * A reused row id never inherits an earlier send's results: they carry that
- * send's token, which [SmsPartLedger.start] forgets, or, from a send made
- * before parts were tracked, no token at all ([isStaleUntrackedSmsResult]).
+ * send's token, which [SmsPartLedger.start] forgets. A send made before
+ * parts were tracked had no token: its pair is cancelled when its row is
+ * reused ([cancelUntrackedStatusIntents]), and a result of it already on its
+ * way is ignored ([isStaleUntrackedSmsResult]).
  */
 internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
     fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")
@@ -308,6 +310,50 @@ internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri,
         sent = PendingIntent.getBroadcast(context, messageId, sent, PendingIntent.FLAG_IMMUTABLE),
         delivered = PendingIntent.getBroadcast(context, messageId, delivered, mutable),
     )
+}
+
+/**
+ * Cancels the status broadcasts a send made before parts were tracked may
+ * still hold for the SMS row [messageId] (one pair shared by all its parts,
+ * with no identifier), so a late result of that send never reaches a new send
+ * that reused the row id: it would carry no part token, and settle the new
+ * send directly (UNFY-180). Such a pair survives an app update. A result it
+ * already sent is ignored instead ([isStaleUntrackedSmsResult]). Extras play
+ * no part in matching a PendingIntent; the flags must be the ones it was
+ * made with.
+ */
+internal fun cancelUntrackedStatusIntents(context: Context, messageId: Int, messageUri: Uri) {
+    val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+    val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+    PendingIntent.getBroadcast(
+        context, messageId, Intent(SENTSMS_ACTION).setComponent(receiver),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE,
+    )?.cancel()
+    PendingIntent.getBroadcast(
+        context, messageId, Intent(DELIVEREDSMS_ACTION).setData(messageUri).setComponent(receiver),
+        mutable or PendingIntent.FLAG_NO_CREATE,
+    )?.cancel()
+}
+
+/**
+ * Purpose: starts tracking a new SMS send to the row [messageId] at
+ * [messageUri], before any part reaches the radio: cancels what an earlier,
+ * untracked send to the row could still report
+ * ([cancelUntrackedStatusIntents]), then records the send in [ledger].
+ *
+ * @returns the send's parts, each carrying its token.
+ * @throws IOException when the ledger cannot record the send; it must then
+ *   not start.
+ */
+internal fun startTrackedSmsSend(
+    context: Context,
+    ledger: SmsPartLedger,
+    messageId: Int,
+    messageUri: Uri,
+    partCount: Int,
+): List<SmsPartRef> {
+    cancelUntrackedStatusIntents(context, messageId, messageUri)
+    return ledger.start(messageId.toLong(), partCount)
 }
 
 /** The write that moves an SMS (TYPE) or MMS (MESSAGE_BOX) row to the failed box. */
@@ -848,7 +894,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val parts = smsManager.divideMessage(requestDetails.body)
             val partCount = maxOf(parts.size, 1)
             val ledger = SmsPartLedger.forApp(context)
-            val partRefs = ledger.start(msgId.toLong(), partCount)
+            val partRefs = startTrackedSmsSend(context, ledger, msgId, newUri, partCount)
             try {
                 val statusIntents = partRefs.map { smsStatusIntents(context, msgId, newUri, it) }
                 awaitResult(newUri, requestDetails)

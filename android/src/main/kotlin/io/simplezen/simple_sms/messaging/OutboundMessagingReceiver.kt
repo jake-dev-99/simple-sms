@@ -264,8 +264,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             return
         }
         val part = intent.smsPartRef()
-        val rowId = messageUri.lastPathSegment?.toLongOrNull()
-        if (part == null && rowId != null && isStaleUntrackedSmsResult(context, rowId)) {
+        if (isStaleUntrackedSmsResult(context, part, messageUri.lastPathSegment?.toLongOrNull())) {
             Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send made before parts were tracked; ignored")
             return
         }

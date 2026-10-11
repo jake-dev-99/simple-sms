@@ -41,9 +41,10 @@ return typed results.
   every part's report: delivered only once every part is, failed if any part
   failed, pending in between; a 3GPP2 (CDMA) report on the last part, the only
   part CDMA asks one for, stands for the whole message. Results for a send
-  whose row was deleted and its id reused are ignored, including those of a
-  send made by an earlier version and still pending across the update. If
-  the app's files
+  whose row was deleted and its id reused are ignored. A send made by an
+  earlier version and still pending across the update has its status intents
+  cancelled when its row is reused, and a result of it already on its way
+  while the new send is tracked is ignored. If the app's files
   cannot be read or written, a one-part SMS still settles from its result and
   report; a multipart one is never settled from a single part: its delivery
   status is left as is, and its send settles as `SEND_RESULT_TIMEOUT` (or, if

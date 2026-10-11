@@ -1,6 +1,7 @@
 package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -9,6 +10,7 @@ import android.content.Intent
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Build
 import android.os.Looper
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -411,6 +413,44 @@ class OutboundSendAckTest {
         deliverUntrackedReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00))
 
         assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun startingATrackedSend_cancelsTheStatusIntentsOfAnUntrackedSendToItsRow() {
+        // The pair a send made before parts were tracked, still pending after
+        // an app update: shared by every part, with no identifier.
+        val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+        val untrackedSent = PendingIntent.getBroadcast(
+            context, 42,
+            Intent(SENTSMS_ACTION).putExtra("messageID", 42).putExtra("uri", smsUri.toString()).setComponent(receiver),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
+        )
+        val untrackedDelivered = PendingIntent.getBroadcast(
+            context, 42, Intent(DELIVEREDSMS_ACTION).setData(smsUri).setComponent(receiver),
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0) or
+                PendingIntent.FLAG_CANCEL_CURRENT,
+        )
+
+        val parts = startTrackedSmsSend(context, SmsPartLedger.forApp(context), 42, smsUri, 1)
+
+        assertTrue("its late SENT result never lands", shadowOf(untrackedSent).isCanceled)
+        assertTrue("its late delivery report never lands", shadowOf(untrackedDelivered).isCanceled)
+        val tracked = smsStatusIntents(context, 42, smsUri, parts.single())
+        assertFalse(shadowOf(tracked.sent).isCanceled)
+        assertFalse(shadowOf(tracked.delivered).isCanceled)
+        assertTrue(SmsPartLedger.forApp(context).tracks(42L))
+    }
+
+    @Test
+    fun cancellingUntrackedStatusIntents_touchesNoOtherRow() {
+        val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+        val otherRowSent = PendingIntent.getBroadcast(
+            context, 43, Intent(SENTSMS_ACTION).setComponent(receiver), PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        cancelUntrackedStatusIntents(context, 42, smsUri)
+
+        assertFalse(shadowOf(otherRowSent).isCanceled)
     }
 
     @Test
