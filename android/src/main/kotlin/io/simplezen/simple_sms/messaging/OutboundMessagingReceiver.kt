@@ -247,8 +247,8 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
     /**
      * Records an SMS delivery report on its row. The row comes from the intent
      * data, which the platform's fill-in cannot replace (no `FILL_IN_DATA`).
-     * A report with no part token for a row a tracked send now holds is an
-     * earlier send's, and is ignored ([isStaleUntrackedSmsResult]). Failures
+     * A report with no part token for a row a tracked send started on lately
+     * is an earlier send's, and is ignored ([isStaleUntrackedSmsResult]). Failures
      * are logged, never thrown: nothing is pending on a report.
      */
     private fun onDeliveryReport(context: Context, intent: Intent) {

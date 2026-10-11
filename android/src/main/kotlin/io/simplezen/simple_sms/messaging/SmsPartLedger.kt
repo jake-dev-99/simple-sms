@@ -17,6 +17,11 @@ private const val LEDGER_TAG = "SmsPartLedger"
 private const val LEDGER_DIRECTORY = "simple_sms_sms_parts"
 private const val RECORD_SUFFIX = ".json"
 
+// Marks a row an earlier, untracked send may still report for, for the
+// window after a tracked send started on it. Not a token (tokens are UUIDs),
+// so never read as a record.
+private const val UNTRACKED_SEND_MARKER = "untracked-send"
+
 /**
  * How long a sent SMS keeps waiting for its parts' delivery reports. Many
  * carriers never send them, and SMS centres stop retrying delivery within
@@ -130,34 +135,51 @@ internal class SmsPartLedger(
      *
      * @param rowId the message row's `_id`.
      * @param partCount how many parts the body was divided into; ≥ 1.
+     * @param markUntrackedSend whether a send made before parts were tracked
+     *   may still report for the row: it is then marked for
+     *   [DELIVERY_REPORT_WAIT_MS] ([tracks]), however this send ends.
      * @returns the new send's parts, each carrying its token.
-     * @throws IOException when the record cannot be written; the send must
-     *   then not start, since its results could not be aggregated.
+     * @throws IOException when the record or the row's mark cannot be
+     *   written; the send must then not start, since its results could not
+     *   be aggregated, nor an earlier send's told apart from them.
      * @throws IllegalArgumentException when [partCount] is below 1.
      */
-    fun start(rowId: Long, partCount: Int): List<SmsPartRef> = synchronized(LOCK) {
-        require(partCount >= 1) { "An SMS has at least one part, got $partCount" }
-        pruneOlderThan(nowMillis() - DELIVERY_REPORT_WAIT_MS)
-        rowDirectory(rowId).listFiles().orEmpty().forEach { it.delete() }
-        val token = UUID.randomUUID().toString()
-        write(rowId, SmsPartsRecord(token, List(partCount) { null }, List(partCount) { null }))
-        (0 until partCount).map { SmsPartRef(token, rowId, it, partCount) }
-    }
+    fun start(rowId: Long, partCount: Int, markUntrackedSend: Boolean = false): List<SmsPartRef> =
+        synchronized(LOCK) {
+            require(partCount >= 1) { "An SMS has at least one part, got $partCount" }
+            pruneOlderThan(nowMillis() - DELIVERY_REPORT_WAIT_MS)
+            val row = rowDirectory(rowId)
+            row.listFiles().orEmpty().forEach { it.delete() }
+            // Before the record, so a failed mark leaves no record behind.
+            if (markUntrackedSend) {
+                if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
+                File(row, UNTRACKED_SEND_MARKER).writeBytes(ByteArray(0))
+            }
+            val token = UUID.randomUUID().toString()
+            write(rowId, SmsPartsRecord(token, List(partCount) { null }, List(partCount) { null }))
+            (0 until partCount).map { SmsPartRef(token, rowId, it, partCount) }
+        }
 
     /**
-     * Purpose: whether a send to [rowId] is tracked: its record is kept, so
-     * its results may still come.
+     * Purpose: whether a result without a part token for [rowId] cannot be
+     * the row's own ([isStaleUntrackedSmsResult]): a tracked send to the row
+     * is under way, or one started on it within [DELIVERY_REPORT_WAIT_MS]
+     * after cancelling an earlier, untracked send's status intents.
      *
      * @param rowId the message row's `_id`.
-     * @returns true while a send to the row is tracked.
+     * @returns true while the row holds a record, or a fresh mark.
      * @throws nothing; an unreadable ledger tracks nothing.
      */
     fun tracks(rowId: Long): Boolean = synchronized(LOCK) {
-        rowDirectory(rowId).listFiles().orEmpty().any { it.name.endsWith(RECORD_SUFFIX) }
+        val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
+        rowDirectory(rowId).listFiles().orEmpty().any {
+            it.name.endsWith(RECORD_SUFFIX) || (it.name == UNTRACKED_SEND_MARKER && it.lastModified() >= cutoff)
+        }
     }
 
     /**
-     * Purpose: forgets a send that never started (the radio refused it).
+     * Purpose: forgets a send that never started (the radio refused it). Its
+     * row's mark stays: an earlier send's result may still come.
      *
      * @param part any part of the send.
      * @returns nothing.
@@ -296,9 +318,10 @@ internal class SmsPartLedger(
 }
 
 /**
- * Whether an SMS result is stale: it carries no [part] token, while a tracked
- * send to its row [rowId] is under way, whose own results all carry its token
- * (UNFY-180). Such a result comes from a send made before parts were tracked,
+ * Whether an SMS result is stale: it carries no [part] token, while its row
+ * [rowId] has a tracked send, whose own results all carry its token, or had
+ * one lately that cancelled an earlier send's intents (UNFY-180;
+ * [SmsPartLedger.tracks]). Such a result comes from a send made before parts were tracked,
  * whose status intents outlived an app update while the provider reused its
  * row id, and was on its way before they were cancelled
  * ([cancelUntrackedStatusIntents]).

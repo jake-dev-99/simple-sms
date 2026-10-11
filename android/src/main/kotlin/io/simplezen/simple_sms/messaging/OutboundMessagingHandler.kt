@@ -321,25 +321,33 @@ internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri,
  * already sent is ignored instead ([isStaleUntrackedSmsResult]). Extras play
  * no part in matching a PendingIntent; the flags must be the ones it was
  * made with.
+ *
+ * @returns whether such a pair was there: only then can a result of it still
+ *   be on its way.
  */
-internal fun cancelUntrackedStatusIntents(context: Context, messageId: Int, messageUri: Uri) {
+internal fun cancelUntrackedStatusIntents(context: Context, messageId: Int, messageUri: Uri): Boolean {
     val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
     val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-    PendingIntent.getBroadcast(
+    val sent = PendingIntent.getBroadcast(
         context, messageId, Intent(SENTSMS_ACTION).setComponent(receiver),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE,
-    )?.cancel()
-    PendingIntent.getBroadcast(
+    )
+    val delivered = PendingIntent.getBroadcast(
         context, messageId, Intent(DELIVEREDSMS_ACTION).setData(messageUri).setComponent(receiver),
         mutable or PendingIntent.FLAG_NO_CREATE,
-    )?.cancel()
+    )
+    sent?.cancel()
+    delivered?.cancel()
+    return sent != null || delivered != null
 }
 
 /**
  * Purpose: starts tracking a new SMS send to the row [messageId] at
  * [messageUri], before any part reaches the radio: cancels what an earlier,
  * untracked send to the row could still report
- * ([cancelUntrackedStatusIntents]), then records the send in [ledger].
+ * ([cancelUntrackedStatusIntents]), then records the send in [ledger],
+ * marking the row if it did, so a result of that send already on its way is
+ * still told apart ([SmsPartLedger.tracks]).
  *
  * @returns the send's parts, each carrying its token.
  * @throws IOException when the ledger cannot record the send; it must then
@@ -352,8 +360,8 @@ internal fun startTrackedSmsSend(
     messageUri: Uri,
     partCount: Int,
 ): List<SmsPartRef> {
-    cancelUntrackedStatusIntents(context, messageId, messageUri)
-    return ledger.start(messageId.toLong(), partCount)
+    val untrackedSendPending = cancelUntrackedStatusIntents(context, messageId, messageUri)
+    return ledger.start(messageId.toLong(), partCount, markUntrackedSend = untrackedSendPending)
 }
 
 /** The write that moves an SMS (TYPE) or MMS (MESSAGE_BOX) row to the failed box. */

@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
+import java.io.IOException
 
 /**
  * Pins [SmsPartLedger] (UNFY-180): a multipart SMS settles only once every
@@ -38,7 +39,8 @@ class SmsPartLedgerTest {
     /** A ledger over the same files, as a new app process would build it. */
     private fun ledger() = SmsPartLedger(directory) { now }
 
-    private fun start(parts: Int, rowId: Long = 41L): List<SmsPartRef> = ledger().start(rowId, parts)
+    private fun start(parts: Int, rowId: Long = 41L, markUntrackedSend: Boolean = false): List<SmsPartRef> =
+        ledger().start(rowId, parts, markUntrackedSend)
 
     @Test
     fun singlePart_settlesOnItsOnlyReport() {
@@ -149,7 +151,34 @@ class SmsPartLedgerTest {
         ledger().recordSent(parts[0], ok)
         assertTrue("its delivery report may still come", ledger().tracks(41L))
         ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP)
-        assertFalse("finished", ledger().tracks(41L))
+        assertFalse("finished, and no earlier send to the row was pending", ledger().tracks(41L))
+    }
+
+    @Test
+    fun aRowWithAnEarlierUntrackedSend_staysTracked_untilTheWindowPasses() {
+        val parts = start(parts = 1, rowId = 41L, markUntrackedSend = true)
+        ledger().recordSent(parts[0], ok)
+        ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP)
+
+        assertTrue("the earlier send's late result may still come", ledger().tracks(41L))
+        now += DELIVERY_REPORT_WAIT_MS + 60_000 // with no later send to prune
+        assertFalse(ledger().tracks(41L))
+    }
+
+    @Test
+    fun aMarkThatCannotBeWritten_failsTheStart_leavingNoRecord() {
+        val row = File(directory, "41")
+        File(File(row, "untracked-send"), "blocker").apply { parentFile!!.mkdirs(); writeText("") }
+
+        assertThrows(IOException::class.java) { start(parts = 1, rowId = 41L, markUntrackedSend = true) }
+        assertFalse(row.listFiles().orEmpty().any { it.name.endsWith(".json") })
+    }
+
+    @Test
+    fun aSendThatNeverStarted_keepsItsRowsMark() {
+        val parts = start(parts = 1, rowId = 41L, markUntrackedSend = true)
+        ledger().forget(parts[0])
+        assertTrue("the earlier send's result may still come", ledger().tracks(41L))
     }
 
     @Test
@@ -177,7 +206,7 @@ class SmsPartLedgerTest {
         File(File(directory, "41"), "${parts[0].token}.json").writeText("{ not json")
 
         assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
-        assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
+        assertFalse(File(File(directory, "41"), "${parts[0].token}.json").exists())
     }
 
     @Test

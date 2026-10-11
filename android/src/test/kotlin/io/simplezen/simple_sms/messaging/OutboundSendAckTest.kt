@@ -395,6 +395,22 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun aSentResultWithoutAPartToken_afterTheTrackedSendFinished_isStillIgnored() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        // Its start cancelled an earlier, untracked send's status intents.
+        val result = pendingSend(smsUri, markUntrackedSend = true)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+        assertEquals(1, result.calls)
+        val updates = smsProvider.updates
+
+        // An earlier, untracked send's late failure for the reused row.
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+
+        assertEquals(updates, smsProvider.updates)
+    }
+
+    @Test
     fun aDeliveryReportWithoutAPartToken_forARowATrackedSendHolds_isIgnored() {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
         val part = trackedPart()
@@ -435,10 +451,19 @@ class OutboundSendAckTest {
 
         assertTrue("its late SENT result never lands", shadowOf(untrackedSent).isCanceled)
         assertTrue("its late delivery report never lands", shadowOf(untrackedDelivered).isCanceled)
+        SmsPartLedger.forApp(context).forget(parts.single())
+        assertTrue("one already on its way is still told apart", SmsPartLedger.forApp(context).tracks(42L))
         val tracked = smsStatusIntents(context, 42, smsUri, parts.single())
         assertFalse(shadowOf(tracked.sent).isCanceled)
         assertFalse(shadowOf(tracked.delivered).isCanceled)
         assertTrue(SmsPartLedger.forApp(context).tracks(42L))
+    }
+
+    @Test
+    fun startingATrackedSend_withNoUntrackedSendToItsRow_leavesNoMark() {
+        val parts = startTrackedSmsSend(context, SmsPartLedger.forApp(context), 42, smsUri, 1)
+        SmsPartLedger.forApp(context).forget(parts.single())
+        assertFalse(SmsPartLedger.forApp(context).tracks(42L))
     }
 
     @Test
@@ -759,9 +784,11 @@ class OutboundSendAckTest {
     }
 
     /** A send this test's handler owns; an SMS's [parts] are tracked in the ledger, as [sendSms] does. */
-    private fun pendingSend(messageUri: Uri, parts: Int = 1): RecordingResult {
+    private fun pendingSend(messageUri: Uri, parts: Int = 1, markUntrackedSend: Boolean = false): RecordingResult {
         val result = RecordingResult()
-        if (messageUri.authority == "sms") sendParts = SmsPartLedger.forApp(context).start(42L, parts)
+        if (messageUri.authority == "sms") {
+            sendParts = SmsPartLedger.forApp(context).start(42L, parts, markUntrackedSend)
+        }
         handler.awaitResult(
             messageUri,
             OutboundMessagingHandler.MessageRequestDetails(

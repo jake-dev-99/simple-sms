@@ -39,7 +39,7 @@ internal object SendResultRouter {
      * Purpose: settles one SENT result: an SMS part through its send's
      * ledger, an MMS (or an SMS part sent before parts were tracked, which
      * carries no [part]) on its own. A result with no [part] for a row a
-     * tracked send now holds is that earlier send's, and is ignored
+     * tracked send started on lately is an earlier send's, and is ignored
      * ([isStaleUntrackedSmsResult]).
      *
      * @param part the SMS part reporting, from its intent.
