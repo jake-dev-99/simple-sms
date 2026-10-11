@@ -1,97 +1,274 @@
 package io.simplezen.simple_sms.device
 
+import android.app.role.RoleManager
+import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.BaseColumns
 import android.provider.Telephony
 import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.simplezen.simple_permissions_android.PermissionDeniedException
+import io.simplezen.simple_permissions_android.PermissionGuards
+import io.simplezen.simple_query.ContentQuery
 
+/**
+ * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
+ *
+ * Each delete succeeds with `"deleted"` or `"alreadyAbsent"` only when a
+ * read-back finds nothing left and the target's absence is provable (or, for a
+ * thread, `"newMessagesArrived"` when only messages that arrived during the
+ * delete remain); otherwise it fails
+ * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
+ * its read-backs are blocking provider I/O, so the plugin registers this
+ * handler on a background task queue rather than the platform main thread.
+ */
 class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
         private const val TAG = "DestructiveActions"
+
+        /** The `threads` table view the conversation list reads. */
+        private val SIMPLE_CONVERSATIONS_URI: Uri = Telephony.Threads.CONTENT_URI
+            .buildUpon().appendQueryParameter("simple", "true").build()
+
+        private const val SMS_IN_THREAD = "${Telephony.Sms.THREAD_ID} = ?"
+        private const val MMS_IN_THREAD = "${Telephony.Mms.THREAD_ID} = ?"
+
+        /** `Telephony.Sms.DATE` and `Telephony.Mms.DATE` are both `date`. */
+        private const val DATE = Telephony.Sms.DATE
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "deleteThread" -> {
-                val threadId = call.arguments as? String
+                val threadId = positiveRowId(call.arguments)
                 if (threadId == null) {
-                    result.error("INVALID_ARGUMENT", "Thread ID required", null)
-                    return
-                }
-                try {
-                    val success = deleteThread(threadId)
-                    result.success(success)
-                } catch (e: Exception) {
-                    result.error(
-                        "DELETE_FAILED",
-                        "Failed to delete thread: ${e.message}",
-                        e.stackTraceToString(),
-                    )
-                }
-            }
-            "deleteMessage" -> {
-                val args = call.arguments as? Map<*, *>
-                val messageId = args?.get("messageId") as? String
-                val table = messageTableFor(args?.get("channel") as? String)
-                if (messageId == null || table == null) {
                     result.error(
                         "INVALID_ARGUMENT",
-                        "deleteMessage requires messageId + channel (sms|mms); " +
-                            "got messageId=$messageId channel=${args?.get("channel")}",
+                        "deleteThread requires a positive numeric thread id; got ${call.arguments}",
                         null,
                     )
                     return
                 }
-                try {
-                    val success = deleteMessage(messageId, table)
-                    result.success(success)
-                } catch (e: Exception) {
+                verifiedDelete(
+                    result,
+                    target = "thread $threadId",
+                    mark = { threadSnapshot(threadId) },
+                    delete = { deleteThread(threadId) },
+                    readBack = { snapshot -> readBackThread(threadId, snapshot) },
+                )
+            }
+            "deleteMessage" -> {
+                val args = call.arguments as? Map<*, *>
+                val messageId = positiveRowId(args?.get("messageId"))
+                val table = messageTableFor(args?.get("channel") as? String)
+                if (messageId == null || table == null) {
                     result.error(
-                        "DELETE_FAILED",
-                        "Failed to delete message: ${e.message}",
-                        e.stackTraceToString(),
+                        "INVALID_ARGUMENT",
+                        "deleteMessage requires a positive numeric messageId + channel " +
+                            "(sms|mms); got messageId=${args?.get("messageId")} " +
+                            "channel=${args?.get("channel")}",
+                        null,
                     )
+                    return
                 }
+                // The native `_id` is unique only within its own table, so the
+                // channel-derived table targets the one right message (UNFY-213).
+                // A single message has no later arrivals to tell apart, so it
+                // needs no snapshot: any row at its URI survived.
+                val messageUri = ContentUris.withAppendedId(table.contentUri(), messageId)
+                verifiedDelete(
+                    result,
+                    target = "${table.name} message $messageId",
+                    mark = {},
+                    delete = { context.contentResolver.delete(messageUri, null, null) },
+                    readBack = {
+                        DeleteReadBack(
+                            survivingRows = queryRows(messageUri, arrayOf(BaseColumns._ID)).size,
+                            // The filter hides a message from the delete and the
+                            // read alike, so an empty result proves it gone only
+                            // where no such filter exists.
+                            absenceProvable = !subscriptionFilterApplies(),
+                        )
+                    },
+                )
             }
             else -> result.notImplemented()
         }
     }
 
-    private fun deleteThread(threadId: String): Boolean {
-        // Delete all SMS in the thread
-        val smsDeleted = context.contentResolver.delete(
-            Telephony.Sms.CONTENT_URI,
-            "${Telephony.Sms.THREAD_ID} = ?",
-            arrayOf(threadId)
+    /**
+     * Take the target's pre-delete snapshot ([mark]), run [delete], read the
+     * target back with [readBack], and report the verified outcome on [result].
+     *
+     * Only the default SMS app may write the provider: Android drops any other
+     * app's delete as 0 rows, which would read back as an already-absent
+     * target, so the role is asserted before anything is read or deleted.
+     */
+    private fun <M> verifiedDelete(
+        result: MethodChannel.Result,
+        target: String,
+        mark: () -> M,
+        delete: () -> Int,
+        readBack: (M) -> DeleteReadBack,
+    ) {
+        val taken = try {
+            PermissionGuards.requireRoleHeld(context, RoleManager.ROLE_SMS)
+            mark()
+        } catch (e: PermissionDeniedException) {
+            result.error("NOT_DEFAULT_SMS_APP", e.message, null)
+            return
+        } catch (e: Exception) {
+            result.error(
+                "DELETE_FAILED",
+                "Could not read $target before deleting; nothing was deleted: ${e.message}",
+                e.stackTraceToString(),
+            )
+            return
+        }
+        val deletedRows = try {
+            delete()
+        } catch (e: Exception) {
+            result.error("DELETE_FAILED", "Failed to delete $target: ${e.message}", e.stackTraceToString())
+            return
+        }
+        val found = try {
+            readBack(taken)
+        } catch (e: Exception) {
+            // The delete ran but can't be confirmed — the provider returned no
+            // cursor or the read was refused.
+            result.error(
+                "VERIFY_FAILED",
+                "Deleted $deletedRows rows for $target but could not read it back: ${e.message}",
+                e.stackTraceToString(),
+            )
+            return
+        }
+        Log.d(TAG, "Deleted $target: $deletedRows rows, read back $found")
+        when (classifyDelete(deletedRows, found)) {
+            DeleteOutcome.DELETED -> result.success("deleted")
+            DeleteOutcome.ALREADY_ABSENT -> result.success("alreadyAbsent")
+            DeleteOutcome.NEW_MESSAGES_ARRIVED -> result.success("newMessagesArrived")
+            DeleteOutcome.INCOMPLETE -> result.error(
+                "DELETE_INCOMPLETE",
+                "$target was not fully deleted: $found",
+                null,
+            )
+            DeleteOutcome.ABSENCE_UNVERIFIED -> result.error(
+                "ABSENCE_UNVERIFIED",
+                "$target is not visible to this app, so it can't be confirmed gone: " +
+                    "it may already be deleted, or be hidden by the provider's " +
+                    "per-user subscription filter",
+                null,
+            )
+        }
+    }
+
+    /** One message row's identity: its `_id` plus its `date` (see [DeleteReadBack]). */
+    private data class RowKey(val id: Long, val date: Long?)
+
+    /**
+     * A thread's messages, taken before deleting it: each SMS by `(_id, date)`
+     * and each MMS by `_id` alone. The `pdu` table's `_id` is AUTOINCREMENT, so
+     * it is never reused — and MMS `date` can't be part of the key, because it
+     * is rewritten after insert (`InboundMmsPersister` swaps in the local
+     * receive time).
+     */
+    private data class ThreadSnapshot(val sms: Set<RowKey>, val mmsIds: Set<Long>)
+
+    private fun threadSnapshot(threadId: Long): ThreadSnapshot {
+        val args = arrayOf(threadId.toString())
+        return ThreadSnapshot(
+            sms = rowKeys(Telephony.Sms.CONTENT_URI, SMS_IN_THREAD, args).toSet(),
+            mmsIds = rowKeys(Telephony.Mms.CONTENT_URI, MMS_IN_THREAD, args).map { it.id }.toSet(),
         )
-        // Delete all MMS in the thread
-        val mmsDeleted = context.contentResolver.delete(
-            Telephony.Mms.CONTENT_URI,
-            "${Telephony.Mms.THREAD_ID} = ?",
-            arrayOf(threadId)
-        )
-        Log.d(TAG, "Deleted thread $threadId: $smsDeleted SMS, $mmsDeleted MMS")
-        return (smsDeleted + mmsDeleted) > 0
     }
 
     /**
-     * Delete one message from the table named by [table]. The native `_id` is
-     * unique only within its own table, so the channel-derived [table] targets
-     * the right message directly — no SMS-first fallback (UNFY-213).
+     * Delete [threadId] through the conversation URI. The provider removes the
+     * thread's SMS + MMS in one call and then prunes thread rows left without
+     * messages — even when no message matched, which per-table SMS/MMS deletes
+     * skip (AOSP `MmsSmsProvider`), leaving an empty thread the conversation
+     * list would still show.
      */
-    private fun deleteMessage(messageId: String, table: MessageTable): Boolean {
-        val deleted = context.contentResolver.delete(
-            Uri.withAppendedPath(table.contentUri(), messageId),
-            null,
-            null
+    private fun deleteThread(threadId: Long): Int = context.contentResolver.delete(
+        ContentUris.withAppendedId(Telephony.Threads.CONTENT_URI, threadId),
+        null,
+        null,
+    )
+
+    /**
+     * Read [threadId] back: its SMS and MMS rows split against [snapshot] into
+     * survivors and new arrivals, plus whether the thread row the
+     * conversation list reads is still listed.
+     */
+    private fun readBackThread(threadId: Long, snapshot: ThreadSnapshot): DeleteReadBack {
+        val args = arrayOf(threadId.toString())
+        val sms = rowKeys(Telephony.Sms.CONTENT_URI, SMS_IN_THREAD, args)
+        val mms = rowKeys(Telephony.Mms.CONTENT_URI, MMS_IN_THREAD, args)
+        val surviving = sms.count { it in snapshot.sms } + mms.count { it.id in snapshot.mmsIds }
+        return DeleteReadBack(
+            survivingRows = surviving,
+            arrivedRows = sms.size + mms.size - surviving,
+            threadRowListed = rowKeys(SIMPLE_CONVERSATIONS_URI, "${BaseColumns._ID} = ?", args).isNotEmpty(),
+            // The `threads` row is read unfiltered and outlives every hidden
+            // message, so an unlisted row proves the thread gone.
+            absenceProvable = true,
         )
-        if (deleted > 0) {
-            Log.d(TAG, "Deleted ${table.name} message $messageId")
-            return true
-        }
-        Log.w(TAG, "Message $messageId not found in ${table.name} table")
-        return false
+    }
+
+    /**
+     * Whether the provider filters SMS/MMS reads and deletes to the calling
+     * user's subscriptions. Android 14 (API 34) added that filter (AOSP
+     * `ProviderUtil.getSelectionBySubIds`); before it every row is visible to
+     * the default SMS app, so an empty read-back always proves absence.
+     */
+    private fun subscriptionFilterApplies(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+    /**
+     * The `(_id, date)` of rows at [uri] matching [selection]. A non-numeric
+     * value throws instead of reading as fewer rows; a null `date` stays null,
+     * so it still matches only itself.
+     */
+    private fun rowKeys(
+        uri: Uri,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+    ): List<RowKey> = queryRows(uri, arrayOf(BaseColumns._ID, DATE), selection, selectionArgs).map { row ->
+        RowKey(
+            id = numeric(row[BaseColumns._ID], BaseColumns._ID, uri)
+                ?: throw IllegalStateException("Missing ${BaseColumns._ID} from $uri"),
+            date = numeric(row[DATE], DATE, uri),
+        )
+    }
+
+    /**
+     * The rows at [uri] matching [selection], read via simple_query's
+     * `queryOrNull`. A null cursor (provider unreachable) throws instead of
+     * reading as zero rows.
+     */
+    private fun queryRows(
+        uri: Uri,
+        projection: Array<String>,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+    ): List<Map<String, Any?>> = ContentQuery.queryOrNull(
+        context,
+        uri.toString(),
+        projection = projection,
+        selection = selection,
+        selectionArgs = selectionArgs,
+    ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
+
+    /** [value] as a Long (providers may return numbers as text); null stays null. */
+    private fun numeric(value: Any?, column: String, uri: Uri): Long? = when (value) {
+        null -> null
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull()
+            ?: throw IllegalStateException("Non-numeric $column \"$value\" from $uri")
+        else -> throw IllegalStateException("Non-numeric $column $value from $uri")
     }
 }

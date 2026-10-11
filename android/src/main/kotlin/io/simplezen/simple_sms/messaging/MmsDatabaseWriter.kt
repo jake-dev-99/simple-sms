@@ -14,7 +14,7 @@ import android.provider.Telephony.Mms
 // AOSP MMS PDU library at `io.simplezen.simple_sms.mms.codec`.
 import io.simplezen.simple_sms.mms.codec.PduHeaders
 import android.util.Log
-import io.simplezen.simple_sms.messaging.OutboundMessagingHandler.MessageRequestDetails
+import io.simplezen.simple_sms.messaging.OutboundSender.MessageRequestDetails
 import io.simplezen.simple_sms.models.MmsAddr
 import io.simplezen.simple_sms.models.MmsObject
 import io.simplezen.simple_sms.models.MmsPart
@@ -102,9 +102,18 @@ object MmsDatabaseWriter {
         return result
     }
 
-     fun insertSms(context : Context, requestDetails : MessageRequestDetails) : Map<String, Any?> {
-        val contentResolver : ContentResolver = context.contentResolver
-        val values =  ContentValues().apply {
+    /**
+     * Inserts the outbound SMS row in the outbox (UNFY-299) and returns its
+     * URI. It moves to sent or failed with its SENT result
+     * ([recordSendResult]), or to failed when that result never comes
+     * ([markStaleOutboxFailed], which only touches rows this app created).
+     *
+     * Throws [SecurityException] when the provider refuses the insert: it then
+     * returns a placeholder row id 0 rather than null (the WRITE_SMS app-op is
+     * denied unless this is the default SMS app), and nothing is sent.
+     */
+    fun insertSms(context: Context, requestDetails: MessageRequestDetails): Uri {
+        val values = ContentValues().apply {
             val rawAddress = requestDetails.addresses.firstOrNull().orEmpty()
             val normalizedAddress = runCatching { formatNumber(context, rawAddress) }
                 .getOrNull()
@@ -116,19 +125,23 @@ object MmsDatabaseWriter {
             put(Telephony.Sms.THREAD_ID, requestDetails.threadId)
             put(Telephony.Sms.DATE, System.currentTimeMillis())
             put(Telephony.Sms.DATE_SENT, System.currentTimeMillis())
-            put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+            put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_OUTBOX)
             put(Telephony.Sms.STATUS, Telephony.Sms.STATUS_PENDING)
+            // The platform provider stamps the calling package itself; set it
+            // for providers that don't, since the stale-outbox sweep matches it.
+            put(Telephony.Sms.CREATOR, context.packageName)
             put(Telephony.Sms.READ, 1)
             put(Telephony.Sms.SEEN, 1)
             requestDetails.subscriptionId?.let {
                 put(Telephony.Sms.SUBSCRIPTION_ID, it)
             }
         }
-        val newUri = contentResolver.insert (Telephony.Sms.Sent.CONTENT_URI, values, null)
-         val newPart = Query(context).query(QueryObj(contentUri = newUri.toString())).first().toMutableMap().apply {
-                 put("uri", newUri)
-             }
-        return newPart
+        // The insert URI decides the row's type on the platform provider.
+        val uri = context.contentResolver.insert(Telephony.Sms.Outbox.CONTENT_URI, values)
+        if (uri == null || ContentUris.parseId(uri) <= 0) {
+            throw SecurityException("SMS provider refused the outbox insert ($uri); is this the default SMS app?")
+        }
+        return uri
     }
 
     fun insertMmsParts(

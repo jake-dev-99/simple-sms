@@ -68,7 +68,7 @@ internal fun buildOrphanNotificationIndSelection(
  *
  * Replaces the inbound usage of `MmsObject` / `MmsAddr` / `MmsPart` /
  * `MmsDatabaseWriter`. Those types are still consumed by
- * [OutboundMessagingHandler]; their removal lives in a future outbound
+ * [OutboundSender]; their removal lives in a future outbound
  * port step.
  *
  * Acceptance vs. the audit defect catalog:

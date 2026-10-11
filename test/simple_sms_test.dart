@@ -13,7 +13,7 @@ void main() {
         'date_sent': 1700000000000,
         'read': 1,
         'seen': 0,
-        'status': 0x81,
+        'status': 64, // Telephony.Sms.STATUS_FAILED
         'type': 1,
         'service_center': '+15550000000',
         'subject': 'Test',
@@ -31,7 +31,7 @@ void main() {
       expect(sms.body, 'Hello, world!');
       expect(sms.read, true);
       expect(sms.seen, false);
-      expect(sms.status, AndroidMessageStatus.retrieved);
+      expect(sms.status, SmsDeliveryStatus.failed);
       expect(sms.type, SmsMessageType.inbox);
       expect(sms.serviceCenter, '+15550000000');
 
@@ -52,7 +52,7 @@ void main() {
         'dateSent': '2024-01-15T10:29:00.000',
         'read': true,
         'seen': false,
-        'status': 0x81,
+        'status': 32, // Telephony.Sms.STATUS_PENDING
         'type': 2,
         'serviceCenter': '+15550000000',
         'priority': 0x81,
@@ -66,6 +66,7 @@ void main() {
       expect(sms.read, true);
       expect(sms.seen, false);
       expect(sms.type, SmsMessageType.sent);
+      expect(sms.status, SmsDeliveryStatus.pending);
       expect(sms.priority, MessagePriority.normal);
 
       final output = sms.toJson();
@@ -298,7 +299,7 @@ void main() {
 
     test('subscriptionId round-trips through toJson/fromJson', () {
       // SIM-606: the picker chooses which SIM a multi-SIM send originates
-      // from. `OutboundMessagingHandler` reads `message["subscriptionId"]`
+      // from. `OutboundSender` reads `message["subscriptionId"]`
       // to build an SmsManager.createForSubscriptionId(...); the Dart field
       // is what lets a caller actually set it.
       final message = OutboundMessage(

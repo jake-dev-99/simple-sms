@@ -108,7 +108,8 @@ class Sms {
   final int? simSlot;
   final String? sourceLabel;
   final bool? spamReport;
-  final AndroidMessageStatus? status;
+  /// Delivery status from the carrier's delivery report (UNFY-299).
+  final SmsDeliveryStatus? status;
   final String? subject;
   final int? subscriptionId;
   final int? teleserviceId;
@@ -319,10 +320,8 @@ class Sms {
     // which silently marked messages as "delivered" when the provider
     // returned an unrecognized status code. That's actively harmful
     // (user thinks message was delivered when it might have failed).
-    status: FieldHelper.enumFromValueOrNull(
-      AndroidMessageStatus.values,
-      json["status"],
-    ),
+    // SMS values, not the MMS enum, which never matched them (UNFY-299).
+    status: SmsDeliveryStatus.fromRaw(FieldHelper.asInt(json["status"])),
     subject: json["subject"],
     subscriptionId: FieldHelper.asInt(json["subscriptionId"]),
     teleserviceId: FieldHelper.asInt(json["teleserviceId"]),
@@ -489,10 +488,7 @@ class Sms {
     simSlot: FieldHelper.asInt(raw["sim_slot"]),
     sourceLabel: raw["sourceLabel"],
     spamReport: FieldHelper.asBool(raw["spam_report"]),
-    status: FieldHelper.enumFromValueOrNull(
-      AndroidMessageStatus.values,
-      FieldHelper.asInt(raw["status"]),
-    ),
+    status: SmsDeliveryStatus.fromRaw(FieldHelper.asInt(raw["status"])),
     subject: raw["subject"],
     subscriptionId: FieldHelper.asInt(raw["sub_id"]),
     teleserviceId: FieldHelper.asInt(raw["teleservice_id"]),
