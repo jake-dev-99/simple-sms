@@ -18,6 +18,7 @@ Sms buildSms({
   int? simSlot,
   int? subscriptionId,
   DateTime? date,
+  SmsDeliveryStatus? status,
 }) =>
     Sms(
       id: id,
@@ -30,6 +31,7 @@ Sms buildSms({
       seen: seen,
       simSlot: simSlot,
       subscriptionId: subscriptionId,
+      status: status,
     );
 
 Mms buildMms({
@@ -149,6 +151,38 @@ void main() {
           NormalizedMessage.fromSms(buildSms(type: SmsMessageType.draft));
       expect(draft.direction, MessageDirection.outbound);
       expect(draft.deliveryState, MessageDeliveryState.draft);
+    });
+
+    test('a delivery report decides an outbound row: failed → failed, '
+        'complete → delivered once sent, no verdict → by type (UNFY-299)', () {
+      MessageDeliveryState state(SmsMessageType type, SmsDeliveryStatus? s) =>
+          NormalizedMessage.fromSms(buildSms(type: type, status: s))
+              .deliveryState;
+
+      for (final type in [
+        SmsMessageType.sent,
+        SmsMessageType.outbox,
+        SmsMessageType.queued,
+      ]) {
+        expect(state(type, SmsDeliveryStatus.failed),
+            MessageDeliveryState.failed);
+      }
+      expect(state(SmsMessageType.sent, SmsDeliveryStatus.complete),
+          MessageDeliveryState.delivered);
+      // One part of a multipart SMS delivered while others are still unsent.
+      expect(state(SmsMessageType.outbox, SmsDeliveryStatus.complete),
+          MessageDeliveryState.sending);
+      for (final s in [SmsDeliveryStatus.pending, SmsDeliveryStatus.none, null]) {
+        expect(state(SmsMessageType.sent, s), MessageDeliveryState.sent);
+        expect(state(SmsMessageType.outbox, s), MessageDeliveryState.sending);
+      }
+      // A send failure, a draft and an inbound row ignore the column.
+      expect(state(SmsMessageType.failed, SmsDeliveryStatus.complete),
+          MessageDeliveryState.failed);
+      expect(state(SmsMessageType.draft, SmsDeliveryStatus.complete),
+          MessageDeliveryState.draft);
+      expect(state(SmsMessageType.inbox, SmsDeliveryStatus.failed),
+          MessageDeliveryState.delivered);
     });
 
     test('null type → unknown direction and delivery-state', () {

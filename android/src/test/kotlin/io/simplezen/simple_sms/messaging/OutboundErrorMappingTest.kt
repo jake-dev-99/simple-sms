@@ -125,6 +125,20 @@ class OutboundErrorMappingTest {
     }
 
     @Test
+    fun sendResultTimeout_mapsTo_timeoutCode_withUnknownSent() {
+        // UNFY-299: no SENT result arrived, so whether it went out is unknown.
+        val (code, message, details) = mapSendException(
+            SendResultTimeoutException(Uri.parse("content://sms/42"), timeoutMs = 600_000L),
+        )
+        assertEquals(ERR_SEND_RESULT_TIMEOUT, code)
+        assertTrue("message names the URI", message.contains("content://sms/42"))
+        assertEquals(
+            mapOf("messageUri" to "content://sms/42", "sent" to null, "timeoutMs" to 600_000L),
+            details,
+        )
+    }
+
+    @Test
     fun unknownThrowable_mapsTo_genericSendInitiation() {
         // Any unmodelled throwable falls through to the generic code rather
         // than leaking an uncategorized error to Dart.

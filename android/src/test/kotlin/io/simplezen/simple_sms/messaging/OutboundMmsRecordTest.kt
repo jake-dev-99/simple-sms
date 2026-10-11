@@ -1,6 +1,7 @@
 package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
@@ -90,7 +91,8 @@ class OutboundMmsRecordTest {
 
         try {
             context.sendOrderedBroadcast(
-                Intent(SENTMMS_ACTION).setPackage(context.packageName)
+                Intent(SENTMMS_ACTION)
+                    .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
                     .putExtra("messageID", 9001)
                     .putExtra("uri", "content://mms/9001"),
                 null, null, null, resultCode, null, null,

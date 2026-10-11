@@ -88,7 +88,9 @@ class AndroidMessaging {
   /// ```
   ///
   /// Throws a [PlatformException] if the device lacks telephony capability
-  /// or the send can't be started. Otherwise the future settles once the
+  /// or the send can't be started; without the `DefaultSmsApp` role the
+  /// provider refuses the SMS row and the send fails with `PERMISSION_DENIED`
+  /// before anything is sent. Otherwise the future settles once the
   /// carrier reports the result. A multipart SMS settles as failed at its
   /// first failed part, and as sent only once every part was sent.
   ///
@@ -105,6 +107,13 @@ class AndroidMessaging {
   /// message went out (don't resend it), `false` that the send failed.
   /// `details` also carry `messageUri`, `eventType`, `resultCode`, and
   /// `statusString`.
+  ///
+  /// `SEND_RESULT_TIMEOUT` settles a send that got no carrier result within
+  /// 10 minutes of device uptime (the timer pauses in deep sleep), e.g. after
+  /// the radio process crashed mid-send. Whether it went out is unknown, so
+  /// `details['sent']` is `null`. The row, if still on its way out, is marked
+  /// failed; a carrier success that arrives later still moves it to sent.
+  /// `details` also carry `messageUri` and `timeoutMs`.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
   }) async {

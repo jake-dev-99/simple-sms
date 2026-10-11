@@ -14,6 +14,7 @@ import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler
+import io.simplezen.simple_sms.messaging.OutboxSweeper
 
 /** SimpleSmsPlugin */
 class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener,
@@ -113,7 +114,7 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
      *
      * Idempotent per-messenger: the `OutboundMessagingHandler` instance
      * is cached so repeat invocations for the same messenger don't
-     * register additional `OutboundMessagingReceiver`s.
+     * register additional handlers for SENT results.
      */
     fun initializeMethodChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
       val appContext = context.applicationContext
@@ -121,6 +122,7 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       val outboundHandler = synchronized(handlersByMessenger) {
         handlersByMessenger[binaryMessenger] ?: OutboundMessagingHandler(appContext).also {
           handlersByMessenger[binaryMessenger] = it
+          OutboxSweeper.onEngineStart(appContext)
         }
       }
 
@@ -138,8 +140,8 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
     /**
      * Release the cached [OutboundMessagingHandler] for [binaryMessenger]
-     * (if one is cached), calling its `release()` so the underlying
-     * BroadcastReceiver is unregistered. Called from
+     * (if one is cached), calling its `release()` so it stops taking SENT
+     * results. Called from
      * [onDetachedFromEngine] and from
      * [BackgroundEngineManager.onForegroundDetached] when engines tear
      * down.
@@ -185,9 +187,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     Log.d(TAG, "onDetachedFromEngine (engine=${System.identityHashCode(binding)})")
-    // Release the cached OutboundMessagingHandler for this messenger so
-    // its BroadcastReceiver is unregistered. Without this, every engine
-    // teardown would leave a live receiver in the Android registry.
+    // Release the cached OutboundMessagingHandler for this messenger so it
+    // leaves SendResultRouter. Without this, every engine teardown would
+    // leave a dead handler registered for SENT results.
     releaseHandler(binding.binaryMessenger)
     // The actions channel is registered on every engine in onAttachedToEngine.
     MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)

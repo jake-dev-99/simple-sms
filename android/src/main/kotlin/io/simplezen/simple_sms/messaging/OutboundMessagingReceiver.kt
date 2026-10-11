@@ -126,21 +126,16 @@ private const val CDMA_UNDEFINED = 0xFF
 private const val TAG_RECEIVER = "OutboundMessagingReceiver"
 
 /**
- * Receives outbound status broadcasts.
+ * Receives outbound status broadcasts. It is manifest-declared and not
+ * exported; every status intent targets it explicitly, so Android delivers
+ * them even after the app process has gone.
  *
- * - SENT results arrive at the instance [OutboundMessagingHandler] registers
- *   at runtime, which settles the pending send through [onStatusUpdate].
- * - SMS delivery reports target the manifest-declared instance directly, so
- *   Android delivers them even after the app process has gone; they only
- *   record the parsed status on the row named by the intent data (UNFY-293).
+ * - SENT results go to [SendResultRouter], which hands them to the handler
+ *   that owns the send or records them on the row (UNFY-299).
+ * - SMS delivery reports only record the parsed status on the row named by
+ *   the intent data (UNFY-293).
  */
-class OutboundMessagingReceiver(
-    // Callback to notify the handler with messageId, event type, status string, and raw resultCode
-    private var onStatusUpdate: ((messageId: Int, messageUri: Uri, eventType: String, statusString: String, resultCode: Int) -> Unit)? = null
-) : BroadcastReceiver() {
-
-    // Public no-arg constructor required for framework instantiation
-    constructor() : this(null)
+class OutboundMessagingReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent == null || context == null) {
@@ -172,7 +167,7 @@ class OutboundMessagingReceiver(
         }
         val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $currentResultCode, Status: $statusString")
-        onStatusUpdate?.invoke(messageId, messageUri, eventType, statusString, currentResultCode)
+        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, currentResultCode)
     }
 
     /**
