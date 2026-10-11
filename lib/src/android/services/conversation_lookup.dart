@@ -194,16 +194,19 @@ class ConversationLookup {
   /// Attaches each conversation's latest-MMS parts, fetched in a single batched
   /// query ([AttachmentExtractor.listMmsPartsForMessages]). The bare
   /// `content://mms` list query doesn't join the part table, so without this
-  /// the MMS body is empty for the conversation-list preview. Best-effort: a
-  /// batch failure leaves each latest MMS with the empty parts list its bare
-  /// row carries (empty preview) rather than failing the whole list
-  /// (UNFY-250).
+  /// the MMS body is empty for the conversation-list preview. A latest MMS
+  /// with no part rows gets an empty list, the same as its bare row.
+  ///
+  /// Best-effort for provider failures only: a [SimpleQueryError] from the
+  /// batch is logged with its stack and leaves each latest MMS with the empty
+  /// parts list its bare row carries (empty preview) rather than failing the
+  /// whole list (UNFY-250). Any other error is a defect and propagates.
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
   ) async {
     final latestMmsIds = <int>[
       for (final c in conversations)
-        if (c.latestMms != null) c.latestMms!.id,
+        if (c.latestMms case final latestMms?) latestMms.id,
     ];
     if (latestMmsIds.isEmpty) return;
     try {
@@ -212,13 +215,13 @@ class ConversationLookup {
       for (final c in conversations) {
         final latestMms = c.latestMms;
         if (latestMms != null) {
-          latestMms.parts = partsByMid[latestMms.id];
+          latestMms.parts = partsByMid[latestMms.id] ?? const [];
         }
       }
-    } catch (e) {
+    } on SimpleQueryError catch (e, s) {
       debugPrint(
         '[diag][simple-sms] batch latest-MMS parts hydration failed '
-        '(${latestMmsIds.length} ids): $e',
+        '(${latestMmsIds.length} ids): $e\n$s',
       );
     }
   }

@@ -63,11 +63,16 @@ class ContactLookup {
   /// Looks up a contactable (lightweight contact info) by phone number
   /// or email. Uses the Android contacts filter URI to match the
   /// address against phone numbers or email addresses.
+  ///
+  /// The address is percent-encoded as a single path segment, as AOSP does
+  /// with `Uri.encode`, so `+`, `#`, `/`, `%`, or spaces cannot split or
+  /// truncate the URI; the provider reads it back decoded.
   Future<Contactable?> lookupContactableByAddress(String address) async {
     final isEmail = address.contains('@');
+    final segment = Uri.encodeComponent(address);
     final uri = isEmail
-        ? '$_contactsEmailFilterUri/$address'
-        : '$_contactsPhoneFilterUri/$address';
+        ? '$_contactsEmailFilterUri/$segment'
+        : '$_contactsPhoneFilterUri/$segment';
     final response = await SimpleQuery.instance.query(
       QueryRequest(
         domain: QueryDomain.platformSpecific,

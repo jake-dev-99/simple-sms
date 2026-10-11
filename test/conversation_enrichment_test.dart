@@ -215,9 +215,45 @@ void main() {
 
       final [conversation] = await LookupService().listConversations();
 
+      expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
       expect(conversation.latestMms?.id, 11);
       expect(conversation.latestMms?.parts, isEmpty);
     });
+
+    test('a non-provider error in the parts batch propagates', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [_mms(11, threadId: 7, seconds: 2)],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+      final defect = StateError('defect, not a provider failure');
+      provider.failQueriesTo(ProviderUris.mmsParts, defect);
+
+      await expectLater(
+        LookupService().listConversations(),
+        throwsA(same(defect)),
+      );
+    });
+
+    test(
+      'a latest MMS with no part rows gets an empty list, not null',
+      () async {
+        _seedTables(
+          provider,
+          threads: [_thread(7)],
+          mms: [_mms(11, threadId: 7, seconds: 2)],
+          parts: [_part(990, mid: 99, contentType: 'text/plain', text: 'x')],
+        );
+        _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+        final [conversation] = await LookupService().listConversations();
+
+        expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
+        expect(conversation.latestMms?.parts, isNotNull);
+        expect(conversation.latestMms?.parts, isEmpty);
+      },
+    );
   });
 
   group('list shape', () {

@@ -7,6 +7,8 @@
 /// `ContactLookup`, `AttachmentExtractor`) unit-testable without injection.
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_query_platform_interface/testing.dart';
@@ -49,28 +51,35 @@ abstract final class ProviderUris {
   /// Purpose: builds the contacts phone-filter URI for an address.
   ///
   /// @param address the phone number being resolved.
-  /// @returns the `data/phones/filter/{address}` URI.
+  /// @returns the `data/phones/filter/{address}` URI, the address encoded as
+  /// one path segment.
   /// @throws nothing.
   static String phoneLookup(String address) =>
-      'content://com.android.contacts/data/phones/filter/$address';
+      'content://com.android.contacts/data/phones/filter/'
+      '${Uri.encodeComponent(address)}';
 
   /// Purpose: builds the contacts email-filter URI for an `@` address.
   ///
   /// @param address the email-shaped address being resolved.
-  /// @returns the `data/emails/filter/{address}` URI.
+  /// @returns the `data/emails/filter/{address}` URI, the address encoded as
+  /// one path segment.
   /// @throws nothing.
   static String emailLookup(String address) =>
-      'content://com.android.contacts/data/emails/filter/$address';
+      'content://com.android.contacts/data/emails/filter/'
+      '${Uri.encodeComponent(address)}';
 }
 
 /// Purpose: a [SimpleQueryPlatform] whose `query` evaluates each request
 /// against seeded in-memory tables the way the Android backend's SQL would.
 ///
-/// Filters are ANDed with SQLite semantics: numeric-looking values compare
-/// numerically, `NULL` never matches, `contains` is a case-insensitive
-/// `LIKE '%value%'`, and an empty `inList` is rejected as `invalidQuery`.
-/// Sorting and `limit`/`offset` paging apply in that order. A filter or sort
-/// on a column the table lacks fails like SQLite's `no such column` — the
+/// Filters are ANDed with SQLite semantics. A cell's Dart type stands for its
+/// storage class: an int or double cell compares a numeric-looking argument as
+/// a number, while a String cell compares it as text (so `'+1555…'` never
+/// equals `'1555…'`). `NULL` never matches, `contains` is SQLite's
+/// `LIKE '%value%'` (`%`/`_` wildcards, ASCII case-insensitive), and an empty
+/// `inList` is rejected as `invalidQuery`. Sorting defaults to `_id ASC` as the
+/// backend's does, then `limit`/`offset` paging applies. A filter or sort on a
+/// column the table lacks fails like SQLite's `no such column` — the
 /// OEM-schema bug class (e.g. `thread_id` on the conversations view).
 ///
 /// Reading a URI nothing was seeded for throws [StateError], so every table a
@@ -97,12 +106,13 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   /// Purpose: appends rows to the table at [contentUri], creating it first.
   ///
   /// @param contentUri the exact URI production code queries.
-  /// @param rows provider rows; each is copied, so later edits to the caller's
-  /// maps do not leak in.
+  /// @param rows flat provider rows, as a cursor yields them; each is copied,
+  /// so later edits to the caller's maps do not leak in.
   /// @param columns extra column names the table has beyond the keys of
   /// [rows] — needed to filter an empty table without `no such column`.
   /// @returns nothing.
-  /// @throws nothing.
+  /// @throws [ArgumentError] for a cell a cursor cannot hold (anything but
+  /// null, int, double, String, or Uint8List).
   void seed(
     String contentUri,
     Iterable<QueryRecord> rows, {
@@ -182,13 +192,15 @@ final class _ProviderTable {
   /// @param rows provider rows to store.
   /// @param columns column names beyond the keys of [rows].
   /// @returns nothing.
-  /// @throws nothing.
+  /// @throws [ArgumentError] for a cell a cursor cannot hold (anything but
+  /// null, int, double, String, or Uint8List).
   void insertAll({
     required Iterable<QueryRecord> rows,
     required Iterable<String> columns,
   }) {
     for (final row in rows) {
-      _rows.add(QueryRecord.of(row));
+      row.forEach(_requireCursorValue);
+      _rows.add(_copyRow(row));
       _columns.addAll(row.keys);
     }
     _columns.addAll(columns);
@@ -196,21 +208,29 @@ final class _ProviderTable {
 
   /// Purpose: evaluates [request] as `SELECT * … WHERE … ORDER BY … LIMIT`.
   ///
+  /// With no sort keys the order is `_id ASC`, the Android backend's default.
+  /// Rows that tie on every key keep insertion order, standing in for
+  /// SQLite's rowid order.
+  ///
   /// @param request the incoming query.
   /// @returns copies of the selected rows.
   /// @throws [SimpleQueryError] for a missing column or an empty `inList`;
   /// [UnsupportedError] for a projection or cursor page.
   List<QueryRecord> select(QueryRequest request) {
     _validate(request);
-    final matches =
-        _rows
-            .where((row) => request.filters.every((f) => _matches(row, f)))
-            .toList();
-    matches.sort((a, b) => _compareBySort(a, b, request.sort));
+    final sort = request.sort.isEmpty ? _defaultSort : request.sort;
+    final matches = <(int, QueryRecord)>[
+      for (final (index, row) in _rows.indexed)
+        if (request.filters.every((f) => _matches(row, f))) (index, row),
+    ];
+    matches.sort((a, b) {
+      final byKeys = _compareBySort(a.$2, b.$2, sort);
+      return byKeys != 0 ? byKeys : a.$1.compareTo(b.$1);
+    });
     return _paginate(
-      matches,
+      matches.map((match) => match.$2),
       request.page,
-    ).map(QueryRecord.of).toList(growable: false);
+    ).map(_copyRow).toList(growable: false);
   }
 
   /// Purpose: rejects what the real backend rejects, and what this fake does
@@ -238,6 +258,40 @@ final class _ProviderTable {
   }
 }
 
+/// The Android backend's `ORDER BY` when a request names no sort keys.
+const List<QuerySort> _defaultSort = <QuerySort>[QuerySort(field: '_id')];
+
+/// SQLite's test for TEXT that converts losslessly to a number when compared
+/// against a numeric column; anything else (hex, words) stays TEXT.
+final RegExp _sqlNumericText = RegExp(
+  r'^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$',
+);
+
+/// Purpose: rejects a cell value no Android cursor can produce, so seeded
+/// tables stay flat and every copy is a full copy.
+///
+/// @param column the cell's column name, for the error.
+/// @param value the cell value.
+/// @returns nothing.
+/// @throws [ArgumentError] for anything but null, int, double, String, or
+/// Uint8List.
+void _requireCursorValue(String column, Object? value) {
+  if (value == null || value is num || value is String || value is Uint8List) {
+    return;
+  }
+  throw ArgumentError.value(value, column, 'is not a cursor cell value');
+}
+
+/// Purpose: copies a flat provider row, including its blob cells.
+///
+/// @param row a row holding only cursor cell values.
+/// @returns an independent copy.
+/// @throws nothing.
+QueryRecord _copyRow(QueryRecord row) => row.map(
+  (column, value) =>
+      MapEntry(column, value is Uint8List ? Uint8List.fromList(value) : value),
+);
+
 /// Purpose: decides whether [row] satisfies one SQL condition.
 ///
 /// @param row the candidate provider row.
@@ -250,18 +304,18 @@ bool _matches(QueryRecord row, QueryFilterCondition filter) {
   if (cell == null) return false;
   final argument = filter.value?.toString() ?? '';
   return switch (filter.operator) {
-    QueryFilterOperator.equals => _compareSql(cell, argument) == 0,
-    QueryFilterOperator.notEquals => _compareSql(cell, argument) != 0,
-    QueryFilterOperator.greaterThan => _compareSql(cell, argument) > 0,
-    QueryFilterOperator.greaterThanOrEqual => _compareSql(cell, argument) >= 0,
-    QueryFilterOperator.lessThan => _compareSql(cell, argument) < 0,
-    QueryFilterOperator.lessThanOrEqual => _compareSql(cell, argument) <= 0,
-    QueryFilterOperator.contains => cell.toString().toLowerCase().contains(
-      argument.toLowerCase(),
-    ),
+    QueryFilterOperator.equals => _compareToArgument(cell, argument) == 0,
+    QueryFilterOperator.notEquals => _compareToArgument(cell, argument) != 0,
+    QueryFilterOperator.greaterThan => _compareToArgument(cell, argument) > 0,
+    QueryFilterOperator.greaterThanOrEqual =>
+      _compareToArgument(cell, argument) >= 0,
+    QueryFilterOperator.lessThan => _compareToArgument(cell, argument) < 0,
+    QueryFilterOperator.lessThanOrEqual =>
+      _compareToArgument(cell, argument) <= 0,
+    QueryFilterOperator.contains => _like(cell, '%$argument%'),
     QueryFilterOperator.inList => _inListArguments(
       filter,
-    ).any((item) => _compareSql(cell, item) == 0),
+    ).any((item) => _compareToArgument(cell, item) == 0),
   };
 }
 
@@ -278,6 +332,100 @@ List<String> _inListArguments(QueryFilterCondition filter) {
   return values.map((item) => item.toString()).toList(growable: false);
 }
 
+/// Purpose: compares a cell with a bound TEXT argument under column affinity.
+///
+/// A numeric cell stands for a numeric column, which converts a numeric-
+/// looking argument to a number; a String cell stands for a TEXT column,
+/// which compares the argument as text.
+///
+/// @param cell a non-null cell value.
+/// @param argument the bound argument.
+/// @returns negative, zero, or positive.
+/// @throws nothing.
+int _compareToArgument(Object cell, String argument) {
+  final coerced =
+      cell is num && _sqlNumericText.hasMatch(argument)
+          ? num.parse(argument.trim())
+          : argument;
+  return _compareSqlValues(cell, coerced);
+}
+
+/// Purpose: orders two non-null SQL values the way SQLite does: numbers
+/// before text before blobs, numbers numerically, text by code unit.
+///
+/// @param left a cell or coerced argument.
+/// @param right a cell or coerced argument.
+/// @returns negative, zero, or positive.
+/// @throws nothing.
+int _compareSqlValues(Object left, Object right) {
+  final byClass = _storageClassRank(left).compareTo(_storageClassRank(right));
+  if (byClass != 0) return byClass;
+  return switch ((left, right)) {
+    (final num l, final num r) => l.compareTo(r),
+    (final String l, final String r) => l.compareTo(r),
+    _ => 0, // Two blobs: no plugin read orders or filters on a blob column.
+  };
+}
+
+/// Purpose: ranks a value's SQLite storage class for cross-class ordering.
+///
+/// @param value a non-null cell or coerced argument.
+/// @returns 0 for numbers, 1 for text, 2 for blobs.
+/// @throws nothing.
+int _storageClassRank(Object value) => switch (value) {
+  num() => 0,
+  String() => 1,
+  _ => 2,
+};
+
+/// Purpose: evaluates SQLite `LIKE` — `%` matches any run, `_` one
+/// character, ASCII letters match case-insensitively, and the cell is read as
+/// text.
+///
+/// @param cell a non-null cell value.
+/// @param pattern the bound `LIKE` pattern.
+/// @returns whether the whole cell text matches.
+/// @throws nothing.
+bool _like(Object cell, String pattern) {
+  final expression = StringBuffer('^');
+  for (final rune in _asciiLower(pattern).runes) {
+    final character = String.fromCharCode(rune);
+    expression.write(switch (character) {
+      '%' => '.*',
+      '_' => '.',
+      _ => RegExp.escape(character),
+    });
+  }
+  expression.write(r'$');
+  return RegExp(
+    expression.toString(),
+    dotAll: true,
+  ).hasMatch(_asciiLower(cell.toString()));
+}
+
+/// Purpose: lower-cases only ASCII letters, as SQLite's default `LIKE` does.
+///
+/// @param text any text.
+/// @returns [text] with `A`–`Z` lowered.
+/// @throws nothing.
+String _asciiLower(String text) => text.replaceAllMapped(
+  RegExp('[A-Z]'),
+  (match) => match.group(0)?.toLowerCase() ?? '',
+);
+
+/// Purpose: applies `LIMIT`/`OFFSET` to already-ordered rows.
+///
+/// @param rows the ordered matches.
+/// @param page the requested page, or null for every row.
+/// @returns the paged slice.
+/// @throws nothing.
+Iterable<QueryRecord> _paginate(Iterable<QueryRecord> rows, QueryPage? page) {
+  final offset = page?.offset ?? 0;
+  final limit = page?.limit;
+  final skipped = rows.skip(offset);
+  return limit == null ? skipped : skipped.take(limit);
+}
+
 /// Purpose: orders two rows by each sort key in turn, `NULL` lowest, as
 /// SQLite does.
 ///
@@ -288,13 +436,11 @@ List<String> _inListArguments(QueryFilterCondition filter) {
 /// @throws nothing.
 int _compareBySort(QueryRecord a, QueryRecord b, List<QuerySort> sort) {
   for (final key in sort) {
-    final left = a[key.field];
-    final right = b[key.field];
-    final comparison = switch ((left, right)) {
+    final comparison = switch ((a[key.field], b[key.field])) {
       (null, null) => 0,
       (null, _) => -1,
       (_, null) => 1,
-      (final Object l, final Object r) => _compareSql(l, r),
+      (final Object l, final Object r) => _compareSqlValues(l, r),
     };
     if (comparison != 0) {
       return key.direction == QuerySortDirection.ascending
@@ -303,34 +449,6 @@ int _compareBySort(QueryRecord a, QueryRecord b, List<QuerySort> sort) {
     }
   }
   return 0;
-}
-
-/// Purpose: compares two SQL values with integer-affinity coercion.
-///
-/// @param left a cell or bound argument.
-/// @param right a cell or bound argument.
-/// @returns numeric order when both sides read as numbers, else text order.
-/// @throws nothing.
-int _compareSql(Object left, Object right) {
-  final leftNumber = num.tryParse(left.toString());
-  final rightNumber = num.tryParse(right.toString());
-  if (leftNumber != null && rightNumber != null) {
-    return leftNumber.compareTo(rightNumber);
-  }
-  return left.toString().compareTo(right.toString());
-}
-
-/// Purpose: applies `LIMIT`/`OFFSET` to already-ordered rows.
-///
-/// @param rows the ordered matches.
-/// @param page the requested page, or null for every row.
-/// @returns the paged slice.
-/// @throws nothing.
-Iterable<QueryRecord> _paginate(List<QueryRecord> rows, QueryPage? page) {
-  final offset = page?.offset ?? 0;
-  final limit = page?.limit;
-  final skipped = rows.skip(offset);
-  return limit == null ? skipped : skipped.take(limit);
 }
 
 /// Purpose: builds the error the Android backend raises for a malformed

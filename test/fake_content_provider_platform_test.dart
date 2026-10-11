@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 
@@ -180,5 +182,92 @@ void main() {
       ids(const [], page: const QueryPage.cursor(cursor: 'next')),
       throwsUnsupportedError,
     );
+  });
+
+  test('a TEXT cell compares as text, never coerced to a number', () async {
+    provider.seed(uri, [
+      {'_id': 1, 'address': '+15550001111'},
+      {'_id': 2, 'address': '15550001111'},
+      {'_id': 3, 'address': '9'},
+      {'_id': 4, 'address': '10'},
+    ]);
+    expect(
+      await ids([where('address', QueryFilterOperator.equals, '15550001111')]),
+      [2],
+    );
+    // Text order: '10' < '9'.
+    expect(await ids([where('address', QueryFilterOperator.lessThan, '9')]), [
+      1,
+      2,
+      4,
+    ]);
+  });
+
+  test('a numeric cell converts only a numeric literal, not hex', () async {
+    provider.seed(uri, [
+      {'_id': 16},
+    ]);
+    expect(await ids([where('_id', QueryFilterOperator.equals, '16.0')]), [16]);
+    expect(await ids([where('_id', QueryFilterOperator.equals, '0x10')]), []);
+  });
+
+  test('contains honours LIKE wildcards', () async {
+    provider.seed(uri, [
+      {'_id': 1, 'ct': 'image/jpeg'},
+      {'_id': 2, 'ct': 'image_jpeg'},
+    ]);
+    expect(await ids([where('ct', QueryFilterOperator.contains, 'image_')]), [
+      1,
+      2,
+    ]);
+    expect(await ids([where('ct', QueryFilterOperator.contains, 'e%g')]), [
+      1,
+      2,
+    ]);
+  });
+
+  test('no sort keys means _id ASC; full ties keep insertion order', () async {
+    provider.seed(uri, [
+      {'_id': 3, 'mid': 1},
+      {'_id': 1, 'mid': 2},
+      {'_id': 2, 'mid': 1},
+    ]);
+    expect(await ids(const []), [1, 2, 3]);
+    expect(await ids(const [], sort: const [QuerySort(field: 'mid')]), [
+      3,
+      2,
+      1,
+    ]);
+  });
+
+  test('seed rejects a value no cursor can hold', () {
+    expect(
+      () => provider.seed(uri, [
+        {
+          '_id': 1,
+          'parts': [1, 2],
+        },
+      ]),
+      throwsArgumentError,
+    );
+  });
+
+  test('blob cells are copied in and out', () async {
+    final blob = Uint8List.fromList([1, 2]);
+    provider.seed(uri, [
+      {'_id': 1, 'data15': blob},
+    ]);
+    blob[0] = 9;
+    Future<Object?> read() async =>
+        (await provider.query(
+          const QueryRequest(
+            domain: QueryDomain.platformSpecific,
+            platformData: {'contentUri': uri},
+          ),
+        )).records.single['data15'];
+    final first = await read();
+    if (first is! Uint8List) fail('expected a blob cell');
+    first[1] = 9;
+    expect(await read(), [1, 2]);
   });
 }
