@@ -37,8 +37,7 @@ internal const val DELIVERY_REPORT_WAIT_MS = 7 * 24 * 60 * 60 * 1000L
  * @param deliveryStatuses each part's [Telephony.Sms] delivery status, `null`
  *   until its report arrives.
  * @param firstFailedResultCode the result code of the first part to report a
- *   failure, in the order the reports arrived; `null` while none has, or in
- *   a record written before it was kept.
+ *   failure, in the order the reports arrived; `null` while none has.
  */
 @Serializable
 internal data class SmsPartsRecord(
@@ -50,27 +49,21 @@ internal data class SmsPartsRecord(
     init {
         require(sentResultCodes.isNotEmpty()) { "An SMS has at least one part" }
         require(deliveryStatuses.size == sentResultCodes.size) { "Part counts disagree: $this" }
-        require(
-            firstFailedResultCode == null ||
-                (firstFailedResultCode != Activity.RESULT_OK && firstFailedResultCode in sentResultCodes)
-        ) { "First failure is not a failed part's: $this" }
+        val failedCodes = sentResultCodes.filter { it != null && it != Activity.RESULT_OK }
+        require(if (firstFailedResultCode == null) failedCodes.isEmpty() else firstFailedResultCode in failedCodes) {
+            "First failure disagrees with the parts' results: $this"
+        }
     }
 
     val partCount: Int get() = sentResultCodes.size
 
     /**
      * The message's SENT outcome once every part reported: the result code of
-     * the first part to report a failure (of the first failed part, when that
-     * was not kept), or [Activity.RESULT_OK] when every part was sent.
+     * the first part to report a failure, or [Activity.RESULT_OK] when every
+     * part was sent.
      */
     val sendResultCode: Int?
-        get() = if (sentResultCodes.any { it == null }) {
-            null
-        } else {
-            firstFailedResultCode
-                ?: sentResultCodes.firstOrNull { it != Activity.RESULT_OK }
-                ?: Activity.RESULT_OK
-        }
+        get() = if (sentResultCodes.any { it == null }) null else firstFailedResultCode ?: Activity.RESULT_OK
 
     /**
      * The message's delivery status from its parts' reports: failed if any

@@ -251,26 +251,24 @@ class SmsPartLedgerTest {
     }
 
     @Test
-    fun aRecordThatDidNotKeepItsFirstFailure_stillSettlesAsFailed() {
-        // As a build from before the first failure was kept wrote it.
-        val parts = start(parts = 2)
-        File(File(directory, "41"), "${parts[0].token}.json").writeText(
-            """{"token":"${parts[0].token}","sentResultCodes":[$failure,null],"deliveryStatuses":[null,null]}"""
-        )
+    fun aRecordWhoseFirstFailureDisagreesWithItsParts_isRemoved() {
+        val noService = SmsManager.RESULT_ERROR_NO_SERVICE
+        // A failed part but no first failure; a first failure no part
+        // reported; a first failure that is a success.
+        listOf(
+            """"sentResultCodes":[$failure,null]""",
+            """"sentResultCodes":[$failure,null],"firstFailedResultCode":$noService""",
+            """"sentResultCodes":[$failure,null],"firstFailedResultCode":$ok""",
+            """"sentResultCodes":[null,null],"firstFailedResultCode":$failure""",
+        ).forEach { fields ->
+            val parts = start(parts = 2)
+            File(File(directory, "41"), "${parts[0].token}.json").writeText(
+                """{"token":"${parts[0].token}",$fields,"deliveryStatuses":[null,null]}"""
+            )
 
-        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(parts[1], ok))
-    }
-
-    @Test
-    fun aRecordWhoseFirstFailureIsNoFailedPart_isRemoved() {
-        val parts = start(parts = 2)
-        File(File(directory, "41"), "${parts[0].token}.json").writeText(
-            """{"token":"${parts[0].token}","sentResultCodes":[$failure,null],""" +
-                """"deliveryStatuses":[null,null],"firstFailedResultCode":$ok}"""
-        )
-
-        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[1], ok))
-        assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
+            assertEquals(fields, SentPartProgress.UnknownSend, ledger().recordSent(parts[1], ok))
+            assertTrue(fields, File(directory, "41").listFiles().orEmpty().isEmpty())
+        }
     }
 
     @Test
