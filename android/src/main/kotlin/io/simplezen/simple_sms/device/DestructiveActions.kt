@@ -4,6 +4,7 @@ import android.app.role.RoleManager
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.BaseColumns
 import android.provider.Telephony
 import android.util.Log
@@ -17,8 +18,9 @@ import io.simplezen.simple_query.ContentQuery
  * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
  *
  * Each delete succeeds with `"deleted"` or `"alreadyAbsent"` only when a
- * read-back finds nothing left (or, for a thread, `"newMessagesArrived"` when
- * only messages that arrived during the delete remain); otherwise it fails
+ * read-back finds nothing left and the target's absence is provable (or, for a
+ * thread, `"newMessagesArrived"` when only messages that arrived during the
+ * delete remain); otherwise it fails
  * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
  * its read-backs are blocking provider I/O, so the plugin registers this
  * handler on a background task queue rather than the platform main thread.
@@ -82,7 +84,15 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     target = "${table.name} message $messageId",
                     mark = {},
                     delete = { context.contentResolver.delete(messageUri, null, null) },
-                    readBack = { DeleteReadBack(survivingRows = rowKeys(messageUri).size) },
+                    readBack = {
+                        DeleteReadBack(
+                            survivingRows = queryRows(messageUri, arrayOf(BaseColumns._ID)).size,
+                            // The filter hides a message from the delete and the
+                            // read alike, so an empty result proves it gone only
+                            // where no such filter exists.
+                            absenceProvable = !subscriptionFilterApplies(),
+                        )
+                    },
                 )
             }
             else -> result.notImplemented()
@@ -146,6 +156,13 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 "$target was not fully deleted: $found",
                 null,
             )
+            DeleteOutcome.ABSENCE_UNVERIFIED -> result.error(
+                "ABSENCE_UNVERIFIED",
+                "$target is not visible to this app, so it can't be confirmed gone: " +
+                    "it may already be deleted, or be hidden by the provider's " +
+                    "per-user subscription filter",
+                null,
+            )
         }
     }
 
@@ -196,35 +213,55 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
             survivingRows = surviving,
             arrivedRows = sms.size + mms.size - surviving,
             threadRowListed = rowKeys(SIMPLE_CONVERSATIONS_URI, "${BaseColumns._ID} = ?", args).isNotEmpty(),
+            // The `threads` row is read unfiltered and outlives every hidden
+            // message, so an unlisted row proves the thread gone.
+            absenceProvable = true,
         )
     }
 
     /**
-     * The `(_id, date)` of rows at [uri] matching [selection], read via
-     * simple_query's `queryOrNull`. A null cursor (provider unreachable) or a
-     * non-numeric value throws instead of reading as fewer rows; a null
-     * `date` stays null, so it still matches only itself.
+     * Whether the provider filters SMS/MMS reads and deletes to the calling
+     * user's subscriptions. Android 14 (API 34) added that filter (AOSP
+     * `ProviderUtil.getSelectionBySubIds`); before it every row is visible to
+     * the default SMS app, so an empty read-back always proves absence.
+     */
+    private fun subscriptionFilterApplies(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+    /**
+     * The `(_id, date)` of rows at [uri] matching [selection]. A non-numeric
+     * value throws instead of reading as fewer rows; a null `date` stays null,
+     * so it still matches only itself.
      */
     private fun rowKeys(
         uri: Uri,
         selection: String? = null,
         selectionArgs: Array<String>? = null,
-    ): List<RowKey> {
-        val rows = ContentQuery.queryOrNull(
-            context,
-            uri.toString(),
-            projection = arrayOf(BaseColumns._ID, DATE),
-            selection = selection,
-            selectionArgs = selectionArgs,
-        ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
-        return rows.map { row ->
-            RowKey(
-                id = numeric(row[BaseColumns._ID], BaseColumns._ID, uri)
-                    ?: throw IllegalStateException("Missing ${BaseColumns._ID} from $uri"),
-                date = numeric(row[DATE], DATE, uri),
-            )
-        }
+    ): List<RowKey> = queryRows(uri, arrayOf(BaseColumns._ID, DATE), selection, selectionArgs).map { row ->
+        RowKey(
+            id = numeric(row[BaseColumns._ID], BaseColumns._ID, uri)
+                ?: throw IllegalStateException("Missing ${BaseColumns._ID} from $uri"),
+            date = numeric(row[DATE], DATE, uri),
+        )
     }
+
+    /**
+     * The rows at [uri] matching [selection], read via simple_query's
+     * `queryOrNull`. A null cursor (provider unreachable) throws instead of
+     * reading as zero rows.
+     */
+    private fun queryRows(
+        uri: Uri,
+        projection: Array<String>,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+    ): List<Map<String, Any?>> = ContentQuery.queryOrNull(
+        context,
+        uri.toString(),
+        projection = projection,
+        selection = selection,
+        selectionArgs = selectionArgs,
+    ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
 
     /** [value] as a Long (providers may return numbers as text); null stays null. */
     private fun numeric(value: Any?, column: String, uri: Uri): Long? = when (value) {

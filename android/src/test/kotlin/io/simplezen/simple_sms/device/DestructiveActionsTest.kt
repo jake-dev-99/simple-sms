@@ -25,7 +25,9 @@ import org.robolectric.shadows.ShadowRoleManager
  * Purpose: pin the verified-delete contract at the native provider boundary
  * (UNFY-244) — a delete reports success only when the read-back finds no row
  * that existed before it, messages that arrive mid-delete are told apart from
- * those survivors, and every unverifiable state surfaces as its own error code.
+ * those survivors, a target the per-user subscription filter may be hiding is
+ * never reported as absent, and every unverifiable state surfaces as its own
+ * error code.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -108,6 +110,22 @@ class DestructiveActionsTest {
         val result = invoke(MethodCall("deleteThread", "5"))
 
         assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+    }
+
+    /**
+     * Purpose: a thread whose messages the per-user subscription filter hides
+     * (Codex P2) — the delete and the message reads see nothing, but the
+     * unfiltered `threads` row outlives the hidden messages, so it is never
+     * reported as already absent.
+     */
+    @Test
+    fun deleteThread_messagesHiddenBySubscriptionFilter_isIncomplete() {
+        mmsSms.rowsAfter = rows(5L) // the threads row, kept by the hidden messages
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+        assertTrue(result.successes.isEmpty())
     }
 
     /** Purpose: messages that arrive mid-delete are reported as new arrivals, not survivors. */
@@ -274,15 +292,44 @@ class DestructiveActionsTest {
         }
     }
 
-    /** Purpose: map each verified state for a single message. */
+    /**
+     * Purpose: from Android 14 the per-user subscription filter hides a message
+     * from the delete and the read-back alike (Codex P2), so a delete that
+     * removes nothing and finds nothing is never reported as already absent.
+     */
+    @Test
+    fun deleteMessage_nothingDeletedNothingLeft_fromAndroid14_isAbsenceUnverified() {
+        for (channel in listOf("sms", "mms")) {
+            listOf(sms, mms).forEach { it.reset() }
+
+            val result = invoke(MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to channel)))
+
+            assertEquals(listOf("ABSENCE_UNVERIFIED"), result.errors)
+            assertTrue(result.successes.isEmpty())
+        }
+    }
+
+    /** Purpose: before Android 14 there is no per-user filter, so an empty read-back proves absence. */
+    @Test
+    @Config(sdk = [33])
+    fun deleteMessage_nothingDeletedNothingLeft_belowAndroid14_isAlreadyAbsent() {
+        val result = invoke(MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to "mms")))
+
+        assertEquals(listOf<Any?>("alreadyAbsent"), result.successes)
+    }
+
+    /** Purpose: map each unverified state after the delete for a single message. */
     @Test
     fun deleteMessage_classifiesTheReadBack() {
         val call = MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to "sms"))
 
-        assertEquals(listOf<Any?>("alreadyAbsent"), invoke(call).successes)
+        sms.rowsAfter = rows(42L)
+        assertEquals(listOf("DELETE_INCOMPLETE"), invoke(call).errors)
 
         sms.reset()
-        sms.rowsAfter = rows(42L)
+        // The existence read parses nothing, so an OEM's text `date` can't
+        // turn a surviving message into a read-back failure.
+        sms.rowsAfter = listOf(Row(42L, date = "2024-01-01"))
         assertEquals(listOf("DELETE_INCOMPLETE"), invoke(call).errors)
 
         sms.reset()

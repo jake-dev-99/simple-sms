@@ -161,6 +161,26 @@ void main() {
       );
     });
 
+    test(
+      'throws absenceUnverified when a missing message may be hidden',
+      () async {
+        reply(() async => throw PlatformException(code: 'ABSENCE_UNVERIFIED'));
+        await expectLater(
+          AndroidDestructiveAction.deleteMessage(
+            lookupId: '7',
+            channel: SmsMmsType.mms,
+          ),
+          throwsA(
+            isA<DeleteFailedException>().having(
+              (e) => e.reason,
+              'reason',
+              DeleteFailureReason.absenceUnverified,
+            ),
+          ),
+        );
+      },
+    );
+
     test('throws on a null result rather than defaulting', () async {
       reply(() async => null);
       await expectLater(
@@ -187,6 +207,7 @@ void main() {
         DeleteFailureReason.deleteIncomplete: 'DELETE_INCOMPLETE',
         DeleteFailureReason.deleteFailed: 'DELETE_FAILED',
         DeleteFailureReason.verifyFailed: 'VERIFY_FAILED',
+        DeleteFailureReason.absenceUnverified: 'ABSENCE_UNVERIFIED',
         DeleteFailureReason.invalidArgument: 'INVALID_ARGUMENT',
       },
     );

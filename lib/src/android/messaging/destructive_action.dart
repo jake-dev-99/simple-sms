@@ -11,9 +11,10 @@ import '../models/enums/sms_mms_enums.dart';
 ///
 /// Every delete is verified (UNFY-244): the native side reads the target back
 /// after deleting and resolves to a [DeleteResult] only when nothing that
-/// existed before the delete remains — [DeleteResult.newMessagesArrived] means
-/// the thread is on the device again with messages that arrived mid-delete, so
-/// the caller must keep its record of it.
+/// existed before the delete remains and the target's absence is provable —
+/// [DeleteResult.newMessagesArrived] means the thread is on the device again
+/// with messages that arrived mid-delete, so the caller must keep its record
+/// of it.
 /// Otherwise it throws a [DeleteFailedException] carrying the
 /// [DeleteFailureReason]; an unrecognized native result or error code throws
 /// [StateError].
@@ -31,6 +32,13 @@ class AndroidDestructiveAction {
   /// within its own table, so the channel is required to delete the right
   /// message — there is no SMS-first fallback (UNFY-213). Never resolves to
   /// [DeleteResult.newMessagesArrived].
+  ///
+  /// On Android 14+, a delete that removes nothing never resolves to
+  /// [DeleteResult.alreadyAbsent]: the provider filters this app's view by the
+  /// calling user's subscriptions, so a message it can't find may be hidden
+  /// rather than gone. It throws [DeleteFailedException] with
+  /// [DeleteFailureReason.absenceUnverified] instead — including for the usual
+  /// case, a message that was already deleted.
   static Future<DeleteResult> deleteMessage({
     required String lookupId,
     required SmsMmsType channel,
