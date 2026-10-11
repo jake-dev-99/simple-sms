@@ -79,16 +79,26 @@ class DeliveryReportSelectionTest {
     /** A minimal SQLite-backed `sms` provider applying selections like the platform's. */
     class SqliteSmsProvider : ContentProvider() {
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
-            execSQL("CREATE TABLE sms (_id INTEGER PRIMARY KEY, type INTEGER, status INTEGER DEFAULT -1)")
+            execSQL(
+                "CREATE TABLE sms (_id INTEGER PRIMARY KEY, type INTEGER, status INTEGER DEFAULT -1, " +
+                    "creator TEXT, date INTEGER, error_code INTEGER DEFAULT 0)",
+            )
         }
 
         fun status(id: Long): Int? = db.rawQuery("SELECT status FROM sms WHERE _id = ?", arrayOf(id.toString()))
             .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
 
+        fun type(id: Long): Int? = db.rawQuery("SELECT type FROM sms WHERE _id = ?", arrayOf(id.toString()))
+            .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
+
+        fun errorCode(id: Long): Int? = db.rawQuery("SELECT error_code FROM sms WHERE _id = ?", arrayOf(id.toString()))
+            .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
+
         override fun onCreate(): Boolean = true
 
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
-            val where = DatabaseUtils.concatenateWhere("_id = ${ContentUris.parseId(uri)}", selection)
+            val id = ContentUris.parseId(uri)
+            val where = if (id < 0) selection else DatabaseUtils.concatenateWhere("_id = $id", selection)
             return db.update("sms", values, where, selectionArgs)
         }
 

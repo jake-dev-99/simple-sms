@@ -17,10 +17,10 @@ void main() {
 
   late List<MethodCall> calls;
 
-  void mock(MethodChannel channel) {
+  void mock(MethodChannel channel, {Object? reply = true}) {
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      return true;
+      return reply;
     });
   }
 
@@ -79,18 +79,18 @@ void main() {
   group('AndroidDestructiveAction.deleteMessage', () {
     test('forwards messageId + channel.name (sms) on the destructive channel',
         () async {
-      mock(destructive);
-      final ok = await AndroidDestructiveAction.deleteMessage(
+      mock(destructive, reply: 'deleted');
+      final result = await AndroidDestructiveAction.deleteMessage(
         lookupId: '7',
         channel: SmsMmsType.sms,
       );
-      expect(ok, isTrue);
+      expect(result, DeleteResult.deleted);
       expect(calls.single.method, 'deleteMessage');
       expect(calls.single.arguments, {'messageId': '7', 'channel': 'sms'});
     });
 
     test('forwards the mms channel discriminator', () async {
-      mock(destructive);
+      mock(destructive, reply: 'deleted');
       await AndroidDestructiveAction.deleteMessage(
         lookupId: '99',
         channel: SmsMmsType.mms,

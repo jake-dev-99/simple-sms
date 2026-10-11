@@ -69,6 +69,7 @@ class OutboundMmsRecordTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val provider = MmsRecordProvider()
         ShadowContentResolver.registerProviderInternal("mms", provider)
+        val handler = OutboundSender(context)
         val result = MmsRecordResult()
         val request = OutboundSender.MessageRequestDetails(
             threadId = 7,
@@ -76,19 +77,15 @@ class OutboundMmsRecordTest {
             body = "MMS test",
             flutterResult = result,
         )
-        val owner = OutboundSender(context)
-        OutboundSendResults.track(owner, Uri.parse("content://mms/9001"), request)
+        val requests = handler.channelResultMap
+        requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
-            OutboundSendResults.track(
-                owner,
-                Uri.parse("content://sms/9001"),
-                OutboundSender.MessageRequestDetails(
-                    threadId = 7,
-                    addresses = listOf("+15551234567"),
-                    body = "MMS test",
-                    flutterResult = smsResult,
-                ),
+            requests[Uri.parse("content://sms/9001")] = OutboundSender.MessageRequestDetails(
+                threadId = 7,
+                addresses = listOf("+15551234567"),
+                body = "MMS test",
+                flutterResult = smsResult,
             )
         }
 
@@ -112,13 +109,13 @@ class OutboundMmsRecordTest {
             assertEquals(128, returned.getInt("m_type"))
             assertEquals(3, returned.getInt("sub_id"))
             if (concurrentSms) {
-                assertEquals(setOf(Uri.parse("content://sms/9001")), OutboundSendResults.trackedUris())
+                assertEquals(setOf(Uri.parse("content://sms/9001")), requests.keys)
                 assertTrue(smsResult.successes.isEmpty())
             } else {
-                assertTrue(OutboundSendResults.trackedUris().isEmpty())
+                assertTrue(requests.isEmpty())
             }
         } finally {
-            OutboundSendResults.clear()
+            handler.release()
         }
     }
 }

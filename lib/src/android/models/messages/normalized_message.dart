@@ -37,14 +37,16 @@ enum MessageDeliveryState {
   /// Handed to the platform / on its way out; no carrier ack yet.
   sending,
 
-  /// Carrier-acked send. A delivery report may or may not have arrived.
+  /// Carrier-acked send, with no delivery verdict (yet).
   sent,
 
   /// Delivered (inbound rows are delivered-by-definition; outbound rows with
-  /// a delivery-ind are promoted here).
+  /// a delivery-ind, or an SMS delivery report of `complete`, are promoted
+  /// here).
   delivered,
 
-  /// The send failed (SMS `failed` type; MMS `msg_box = failed`).
+  /// The send failed (SMS `failed` type; MMS `msg_box = failed`), or an SMS
+  /// delivery report said the recipient never received it.
   failed,
 
   /// State could not be determined from the source row.
@@ -181,7 +183,7 @@ class NormalizedMessage {
       threadId: sms.threadId,
       channel: SmsMmsType.sms,
       direction: _smsDirection(sms.type),
-      deliveryState: _smsDeliveryState(sms.type),
+      deliveryState: _smsDeliveryState(sms.type, sms.status),
       body: sms.body ?? '',
       sender: sms.sender,
       recipients: <MessageParticipant>[sms.recipient],
@@ -344,17 +346,26 @@ MessageDirection _smsDirection(SmsMessageType? type) {
   }
 }
 
-MessageDeliveryState _smsDeliveryState(SmsMessageType? type) {
+/// An outbound row's delivery report outranks its send-side state (UNFY-299):
+/// `failed` means the recipient never got it; `complete` promotes a sent row
+/// to delivered. A row still on its way out isn't promoted, since a multipart
+/// SMS can report one part delivered while others are unsent. Without a
+/// verdict (pending, none or unknown) the row's type decides.
+MessageDeliveryState _smsDeliveryState(
+  SmsMessageType? type,
+  SmsDeliveryStatus? status,
+) {
   switch (type) {
     case SmsMessageType.draft:
       return MessageDeliveryState.draft;
     case SmsMessageType.outbox:
     case SmsMessageType.queued:
-      return MessageDeliveryState.sending;
     case SmsMessageType.sent:
-      // Carrier-acked send; a DLR may promote sent → delivered later. This
-      // layer can't tell, so it stays `sent` (not `delivered`).
-      return MessageDeliveryState.sent;
+      if (status == SmsDeliveryStatus.failed) return MessageDeliveryState.failed;
+      if (type != SmsMessageType.sent) return MessageDeliveryState.sending;
+      return status == SmsDeliveryStatus.complete
+          ? MessageDeliveryState.delivered
+          : MessageDeliveryState.sent;
     case SmsMessageType.failed:
       return MessageDeliveryState.failed;
     case SmsMessageType.inbox:

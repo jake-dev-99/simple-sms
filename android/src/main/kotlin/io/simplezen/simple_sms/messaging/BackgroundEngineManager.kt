@@ -139,6 +139,8 @@ object BackgroundEngineManager {
      */
     fun onForegroundDetached() {
         synchronized(lock) {
+            // destroy() detaches the engine's plugins, and SimpleSmsPlugin
+            // releases that engine's OutboundSender on detach.
             backgroundEngine?.destroy()
             backgroundEngine = null
             isEngineReady = false

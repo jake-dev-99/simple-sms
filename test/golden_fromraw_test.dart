@@ -13,6 +13,7 @@
 // a single representative row exercises the same column set.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:simple_sms_native/src/android/models/enums/sms_mms_enums.dart';
 
 import 'package:simple_sms_native/src/android/models/messages/mms.dart';
 import 'package:simple_sms_native/src/android/models/messages/mms_part.dart';
@@ -309,6 +310,28 @@ void main() {
       expect(sms.isSatellite, false); // 0 → false
       expect(sms.blockFilteredStatus, isNull); // "" → null
       expect(sms.spamType, 0);
+    });
+
+    test('status parses the SMS delivery status, not the MMS enum', () {
+      expect(Sms.fromRaw(bankSmsRow).status, SmsDeliveryStatus.none);
+      for (final s in SmsDeliveryStatus.values) {
+        expect(Sms.fromRaw({...bankSmsRow, 'status': s.value}).status, s);
+      }
+      // Raw TP-Status values the platform writes map by range.
+      for (final (raw, s) in [
+        (0x02, SmsDeliveryStatus.complete),
+        (0x21, SmsDeliveryStatus.pending),
+        (0x46, SmsDeliveryStatus.failed),
+        (0x65, SmsDeliveryStatus.failed),
+        (-2, SmsDeliveryStatus.none),
+      ]) {
+        expect(Sms.fromRaw({...bankSmsRow, 'status': raw}).status, s,
+            reason: 'status $raw');
+      }
+      expect(Sms.fromRaw({...bankSmsRow, 'status': ''}).status, isNull);
+      // Round-trips through the JSON shape the channel uses.
+      final failed = Sms.fromRaw({...bankSmsRow, 'status': 64});
+      expect(Sms.fromJson(failed.toJson()).status, SmsDeliveryStatus.failed);
     });
   });
 

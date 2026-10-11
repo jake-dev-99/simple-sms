@@ -128,13 +128,12 @@ private const val CDMA_UNDEFINED = 0xFF
 private const val TAG_RECEIVER = "OutboundMessagingReceiver"
 
 /**
- * Receives outbound status broadcasts. Declared in the manifest, and every
- * status intent targets it explicitly, so Android delivers them even when the
- * app process is cached or has gone since the send started (UNFY-293,
- * UNFY-306).
+ * Receives outbound status broadcasts. It is manifest-declared and not
+ * exported; every status intent targets it explicitly, so Android delivers
+ * them even after the app process has gone.
  *
- * - SENT results are recorded on the message row, and settle the send if it
- *   is still pending in this process (see [OutboundSendResults]).
+ * - SENT results go to [SendResultRouter], which hands them to the handler
+ *   that owns the send or records them on the row (UNFY-299).
  * - SMS delivery reports only record the parsed status on the row named by
  *   the intent data (UNFY-293).
  */
@@ -156,7 +155,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
                 onSentResult(context, intent, eventType, getSentStatusString(currentResultCode), currentResultCode)
             SENTMMS_ACTION ->
                 // The platform has finished reading the send file whatever the
-                // result, so it goes even if recording the result fails
+                // result, so it goes even if handling the result fails
                 // (UNFY-311).
                 try {
                     onSentResult(context, intent, eventType, getMmsSentStatusString(currentResultCode), currentResultCode)
@@ -167,7 +166,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         }
     }
 
-    /** Hands a SENT result to [OutboundSendResults]. */
+    /** Hands a SENT result to [SendResultRouter]. */
     private fun onSentResult(
         context: Context,
         intent: Intent,
@@ -182,7 +181,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         }
         val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
-        OutboundSendResults.onSentBroadcast(context, messageId, messageUri, eventType, statusString, resultCode)
+        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode)
     }
 
     /**

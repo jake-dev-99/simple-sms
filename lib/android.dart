@@ -40,6 +40,7 @@ export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 // Models - Enums
 export 'src/android/models/enums/contact_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
+export 'src/android/models/enums/delete_result.dart';
 
 // Models - Filters (typed list-API inputs)
 export 'src/android/models/filters/sort_direction.dart';

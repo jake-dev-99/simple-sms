@@ -1,3 +1,60 @@
+## Unreleased
+
+Release as a minor bump: `Sms.status` changes type, and destructive deletes
+return typed results.
+
+### Changed (breaking)
+
+- **Destructive deletes are verified and typed (UNFY-244).**
+  `AndroidDestructiveAction.deleteThread` / `deleteMessage` resolve to a
+  `DeleteResult` instead of `bool`: `deleted`, `alreadyAbsent`, or (threads
+  only) `newMessagesArrived` when messages arrived while the delete ran.
+  Every delete requires the default-SMS role and is read back natively; one
+  that can't be verified throws `DeleteFailedException` carrying a
+  `DeleteFailureReason` (`notDefaultSmsApp`, `deleteIncomplete`,
+  `deleteFailed`, `verifyFailed`, `absenceUnverified`, `invalidArgument`).
+  On Android 14+, the provider filters messages by the calling user's
+  subscriptions, so a `deleteMessage` that removes nothing throws
+  `absenceUnverified` instead of resolving to `alreadyAbsent`.
+
+- **`Sms.status` is now `SmsDeliveryStatus?` (UNFY-299).** It was typed as the
+  MMS `AndroidMessageStatus` enum, so it was null for every SMS. It now carries
+  the delivery status recorded from delivery reports: `none`, `complete`,
+  `pending` or `failed`. Raw TP-Status values in the provider map by range.
+
+### Added
+
+- **`SEND_RESULT_TIMEOUT` (UNFY-299).** `sendMessage` settles with this code
+  when no carrier result arrives within 10 minutes of device uptime (e.g. the
+  radio process crashed mid-send), instead of never completing.
+  `details['sent']` is `null` (unknown). The row is marked failed; a carrier
+  success that arrives later still moves it to sent.
+
+### Changed
+
+- **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
+  outbound SMS whose delivery report failed is `failed`; a sent SMS whose
+  report says complete is `delivered`.
+- **Outbound SMS rows start in the outbox (UNFY-299).** A row moves to sent
+  when the carrier accepts it and to failed when it rejects it, so in-flight
+  sends read as `sending`. Results are recorded even when the app process
+  has died. An SMS or MMS this app sent whose result never came (a reboot
+  mid-send) is marked failed once it is 10 minutes overdue: checked whenever
+  the plugin starts on an engine, and again 10 minutes later; a carrier
+  success that arrives later still moves it to sent. A send the app is still
+  awaiting times out instead (`SEND_RESULT_TIMEOUT`).
+- **A send without the default-SMS role fails with `PERMISSION_DENIED`
+  (UNFY-299)**, not `SEND_INITIATION_ERROR`: the provider refuses the SMS
+  row, and nothing is sent.
+- **Require `simple_query` 0.3.0 and `simple_query_android` 0.3.0
+  (UNFY-299, UNFY-244).** The verified deletes call `simple_query_android`'s
+  `ContentQuery.queryOrNull` directly, so both must be published first.
+  `simple_query` 0.3.0 reports a provider that returned no cursor as
+  `SimpleQueryError(unavailable)` instead of an empty result, so lookups can
+  now throw it. Conversation enrichment tolerates it
+  per thread: that thread comes back unenriched (null `participants`,
+  `latestSms`, `latestMms`) instead of failing the list.
+
 ## 0.5.1
 
 - Require `simple_query ^0.2.2`, whose Android implementation preserves

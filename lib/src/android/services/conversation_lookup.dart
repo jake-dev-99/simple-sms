@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
@@ -115,7 +117,10 @@ class ConversationLookup {
   /// If [enrich] is `true` (default), each returned [AndroidSimpleConversation]
   /// has its `participants`, `latestSms`, and `latestMms` fields populated via
   /// follow-up lookups. Set to `false` to avoid the extra round-trips when
-  /// only the flat conversation row is needed.
+  /// only the flat conversation row is needed. A thread whose follow-up
+  /// lookups find a provider unavailable is returned unenriched instead of
+  /// failing the list; any other error, or an unavailable conversations
+  /// provider, throws (UNFY-299).
   Future<List<AndroidSimpleConversation>> listConversations({
     ConversationFilter? filter,
     ConversationSort? sort,
@@ -169,7 +174,7 @@ class ConversationLookup {
 
       if (!enrich) return bare;
 
-      final enriched = await Future.wait(bare.map(_enrichConversation));
+      final enriched = await Future.wait(bare.map(_enrichOrBare));
       // Hydrate every thread's latest-MMS parts in ONE batched query rather
       // than one `listMmsParts` per thread (UNFY-250 perf) so the MMS body
       // resolves for the conversation-list preview at parity with SMS.
@@ -251,6 +256,56 @@ class ConversationLookup {
     return r;
   }
 
+  /// Enriches [base], or returns it bare (its enrichment fields null) when
+  /// its enrichment reads failed only because a provider was unavailable
+  /// (`SimpleQueryError(unavailable)`: a null cursor, e.g. the provider
+  /// process died mid-read). One thread's provider dropout must not fail the
+  /// whole list (UNFY-299); the list query itself still throws.
+  ///
+  /// The reads run in parallel and every failure is inspected, so a real
+  /// error (e.g. a schema bug) is rethrown even when an unavailable read
+  /// failed first.
+  Future<AndroidSimpleConversation> _enrichOrBare(
+    AndroidSimpleConversation base,
+  ) async {
+    try {
+      return await _enrichConversation(base);
+    } catch (error, stackTrace) {
+      final failures = _leafFailures(AsyncError(error, stackTrace));
+      // An error wrapped in a shape not unwrapped here surfaces unchanged.
+      if (failures.isEmpty) Error.throwWithStackTrace(error, stackTrace);
+      for (final failure in failures) {
+        if (!_isUnavailable(failure.error)) {
+          Error.throwWithStackTrace(failure.error, failure.stackTrace);
+        }
+      }
+      final first = failures.first.error as SimpleQueryError;
+      debugPrint(
+        '[diag][simple-sms] _enrichConversation threadId=${base.threadId} '
+        'left unenriched: provider unavailable '
+        '(${first.details?['contentUri']}): ${first.message}',
+      );
+      return base;
+    }
+  }
+
+  /// The individual failures behind [failure], unwrapping the
+  /// [ParallelWaitError]s of the parallel enrichment reads.
+  static List<AsyncError> _leafFailures(AsyncError failure) {
+    final error = failure.error;
+    if (error is! ParallelWaitError) return [failure];
+    final errors = error.errors;
+    return [
+      if (errors is List)
+        for (final nested in errors)
+          if (nested is AsyncError) ..._leafFailures(nested),
+    ];
+  }
+
+  static bool _isUnavailable(Object error) =>
+      error is SimpleQueryError &&
+      error.code == SimpleQueryErrorCode.unavailable;
+
   /// Resolves participants + latestSms / latestMms for a bare conversation.
   ///
   /// Runs recipient resolution and latest-message lookups in parallel — each
@@ -261,10 +316,12 @@ class ConversationLookup {
   Future<AndroidSimpleConversation> _enrichConversation(
     AndroidSimpleConversation base,
   ) async {
-    // Resolve every recipientId → Contactable concurrently.
-    final participantsFuture = Future.wait(
-      base.recipientIds.where((rid) => rid.isNotEmpty).map(_resolveParticipant),
-    );
+    // Resolve every recipientId → Contactable concurrently. `.wait` (not
+    // Future.wait) keeps every failure, for [_enrichOrBare].
+    final participantsFuture = base.recipientIds
+        .where((rid) => rid.isNotEmpty)
+        .map(_resolveParticipant)
+        .wait;
 
     // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
     final latestSmsFuture = MessageLookup.instance.listSms(
@@ -278,11 +335,11 @@ class ConversationLookup {
       limit: 1,
     );
 
-    final results = await Future.wait<Object>([
+    final results = await <Future<Object>>[
       participantsFuture,
       latestSmsFuture,
       latestMmsFuture,
-    ]);
+    ].wait;
     final participants =
         (results[0] as List<Contactable?>).whereType<Contactable>().toList(
               growable: false,
@@ -319,11 +376,11 @@ class ConversationLookup {
           for (var i = 0; i < participants.length; i++)
             if (!tokenIndices.contains(i)) participants[i],
         ];
-        final recovered = await Future.wait(
-          fallback.map((addr) async =>
-              (await ContactLookup.instance.lookupContactableByAddress(addr)) ??
-              Contactable(id: -1, value: addr)),
-        );
+        final recovered = await fallback
+            .map((addr) async =>
+                (await ContactLookup.instance.lookupContactableByAddress(addr)) ??
+                Contactable(id: -1, value: addr))
+            .wait;
         // Dedup keepers + recovered. A keeper participant may share
         // a contact id (or normalized address) with a recovered MMS
         // participant — e.g. a 1-1 RCS thread where one canonical-id

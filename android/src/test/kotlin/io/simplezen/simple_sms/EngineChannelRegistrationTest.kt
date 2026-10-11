@@ -1,6 +1,7 @@
 package io.simplezen.simple_sms
 
 import android.app.Application
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.FlutterException
@@ -9,8 +10,10 @@ import io.flutter.plugin.common.StandardMethodCodec
 import io.simplezen.simple_sms.messaging.ERR_NO_TELEPHONY
 import io.simplezen.simple_sms.messaging.OutboundMessagingReceiver
 import java.nio.ByteBuffer
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,19 +26,21 @@ import org.robolectric.annotation.Config
  * with no Activity, such as flutter_local_notifications' notification-action
  * dispatcher — so notification actions work without opening the app: "Mark
  * Read" writes native read-state (UNFY-241) and an inline "Reply" sends
- * (UNFY-306). The destructive channel stays off that path, each channel has a
- * single registration owner, and no engine registers a send-status receiver:
- * the manifest-declared one records every result.
+ * (UNFY-306). The destructive channel stays off that path and runs on a
+ * background task queue, each channel has a single registration owner, and
+ * no engine registers a send-status receiver: the manifest-declared one
+ * takes every result (UNFY-299).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class EngineChannelRegistrationTest {
 
-    private val context = ApplicationProvider.getApplicationContext<Application>()
+    private val context = ApplicationProvider.getApplicationContext<Context>()
 
     /** Records the handler registered on each channel. */
     private class RecordingMessenger : BinaryMessenger {
         val handlers = mutableMapOf<String, BinaryMessenger.BinaryMessageHandler>()
+        val taskQueues = mutableMapOf<String, BinaryMessenger.TaskQueue?>()
 
         override fun send(channel: String, message: ByteBuffer?) = Unit
 
@@ -48,8 +53,25 @@ class EngineChannelRegistrationTest {
         override fun setMessageHandler(
             channel: String,
             handler: BinaryMessenger.BinaryMessageHandler?,
+        ) = setMessageHandler(channel, handler, null)
+
+        /** The destructive channel runs on a background task queue (UNFY-244). */
+        override fun makeBackgroundTaskQueue(
+            options: BinaryMessenger.TaskQueueOptions,
+        ): BinaryMessenger.TaskQueue = object : BinaryMessenger.TaskQueue {}
+
+        override fun setMessageHandler(
+            channel: String,
+            handler: BinaryMessenger.BinaryMessageHandler?,
+            taskQueue: BinaryMessenger.TaskQueue?,
         ) {
-            if (handler == null) handlers.remove(channel) else handlers[channel] = handler
+            if (handler == null) {
+                handlers.remove(channel)
+                taskQueues.remove(channel)
+            } else {
+                handlers[channel] = handler
+                taskQueues[channel] = taskQueue
+            }
         }
 
         /** Delivers [call] to [channel]'s handler and returns the reply's error code. */
@@ -72,17 +94,34 @@ class EngineChannelRegistrationTest {
         }
     }
 
-    /** Registered send-status receivers. */
+    /** Registered send-status receivers (Robolectric lists the manifest one too). */
     private fun statusReceiverCount(): Int =
-        shadowOf(context).registeredReceivers.count {
+        shadowOf(context as Application).registeredReceivers.count {
             it.broadcastReceiver is OutboundMessagingReceiver
+        }
+
+    /** A plugin attached to [messenger], as an engine attach leaves it. */
+    private fun attached(messenger: RecordingMessenger): SimpleSmsPlugin =
+        SimpleSmsPlugin().also { it.attachEngineChannels(context, messenger) }
+
+    @After
+    fun tearDown() {
+        detachAll.forEach { it() }
+        detachAll.clear()
+    }
+
+    private val detachAll = mutableListOf<() -> Unit>()
+
+    private fun attachedForTest(messenger: RecordingMessenger): SimpleSmsPlugin =
+        attached(messenger).also { plugin ->
+            detachAll += { plugin.detachEngineChannels(messenger) }
         }
 
     @Test
     fun engineAttachRegistersTheActionsAndMessagingChannels() {
         val messenger = RecordingMessenger()
 
-        SimpleSmsPlugin().attachEngineChannels(context, messenger)
+        attachedForTest(messenger)
 
         assertEquals(
             setOf(SimpleSmsPlugin.ACTIONS_CHANNEL, SimpleSmsPlugin.MESSAGING_CHANNEL),
@@ -93,7 +132,7 @@ class EngineChannelRegistrationTest {
     @Test
     fun markReadReachesDeviceActionsWithoutAnActivity() {
         val messenger = RecordingMessenger()
-        SimpleSmsPlugin().attachEngineChannels(context, messenger)
+        attachedForTest(messenger)
 
         // No arguments: DeviceActions answers with its own validation error,
         // which proves the call reached the handler instead of failing with
@@ -107,9 +146,9 @@ class EngineChannelRegistrationTest {
     }
 
     @Test
-    fun sendReachesTheOutboundHandlerWithoutAnActivity() {
+    fun sendReachesTheSenderWithoutAnActivity() {
         val messenger = RecordingMessenger()
-        SimpleSmsPlugin().attachEngineChannels(context, messenger)
+        attachedForTest(messenger)
 
         // Robolectric reports no telephony feature, so the sender answers
         // with its own NO_TELEPHONY error — proof the call reached it
@@ -123,13 +162,21 @@ class EngineChannelRegistrationTest {
     }
 
     @Test
+    fun engineDetachRemovesTheEngineChannels() {
+        val messenger = RecordingMessenger()
+        val plugin = attached(messenger)
+
+        plugin.detachEngineChannels(messenger)
+
+        assertEquals(emptySet<String>(), messenger.handlers.keys)
+    }
+
+    @Test
     fun engineSetupRegistersNoStatusReceiver() {
-        // Robolectric lists the manifest-declared receiver too. Which receiver
-        // a send's status intents name is pinned in OutboundSendAckTest.
         val manifestOnly = statusReceiverCount()
         val messenger = RecordingMessenger()
 
-        SimpleSmsPlugin().attachEngineChannels(context, messenger)
+        attachedForTest(messenger)
         SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
 
         assertEquals(manifestOnly, statusReceiverCount())
@@ -141,9 +188,18 @@ class EngineChannelRegistrationTest {
 
         SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
 
-        assertEquals(
-            setOf(SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL),
-            messenger.handlers.keys,
-        )
+        assertEquals(setOf(SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL), messenger.handlers.keys)
+    }
+
+    /** Deletes and their read-backs are blocking provider I/O (UNFY-244). */
+    @Test
+    fun destructiveChannelRunsOnABackgroundTaskQueue() {
+        val messenger = RecordingMessenger()
+        attachedForTest(messenger)
+
+        SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
+
+        assertNotNull(messenger.taskQueues[SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL])
+        assertNull(messenger.taskQueues[SimpleSmsPlugin.MESSAGING_CHANNEL])
     }
 }
