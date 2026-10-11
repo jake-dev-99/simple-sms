@@ -249,6 +249,34 @@ void main() {
     });
 
     test(
+      'runs parts chunks one after another, stopping at a failure',
+      () async {
+        const threadCount = 1001;
+        _seedTables(
+          provider,
+          threads: [for (var t = 1; t <= threadCount; t++) _thread(t)],
+          mms: [
+            for (var t = 1; t <= threadCount; t++)
+              _mms(t, threadId: t, seconds: t),
+          ],
+        );
+        _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+        provider.failQueriesTo(
+          ProviderUris.mmsParts,
+          const SimpleQueryError(
+            code: SimpleQueryErrorCode.transientFailure,
+            message: 'provider busy',
+          ),
+        );
+
+        final conversations = await LookupService().listConversations();
+
+        expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
+        expect(conversations, hasLength(threadCount));
+      },
+    );
+
+    test(
       'hydrates an inbox past the SQLite bind limit in bounded chunks',
       () async {
         const threadCount = 1001;
@@ -275,7 +303,7 @@ void main() {
               final other => throw StateError('expected mid IN list: $other'),
             },
         ];
-        expect(chunkSizes, unorderedEquals([500, 500, 1]));
+        expect(chunkSizes, [500, 500, 1]);
         expect(
           conversations.map((c) => c.latestMms?.parts?.single.messageId),
           unorderedEquals([for (var t = 1; t <= threadCount; t++) t]),
