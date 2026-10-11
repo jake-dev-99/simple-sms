@@ -32,6 +32,24 @@ return typed results.
 
 ### Changed
 
+- **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
+  answers only once every part has reported its carrier result, rather than
+  as soon as any part reports a failure: failed if any part failed, with the
+  result code of the first failure to arrive, else sent. The row moves to sent
+  or failed at the same point, even when the parts report to different app
+  processes: each part has its own status intents, and the parts' results are
+  persisted until they add up. The row's delivery status likewise comes from
+  every part's report: delivered only once every part is, failed if any part
+  failed, pending in between; a 3GPP2 (CDMA) report on the last part, the only
+  part CDMA asks one for, stands for the whole message. Results for a send
+  whose row was deleted and its id reused are ignored. A send made by an
+  earlier version and still pending across the update has its status intents
+  cancelled when its row is reused, and a result of it already on its way
+  is ignored for the 7 days a new send's results may take. If the app's files
+  cannot be read or written, a one-part SMS still settles from its result and
+  report; a multipart one is never settled from a single part: its delivery
+  status is left as is, and its send settles as `SEND_RESULT_TIMEOUT` (or, if
+  the app process died, is marked failed by the stale-outbox sweep).
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
   outbound SMS whose delivery report failed is `failed`; a sent SMS whose
   report says complete is `delivered`.
