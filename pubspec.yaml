@@ -25,10 +25,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  simple_query: ^0.2.2
+  # 0.3.0 reports a null cursor as SimpleQueryError(unavailable), which
+  # conversation enrichment tolerates per thread (UNFY-299). 0.3.0 is also
+  # the floor: every 0.2.x facade pins simple_query_android ^0.2.2, which
+  # can't resolve beside the direct dependency below.
+  simple_query: ^0.3.0
   # Direct: the native verified deletes call simple_query_android's Kotlin
   # ContentQuery.queryOrNull, first released in 0.3.0 (UNFY-244 / UNFY-284).
-  # Publish simple_query_android 0.3.0 before releasing this package.
+  # Publish simple_query_android 0.3.0 and simple_query 0.3.0 before
+  # releasing this package.
   simple_query_android: ^0.3.0
   # simple_permissions_native owns the vocabulary for SMS-related
   # runtime permissions (ReceiveSms, ReadSms, SendSms, etc.) and the

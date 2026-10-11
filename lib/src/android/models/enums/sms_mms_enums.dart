@@ -63,6 +63,41 @@ enum SmsMmsType {
   mms,
 }
 
+/// The delivery status of an SMS (`Telephony.Sms.STATUS`), set from the
+/// carrier's delivery report. The SMS counterpart of [AndroidMessageStatus],
+/// which holds MMS values only.
+enum SmsDeliveryStatus {
+  /// No delivery report was requested.
+  none(value: -1),
+
+  /// The recipient received the message.
+  complete(value: 0),
+
+  /// A report was requested and hasn't arrived yet, or the network is still
+  /// trying to deliver.
+  pending(value: 32),
+
+  /// The network gave up: the recipient never received the message.
+  failed(value: 64);
+
+  const SmsDeliveryStatus({required this.value});
+  final int value;
+
+  /// Classifies a raw `STATUS` value. Besides the four constants above, the
+  /// column holds raw TP-Status values (3GPP TS 23.040 9.2.3.15): the
+  /// platform writes `SmsMessage.getStatus()` as-is for messages it
+  /// persists, e.g. `0x46` for a permanent failure. They map by range, as
+  /// the platform reads them: below `0x20` complete, below `0x40` pending,
+  /// anything higher failed; any negative value is none.
+  static SmsDeliveryStatus? fromRaw(int? raw) {
+    if (raw == null) return null;
+    if (raw < 0) return none;
+    if (raw < pending.value) return complete;
+    if (raw < failed.value) return pending;
+    return failed;
+  }
+}
+
 /// Represents the delivery or retrieval status for MMS messages (OMA MMS 7.3.39).
 enum AndroidMessageStatus {
   /// The message expired before being delivered.

@@ -15,6 +15,7 @@ import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler
+import io.simplezen.simple_sms.messaging.OutboxSweeper
 
 /** SimpleSmsPlugin */
 class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener,
@@ -33,11 +34,15 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   // Method Channels
   private lateinit var messageChannel: MethodChannel
-  private lateinit var actionsChannel: MethodChannel
   private lateinit var destructiveActionsChannel: MethodChannel
 
   companion object {
     private const val TAG = "SimpleSmsPlugin"
+
+    internal const val MESSAGING_CHANNEL = "io.simplezen.simple_sms/messaging"
+    internal const val ACTIONS_CHANNEL = "io.simplezen.simple_sms/actions"
+    internal const val DESTRUCTIVE_ACTIONS_CHANNEL =
+      "io.simplezen.simple_sms/destructive_actions"
 
     /**
      * The "best" binding for plugin-initiated calls into Dart (e.g.
@@ -110,7 +115,7 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
      *
      * Idempotent per-messenger: the `OutboundMessagingHandler` instance
      * is cached so repeat invocations for the same messenger don't
-     * register additional `OutboundMessagingReceiver`s.
+     * register additional handlers for SENT results.
      */
     fun initializeMethodChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
       val appContext = context.applicationContext
@@ -118,29 +123,32 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       val outboundHandler = synchronized(handlersByMessenger) {
         handlersByMessenger[binaryMessenger] ?: OutboundMessagingHandler(appContext).also {
           handlersByMessenger[binaryMessenger] = it
+          OutboxSweeper.onEngineStart(appContext)
         }
       }
 
-      MethodChannel(binaryMessenger, "io.simplezen.simple_sms/messaging")
+      MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
         .setMethodCallHandler(outboundHandler)
-
-      MethodChannel(binaryMessenger, "io.simplezen.simple_sms/actions")
-        .setMethodCallHandler(DeviceActions(appContext))
 
       // Deletes and their verifying read-backs are blocking provider I/O
       // (UNFY-244): run them on a background task queue, not the main thread.
       MethodChannel(
         binaryMessenger,
-        "io.simplezen.simple_sms/destructive_actions",
+        DESTRUCTIVE_ACTIONS_CHANNEL,
         StandardMethodCodec.INSTANCE,
         binaryMessenger.makeBackgroundTaskQueue(),
       ).setMethodCallHandler(DestructiveActions(appContext))
+
+      // The actions channel is not registered here: [onAttachedToEngine]
+      // registers it on every engine, and both callers' engines attach the
+      // plugin (the Activity engine, and BackgroundEngineManager's
+      // `FlutterEngine(appContext)`, which registers plugins automatically).
     }
 
     /**
      * Release the cached [OutboundMessagingHandler] for [binaryMessenger]
-     * (if one is cached), calling its `release()` so the underlying
-     * BroadcastReceiver is unregistered. Called from
+     * (if one is cached), calling its `release()` so it stops taking SENT
+     * results. Called from
      * [onDetachedFromEngine] and from
      * [BackgroundEngineManager.onForegroundDetached] when engines tear
      * down.
@@ -164,23 +172,42 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // dispatcher, BackgroundEngineManager-spawned bg engines) attach
     // here too, and used to clobber the foreground reference.
     ownBinding = binding
-    applicationContext = binding.applicationContext
+    attachActionsChannel(binding.applicationContext, binding.binaryMessenger)
+  }
+
+  /**
+   * The engine-attach work shared by every engine, Activity or not. Registers
+   * the actions channel (read-state writes, contact lookups): its handler owns
+   * no receivers or caches, so it is safe on any engine — including headless
+   * ones such as flutter_local_notifications' notification-action dispatcher,
+   * which must mark a message read without opening the app (UNFY-241). The
+   * channel's `launchAddContact` starts an Activity, which Android may block
+   * from a headless engine; read-state writes have no such limit. The
+   * stateful messaging channel and the destructive channel stay on the
+   * Activity engine and BackgroundEngineManager engines only.
+   */
+  internal fun attachActionsChannel(context: Context, binaryMessenger: BinaryMessenger) {
+    applicationContext = context
+    MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
+      .setMethodCallHandler(DeviceActions(context.applicationContext))
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     Log.d(TAG, "onDetachedFromEngine (engine=${System.identityHashCode(binding)})")
-    // Release the cached OutboundMessagingHandler for this messenger so
-    // its BroadcastReceiver is unregistered. Without this, every engine
-    // teardown would leave a live receiver in the Android registry.
+    // Release the cached OutboundMessagingHandler for this messenger so it
+    // leaves SendResultRouter. Without this, every engine teardown would
+    // leave a dead handler registered for SENT results.
     releaseHandler(binding.binaryMessenger)
-    // The channel `lateinit var`s are only populated in onAttachedToActivity
-    // (via initializeMethodChannels). A background FlutterEngine — e.g. the
-    // one Workmanager spins up for a headless sync task — attaches and
-    // detaches from the engine without ever seeing an Activity, so these
-    // channels may legitimately be unset here. Guard each access instead of
-    // crashing with UninitializedPropertyAccessException on engine teardown.
+    // The actions channel is registered on every engine in onAttachedToEngine.
+    MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)
+    // The other channel `lateinit var`s are only populated in
+    // onAttachedToActivity (via initializeMethodChannels). A background
+    // FlutterEngine — e.g. the one Workmanager spins up for a headless sync
+    // task — attaches and detaches from the engine without ever seeing an
+    // Activity, so these channels may legitimately be unset here. Guard each
+    // access instead of crashing with UninitializedPropertyAccessException on
+    // engine teardown.
     if (::messageChannel.isInitialized) messageChannel.setMethodCallHandler(null)
-    if (::actionsChannel.isInitialized) actionsChannel.setMethodCallHandler(null)
     if (::destructiveActionsChannel.isInitialized) destructiveActionsChannel.setMethodCallHandler(null)
     // Only clear `foregroundBinding` if this instance was the one that
     // owned it. Headless-engine detaches must not clobber the
@@ -264,9 +291,8 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
   fun initializeMethodChannels(context: Context, binaryMessenger: BinaryMessenger) {
     applicationContext = context
 
-    messageChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/messaging")
-    actionsChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/actions")
-    destructiveActionsChannel = MethodChannel(binaryMessenger, "io.simplezen.simple_sms/destructive_actions")
+    messageChannel = MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
+    destructiveActionsChannel = MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
 
     initializeMethodChannelsStatic(applicationContext, binaryMessenger)
   }
