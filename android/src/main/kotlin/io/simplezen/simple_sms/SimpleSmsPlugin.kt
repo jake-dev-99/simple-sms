@@ -86,36 +86,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       private set
 
     /**
-     * Per-messenger cache of the OutboundMessagingHandler instance so
-     * repeat calls to [initializeMethodChannelsStatic] don't construct a
-     * fresh handler each time.
-     *
-     * The handler's secondary constructor calls `setupSmsReceiver()`,
-     * which registers an Android `BroadcastReceiver`. Before this cache
-     * existed, every inbound SMS delivery (which ran through
-     * `BackgroundEngineManager.ensureMethodChannels` → here) spawned a
-     * new handler + a new receiver, all of them leaking because the
-     * Service lifecycle that normally calls `unregisterSmsReceiver`
-     * never fires on constructor-created instances.
-     *
-     * Identity-hash keyed: BinaryMessengers are compared by reference,
-     * not content. The foreground engine's messenger and each
-     * background engine's messenger are distinct instances, which is
-     * the correct grouping.
-     */
-    private val handlersByMessenger =
-      java.util.IdentityHashMap<BinaryMessenger, OutboundMessagingHandler>()
-
-    /**
-     * Initialize the Activity / background-delivery channel state on a given
-     * BinaryMessenger. Used by both the foreground plugin lifecycle and
-     * BackgroundEngineManager for background delivery.
-     *
-     * Registers the destructive channel and creates [binaryMessenger]'s
-     * `OutboundMessagingHandler` up front, so its status receiver listens
-     * from engine start as it always has. Idempotent per-messenger: the
-     * handler is cached so repeat invocations don't register additional
-     * `OutboundMessagingReceiver`s.
+     * Registers the destructive channel on a given BinaryMessenger. Used by
+     * both the foreground plugin lifecycle and BackgroundEngineManager for
+     * background delivery — the engines that may delete.
      *
      * The actions and messaging channels are not registered here:
      * [onAttachedToEngine] registers them on every engine, and both callers'
@@ -124,43 +97,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
      * plugins automatically).
      */
     fun initializeMethodChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
-      val appContext = context.applicationContext
-
-      outboundHandlerFor(appContext, binaryMessenger)
-
       MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
-        .setMethodCallHandler(DestructiveActions(appContext))
+        .setMethodCallHandler(DestructiveActions(context.applicationContext))
     }
-
-    /**
-     * The cached [OutboundMessagingHandler] for [binaryMessenger], created on
-     * first use. Creating one registers its status receiver.
-     */
-    internal fun outboundHandlerFor(
-      context: Context,
-      binaryMessenger: BinaryMessenger,
-    ): OutboundMessagingHandler = synchronized(handlersByMessenger) {
-      handlersByMessenger[binaryMessenger]
-        ?: OutboundMessagingHandler(context.applicationContext).also {
-          handlersByMessenger[binaryMessenger] = it
-        }
-    }
-
-    /**
-     * Release the cached [OutboundMessagingHandler] for [binaryMessenger]
-     * (if one is cached), calling its `release()` so the underlying
-     * BroadcastReceiver is unregistered. Called from
-     * [onDetachedFromEngine] and from
-     * [BackgroundEngineManager.onForegroundDetached] when engines tear
-     * down.
-     */
-    internal fun releaseHandler(binaryMessenger: BinaryMessenger) {
-      val handler = synchronized(handlersByMessenger) {
-        handlersByMessenger.remove(binaryMessenger)
-      }
-      handler?.release()
-    }
-
   }
 
   // --- FlutterPlugin lifecycle ---
@@ -186,9 +125,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
    *   or caches. Its `launchAddContact` starts an Activity, which Android may
    *   block from a headless engine; read-state writes have no such limit.
    * - The messaging channel lets an inline "Reply" send (UNFY-306). Its
-   *   handler is stateful (it registers a status receiver), so it is resolved
-   *   per call through [outboundHandlerFor]: an engine that never sends never
-   *   registers a receiver.
+   *   handler is stateless: the manifest-declared status receiver records
+   *   every send's result and settles it (see `OutboundSendResults`), even
+   *   when the sending engine's process is cached or has gone.
    *
    * The destructive channel stays on the Activity engine and
    * BackgroundEngineManager engines only.
@@ -198,17 +137,12 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     val appContext = context.applicationContext
     MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
       .setMethodCallHandler(DeviceActions(appContext))
-    MethodChannel(binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler { call, result ->
-      outboundHandlerFor(appContext, binaryMessenger).onMethodCall(call, result)
-    }
+    MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
+      .setMethodCallHandler(OutboundMessagingHandler(appContext))
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     Log.d(TAG, "onDetachedFromEngine (engine=${System.identityHashCode(binding)})")
-    // Release the cached OutboundMessagingHandler for this messenger so
-    // its BroadcastReceiver is unregistered. Without this, every engine
-    // teardown would leave a live receiver in the Android registry.
-    releaseHandler(binding.binaryMessenger)
     // The actions and messaging channels are registered on every engine in
     // onAttachedToEngine.
     MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)

@@ -48,13 +48,9 @@ object BackgroundEngineManager {
             return
         }
 
-        // If the foreground plugin is attached, use it directly.
-        // Method channels were already set up in
-        // `SimpleSmsPlugin.onAttachedToActivity`; calling
-        // `ensureMethodChannels` here on every inbound message was
-        // constructing a fresh `OutboundMessagingHandler` (and thus a
-        // fresh `OutboundMessagingReceiver`) on every delivery — a
-        // receiver leak that compounded for the session lifetime.
+        // If the foreground plugin is attached, use it directly: its
+        // method channels were already set up in
+        // `SimpleSmsPlugin.onAttachedToActivity`.
         val foregroundMessenger = SimpleSmsPlugin.flutterBinding?.binaryMessenger
         if (foregroundMessenger != null) {
             Log.d(TAG, "Foreground engine available, sending directly")
@@ -107,9 +103,8 @@ object BackgroundEngineManager {
     }
 
     private fun ensureMethodChannels(context: Context, messenger: BinaryMessenger) {
-        // Register the destructive channel and start listening for send
-        // results on this messenger, so the Dart side can also send outbound
-        // messages, delete, etc. from the background isolate. The actions and
+        // Register the destructive channel on this messenger so the Dart side
+        // can also delete from the background isolate. The actions and
         // messaging channels need no call here: the plugin registers them in
         // onAttachedToEngine, which this engine's automatic plugin
         // registration already ran.
@@ -144,14 +139,7 @@ object BackgroundEngineManager {
      */
     fun onForegroundDetached() {
         synchronized(lock) {
-            backgroundEngine?.let { engine ->
-                // Release the cached OutboundMessagingHandler for the
-                // background messenger before destroying the engine —
-                // otherwise the handler's BroadcastReceiver lingers in
-                // the Android registry after teardown.
-                SimpleSmsPlugin.releaseHandler(engine.dartExecutor.binaryMessenger)
-                engine.destroy()
-            }
+            backgroundEngine?.destroy()
             backgroundEngine = null
             isEngineReady = false
             // Don't clear pending messages — they'll be delivered if a new engine starts

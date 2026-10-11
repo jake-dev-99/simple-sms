@@ -24,8 +24,8 @@ import org.robolectric.annotation.Config
  * dispatcher — so notification actions work without opening the app: "Mark
  * Read" writes native read-state (UNFY-241) and an inline "Reply" sends
  * (UNFY-306). The destructive channel stays off that path, each channel has a
- * single registration owner, and an engine registers a send-status receiver
- * only once it sends.
+ * single registration owner, and no engine registers a send-status receiver:
+ * the manifest-declared one records every result.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -72,7 +72,7 @@ class EngineChannelRegistrationTest {
         }
     }
 
-    /** Send-status receivers currently registered in the app. */
+    /** Registered send-status receivers. */
     private fun statusReceiverCount(): Int =
         shadowOf(context).registeredReceivers.count {
             it.broadcastReceiver is OutboundMessagingReceiver
@@ -110,75 +110,43 @@ class EngineChannelRegistrationTest {
     fun sendReachesTheOutboundHandlerWithoutAnActivity() {
         val messenger = RecordingMessenger()
         SimpleSmsPlugin().attachEngineChannels(context, messenger)
-        try {
-            // Robolectric reports no telephony feature, so the handler answers
-            // with its own NO_TELEPHONY error — proof the call reached it
-            // instead of failing with MissingPluginException.
-            val code = messenger.invokeExpectingError(
-                SimpleSmsPlugin.MESSAGING_CHANNEL,
-                MethodCall("sendMessage", null),
-            )
 
-            assertEquals(ERR_NO_TELEPHONY, code)
-        } finally {
-            SimpleSmsPlugin.releaseHandler(messenger)
-        }
+        // Robolectric reports no telephony feature, so the handler answers
+        // with its own NO_TELEPHONY error — proof the call reached it
+        // instead of failing with MissingPluginException.
+        val code = messenger.invokeExpectingError(
+            SimpleSmsPlugin.MESSAGING_CHANNEL,
+            MethodCall("sendMessage", null),
+        )
+
+        assertEquals(ERR_NO_TELEPHONY, code)
     }
 
     @Test
-    fun engineAttachRegistersNoStatusReceiverUntilTheEngineSends() {
+    fun engineSetupRegistersNoRuntimeStatusReceiver() {
+        // Robolectric lists the manifest-declared receiver too.
+        val manifestOnly = statusReceiverCount()
         val messenger = RecordingMessenger()
-        val before = statusReceiverCount()
         SimpleSmsPlugin().attachEngineChannels(context, messenger)
-        try {
-            assertEquals(before, statusReceiverCount())
+        SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
 
-            messenger.invokeExpectingError(
-                SimpleSmsPlugin.MESSAGING_CHANNEL,
-                MethodCall("sendMessage", null),
-            )
+        messenger.invokeExpectingError(
+            SimpleSmsPlugin.MESSAGING_CHANNEL,
+            MethodCall("sendMessage", null),
+        )
 
-            assertEquals(before + 1, statusReceiverCount())
-        } finally {
-            SimpleSmsPlugin.releaseHandler(messenger)
-        }
-        assertEquals(before, statusReceiverCount())
+        assertEquals(manifestOnly, statusReceiverCount())
     }
 
     @Test
     fun activityAndBackgroundChannelSetupRegistersOnlyTheDestructiveChannel() {
         val messenger = RecordingMessenger()
-        val before = statusReceiverCount()
-        try {
-            SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
 
-            assertEquals(
-                setOf(SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL),
-                messenger.handlers.keys,
-            )
-            // The Activity and BackgroundEngineManager engines still listen for
-            // send results from engine start.
-            assertEquals(before + 1, statusReceiverCount())
-        } finally {
-            SimpleSmsPlugin.releaseHandler(messenger)
-        }
-    }
+        SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
 
-    @Test
-    fun engineSetupSharesOneOutboundHandlerPerMessenger() {
-        val messenger = RecordingMessenger()
-        val before = statusReceiverCount()
-        SimpleSmsPlugin().attachEngineChannels(context, messenger)
-        try {
-            SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
-            messenger.invokeExpectingError(
-                SimpleSmsPlugin.MESSAGING_CHANNEL,
-                MethodCall("sendMessage", null),
-            )
-
-            assertEquals(before + 1, statusReceiverCount())
-        } finally {
-            SimpleSmsPlugin.releaseHandler(messenger)
-        }
+        assertEquals(
+            setOf(SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL),
+            messenger.handlers.keys,
+        )
     }
 }

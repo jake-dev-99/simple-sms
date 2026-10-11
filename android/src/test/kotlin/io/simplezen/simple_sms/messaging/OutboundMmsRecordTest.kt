@@ -1,6 +1,7 @@
 package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
@@ -68,7 +69,6 @@ class OutboundMmsRecordTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val provider = MmsRecordProvider()
         ShadowContentResolver.registerProviderInternal("mms", provider)
-        val handler = OutboundMessagingHandler(context)
         val result = MmsRecordResult()
         val request = OutboundMessagingHandler.MessageRequestDetails(
             threadId = 7,
@@ -76,7 +76,7 @@ class OutboundMmsRecordTest {
             body = "MMS test",
             flutterResult = result,
         )
-        val requests = handler.channelResultMap
+        val requests = OutboundSendResults.pending
         requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
@@ -90,7 +90,8 @@ class OutboundMmsRecordTest {
 
         try {
             context.sendOrderedBroadcast(
-                Intent(SENTMMS_ACTION).setPackage(context.packageName)
+                Intent(SENTMMS_ACTION)
+                    .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
                     .putExtra("messageID", 9001)
                     .putExtra("uri", "content://mms/9001"),
                 null, null, null, resultCode, null, null,
@@ -113,7 +114,7 @@ class OutboundMmsRecordTest {
                 assertTrue(requests.isEmpty())
             }
         } finally {
-            handler.release()
+            requests.clear()
         }
     }
 }
