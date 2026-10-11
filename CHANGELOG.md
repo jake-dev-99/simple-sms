@@ -1,8 +1,21 @@
 ## Unreleased
 
-Release as a minor bump: `Sms.status` changes type.
+Release as a minor bump: `Sms.status` changes type, and destructive deletes
+return typed results.
 
 ### Changed (breaking)
+
+- **Destructive deletes are verified and typed (UNFY-244).**
+  `AndroidDestructiveAction.deleteThread` / `deleteMessage` resolve to a
+  `DeleteResult` instead of `bool`: `deleted`, `alreadyAbsent`, or (threads
+  only) `newMessagesArrived` when messages arrived while the delete ran.
+  Every delete requires the default-SMS role and is read back natively; one
+  that can't be verified throws `DeleteFailedException` carrying a
+  `DeleteFailureReason` (`notDefaultSmsApp`, `deleteIncomplete`,
+  `deleteFailed`, `verifyFailed`, `absenceUnverified`, `invalidArgument`).
+  On Android 14+, the provider filters messages by the calling user's
+  subscriptions, so a `deleteMessage` that removes nothing throws
+  `absenceUnverified` instead of resolving to `alreadyAbsent`.
 
 - **`Sms.status` is now `SmsDeliveryStatus?` (UNFY-299).** It was typed as the
   MMS `AndroidMessageStatus` enum, so it was null for every SMS. It now carries
@@ -47,9 +60,12 @@ Release as a minor bump: `Sms.status` changes type.
 - **A send without the default-SMS role fails with `PERMISSION_DENIED`
   (UNFY-299)**, not `SEND_INITIATION_ERROR`: the provider refuses the SMS
   row, and nothing is sent.
-- **Allow `simple_query` 0.3.0 (UNFY-299).** It reports a provider that
-  returned no cursor as `SimpleQueryError(unavailable)` instead of an empty
-  result, so lookups can now throw it. Conversation enrichment tolerates it
+- **Require `simple_query` 0.3.0 and `simple_query_android` 0.3.0
+  (UNFY-299, UNFY-244).** The verified deletes call `simple_query_android`'s
+  `ContentQuery.queryOrNull` directly, so both must be published first.
+  `simple_query` 0.3.0 reports a provider that returned no cursor as
+  `SimpleQueryError(unavailable)` instead of an empty result, so lookups can
+  now throw it. Conversation enrichment tolerates it
   per thread: that thread comes back unenriched (null `participants`,
   `latestSms`, `latestMms`) instead of failing the list.
 

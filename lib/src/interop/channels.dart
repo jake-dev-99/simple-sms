@@ -106,19 +106,23 @@ class ActionsInterop {
 class DestructiveActionsInterop {
   static const methodChannel = _Channels.destructiveActions;
 
-  static Future<bool> deleteThread(String threadId) async =>
-      await methodChannel.invokeMethod<bool>('deleteThread', threadId) ?? false;
+  /// Raw verified outcome wire value (`DeleteResult.wireName`), untyped so
+  /// `DeleteResult.fromWire` validates it; a delete that could not be
+  /// verified throws `PlatformException` (UNFY-244).
+  static Future<Object?> deleteThread(String threadId) =>
+      methodChannel.invokeMethod<Object?>('deleteThread', threadId);
 
   /// Delete one message from [channel]'s native table. [channel] (sent as
   /// `SmsMmsType.name`) targets the right table — the native `_id` is unique
   /// only within its own table (UNFY-213).
-  static Future<bool> deleteMessage(
+  ///
+  /// Returns the raw verified outcome wire value, like [deleteThread].
+  static Future<Object?> deleteMessage(
     String messageId,
     SmsMmsType channel,
-  ) async =>
-      await methodChannel.invokeMethod<bool>('deleteMessage', {
+  ) =>
+      methodChannel.invokeMethod<Object?>('deleteMessage', {
         'messageId': messageId,
         'channel': channel.name,
-      }) ??
-      false;
+      });
 }
