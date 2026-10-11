@@ -2,7 +2,6 @@
 // MIME enum (declared in `enums/sms_mms_enums.dart`) resolves
 // unambiguously inside this file.
 import 'dart:io' hide ContentType;
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
@@ -10,16 +9,12 @@ import 'package:simple_query/simple_query.dart';
 import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/mms_filter.dart';
 import '../models/messages/mms_part.dart';
+import 'chunked_id_query.dart';
 
 /// Content URI for the Android MMS-part provider table. File-private
 /// const so future URI changes are a single-site edit and there's no
 /// risk of typos in the inline string literal at the query site.
 const String _mmsPartUri = 'content://mms/part';
-
-/// Most MMS ids bound into one `mid IN (...)` parts query. SQLite before 3.32
-/// (older Android releases) rejects a statement with more than 999 bind
-/// arguments; 500 leaves headroom on every release.
-const int _maxMmsIdsPerPartsQuery = 500;
 
 /// Construct the `simple_query` [BinaryRequest] that opens an MMS part by
 /// its native row id.
@@ -103,27 +98,30 @@ class AttachmentExtractor {
   /// Conversation-list enrichment hydrates every thread's latest-MMS parts;
   /// doing that with one [listMmsParts] per thread fired N concurrent
   /// `content://mms/part` queries and made large inboxes slow (UNFY-250). This
-  /// collapses them into one query per [_maxMmsIdsPerPartsQuery] ids, run
-  /// concurrently, so the bind-argument count stays under SQLite's limit on
-  /// any inbox size (UNFY-253). A malformed / unknown-MIME part row is
-  /// skipped (logged) rather than failing the whole batch — the same per-row
-  /// guard the [listMmsParts] doc asks many-message callers to apply. A failed
-  /// chunk query fails the call.
+  /// collapses them into one query per [maxIdsPerQuery] ids, run one after
+  /// another ([queryWithChunkedIdList]), so the bind-argument count stays
+  /// under SQLite's limit on any inbox size (UNFY-253). A malformed /
+  /// unknown-MIME part row is skipped (logged) rather than failing the whole
+  /// batch — the same per-row guard the [listMmsParts] doc asks many-message
+  /// callers to apply. A failed chunk query fails the call.
   Future<Map<int, List<MmsPart>>> listMmsPartsForMessages(
     List<int> mmsIds,
   ) async {
     if (mmsIds.isEmpty) return const {};
-    final chunks = <List<int>>[
-      for (var start = 0;
-          start < mmsIds.length;
-          start += _maxMmsIdsPerPartsQuery)
-        mmsIds.sublist(
-          start,
-          min(start + _maxMmsIdsPerPartsQuery, mmsIds.length),
-        ),
-    ];
-    final responses = await Future.wait(chunks.map(_queryPartsForMessages));
-    final rows = [for (final response in responses) ...response.records];
+    final rows = await queryWithChunkedIdList(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: [
+          QueryFilterCondition(
+            field: 'mid',
+            operator: QueryFilterOperator.inList,
+            value: mmsIds.map((id) => id.toString()).toList(),
+          ),
+        ],
+        platformData: {'contentUri': _mmsPartUri},
+      ),
+      numericSortColumns: const {'_id'},
+    );
     final byMid = <int, List<MmsPart>>{};
     for (final row in rows) {
       final raw = Map<String, dynamic>.from(row);
@@ -142,24 +140,6 @@ class AttachmentExtractor {
       }
     }
     return byMid;
-  }
-
-  /// Runs one `mid IN (...)` parts query for at most
-  /// [_maxMmsIdsPerPartsQuery] MMS ids.
-  Future<QueryResult> _queryPartsForMessages(List<int> mmsIds) {
-    return SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: [
-          QueryFilterCondition(
-            field: 'mid',
-            operator: QueryFilterOperator.inList,
-            value: mmsIds.map((id) => id.toString()).toList(),
-          ),
-        ],
-        platformData: {'contentUri': _mmsPartUri},
-      ),
-    );
   }
 
   /// Extracts the binary content of a single MMS part to [outputDirectory],

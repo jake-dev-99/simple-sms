@@ -7,6 +7,7 @@ import '../models/filters/sort_direction.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/sms.dart';
 import '../models/people/mms_participant.dart';
+import 'chunked_id_query.dart';
 
 /// SMS + MMS row queries against the Android Telephony provider.
 ///
@@ -21,6 +22,10 @@ import '../models/people/mms_participant.dart';
 // File-private content URIs.
 const String _smsUri = 'content://sms';
 const String _mmsUri = 'content://mms';
+
+/// Integer columns of `content://sms` / `content://mms` that the list sorts
+/// use, so an oversized id list can be chunked and merged exactly.
+const Set<String> _messageIntegerColumns = {'_id', 'date', 'thread_id'};
 
 /// Mask an address for diagnostic logging — full MSISDNs / emails
 /// don't land in logcat unmasked. Duplicated from lookup_service.dart
@@ -164,7 +169,7 @@ class MessageLookup {
     int? limit,
     int? offset,
   }) async {
-    final response = await SimpleQuery.instance.query(
+    final records = await queryWithChunkedIdList(
       QueryRequest(
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _smsUri},
@@ -175,8 +180,9 @@ class MessageLookup {
             ? QueryPage(limit: limit, offset: offset)
             : null,
       ),
+      numericSortColumns: _messageIntegerColumns,
     );
-    return response.records
+    return records
         .map((row) => Sms.fromRaw(Map<String, dynamic>.from(row)))
         .toList(growable: false);
   }
@@ -220,7 +226,7 @@ class MessageLookup {
     int? limit,
     int? offset,
   }) async {
-    final response = await SimpleQuery.instance.query(
+    final records = await queryWithChunkedIdList(
       QueryRequest(
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _mmsUri},
@@ -231,8 +237,9 @@ class MessageLookup {
             ? QueryPage(limit: limit, offset: offset)
             : null,
       ),
+      numericSortColumns: _messageIntegerColumns,
     );
-    return response.records
+    return records
         .map((row) => Mms.fromRaw(Map<String, dynamic>.from(row)))
         .toList(growable: false);
   }
@@ -298,7 +305,8 @@ class MessageLookup {
         QueryFilterCondition(
           field: 'type',
           operator: QueryFilterOperator.inList,
-          value: types.map((t) => t.value.toString()).toList(),
+          // A set: bounded by the enum, so never an oversized id list.
+          value: types.map((t) => t.value.toString()).toSet().toList(),
         ),
       );
     }
@@ -417,7 +425,8 @@ class MessageLookup {
         QueryFilterCondition(
           field: 'm_type',
           operator: QueryFilterOperator.inList,
-          value: types.map((t) => t.value.toString()).toList(),
+          // A set: bounded by the enum, so never an oversized id list.
+          value: types.map((t) => t.value.toString()).toSet().toList(),
         ),
       );
     }

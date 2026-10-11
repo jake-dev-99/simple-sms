@@ -5,6 +5,7 @@ import '../models/filters/sort_direction.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
+import 'chunked_id_query.dart';
 
 /// Contacts-side queries against the Android contacts provider.
 ///
@@ -27,6 +28,11 @@ const String _contactsPhoneFilterUri =
     'content://com.android.contacts/data/phones/filter';
 const String _contactsEmailFilterUri =
     'content://com.android.contacts/data/emails/filter';
+
+/// Integer columns of `contacts` that the list sorts use. `display_name` is
+/// deliberately absent: the provider's collation is unverified, so a
+/// name-sorted request is never chunked and merged in Dart (UNFY-253).
+const Set<String> _contactIntegerColumns = {'_id', 'last_time_contacted'};
 
 class ContactLookup {
   ContactLookup._();
@@ -170,7 +176,7 @@ class ContactLookup {
     int? limit,
     int? offset,
   }) async {
-    final response = await SimpleQuery.instance.query(
+    final records = await queryWithChunkedIdList(
       QueryRequest(
         domain: QueryDomain.platformSpecific,
         platformData: {'contentUri': _contactsUri},
@@ -181,8 +187,9 @@ class ContactLookup {
             ? QueryPage(limit: limit, offset: offset)
             : null,
       ),
+      numericSortColumns: _contactIntegerColumns,
     );
-    return response.records
+    return records
         .map((row) => AndroidContact.fromRaw(Map<String, dynamic>.from(row)))
         .toList(growable: false);
   }

@@ -10,6 +10,7 @@ import '../models/messages/mms.dart';
 import '../models/messages/sms.dart';
 import '../models/people/contactables.dart';
 import 'attachment_extractor.dart';
+import 'chunked_id_query.dart';
 import 'contact_lookup.dart';
 import 'message_lookup.dart';
 
@@ -25,6 +26,9 @@ import 'message_lookup.dart';
 /// latest-message enrichment.
 const String _mmsSmsConversationsUri =
     'content://mms-sms/conversations?simple=true';
+
+/// Integer columns of the simple conversations view that the list sorts use.
+const Set<String> _conversationIntegerColumns = {'_id', 'date'};
 
 /// Masks an address for [diag] logging so full MSISDNs / emails don't
 /// land in logcat. Duplicated from lookup_service.dart (where the
@@ -124,7 +128,7 @@ class ConversationLookup {
     bool enrich = true,
   }) async {
     try {
-      final response = await SimpleQuery.instance.query(
+      final records = await queryWithChunkedIdList(
         QueryRequest(
           domain: QueryDomain.platformSpecific,
           filters: _buildConversationFilters(filter),
@@ -135,8 +139,9 @@ class ConversationLookup {
                   : null,
           platformData: {'contentUri': _mmsSmsConversationsUri},
         ),
+        numericSortColumns: _conversationIntegerColumns,
       );
-      final allBare = response.records
+      final allBare = records
           .map(
             (row) => AndroidSimpleConversation.fromRaw(
               Map<String, dynamic>.from(row),
