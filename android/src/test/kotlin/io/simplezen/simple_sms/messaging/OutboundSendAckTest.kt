@@ -442,15 +442,24 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun cancellingUntrackedStatusIntents_touchesNoOtherRow() {
+    fun cancellingUntrackedStatusIntents_sparesTrackedIntents_andOtherRows() {
         val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+        val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val tracked = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 1))
         val otherRowSent = PendingIntent.getBroadcast(
             context, 43, Intent(SENTSMS_ACTION).setComponent(receiver), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val otherRowDelivered = PendingIntent.getBroadcast(
+            context, 43, Intent(DELIVEREDSMS_ACTION).setData(Uri.parse("content://sms/43")).setComponent(receiver),
+            mutable,
         )
 
         cancelUntrackedStatusIntents(context, 42, smsUri)
 
+        assertFalse(shadowOf(tracked.sent).isCanceled)
+        assertFalse(shadowOf(tracked.delivered).isCanceled)
         assertFalse(shadowOf(otherRowSent).isCanceled)
+        assertFalse(shadowOf(otherRowDelivered).isCanceled)
     }
 
     @Test
