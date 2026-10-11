@@ -2,13 +2,138 @@ package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Telephony
 import android.telephony.SmsManager
+import android.telephony.SmsMessage
 import android.util.Log
 import androidx.core.net.toUri
 
+/**
+ * The [Telephony.Sms] delivery status (`STATUS_COMPLETE` / `STATUS_PENDING` /
+ * `STATUS_FAILED`) carried by an SMS status report, or null when the report is
+ * missing, unparseable, not a status report, or carries an unknown status
+ * (UNFY-293). Mirrors AOSP Messaging's handling of the delivery `PendingIntent`
+ * extras (`pdu`, `format`). Every null is logged with its reason.
+ */
+internal fun smsDeliveryStatus(pdu: ByteArray?, format: String?): Int? {
+    if (pdu == null || format == null) {
+        Log.w(TAG_RECEIVER, "Delivery report without pdu/format extras (pdu=${pdu != null}, format=$format)")
+        return null
+    }
+    // Parsing runs inside onReceive; a platform/OEM parser failure must not
+    // crash the process (UNFY-282 containment).
+    val report = try {
+        SmsMessage.createFromPdu(pdu, format)
+    } catch (e: RuntimeException) {
+        Log.w(TAG_RECEIVER, "Delivery report PDU failed to parse ($format)", e)
+        return null
+    }
+    if (report == null) {
+        Log.w(TAG_RECEIVER, "Delivery report PDU did not parse ($format, ${pdu.size} bytes)")
+        return null
+    }
+    val status = try {
+        if (!report.isStatusReportMessage) {
+            Log.w(TAG_RECEIVER, "Delivery report PDU is not a status report ($format)")
+            return null
+        }
+        report.status
+    } catch (e: RuntimeException) {
+        Log.w(TAG_RECEIVER, "Delivery report status unreadable ($format)", e)
+        return null
+    }
+    val mapped = deliveryStatusFromReport(status, format)
+    if (mapped == null) Log.w(TAG_RECEIVER, "Unknown delivery status 0x${Integer.toHexString(status)} ($format)")
+    return mapped
+}
+
+/**
+ * Maps a status report's raw status to a [Telephony.Sms] delivery status.
+ *
+ * 3GPP: the TP-Status ranges of TS 23.040 (completed below
+ * [TP_STATUS_TRYING], still trying below [TP_STATUS_FAILED], failed above).
+ * 3GPP2: the platform packs the bearer-data error class and message status
+ * into bits 24–31 and 16–23. A delivery acknowledgment with no error is a
+ * delivery (the message status is an optional subparameter, reported as 0
+ * when absent), unless its status says "cancelled"; a temporary error is
+ * pending and a permanent one failed. Undefined or unknown values map to null
+ * rather than a guess.
+ */
+internal fun deliveryStatusFromReport(status: Int, format: String): Int? {
+    if (format != SmsMessage.FORMAT_3GPP2) {
+        return when {
+            status < TP_STATUS_TRYING -> Telephony.Sms.STATUS_COMPLETE
+            status < TP_STATUS_FAILED -> Telephony.Sms.STATUS_PENDING
+            else -> Telephony.Sms.STATUS_FAILED
+        }
+    }
+    val errorClass = (status shr 24) and 0xFF
+    val messageStatus = (status shr 16) and 0xFF
+    if (errorClass == CDMA_UNDEFINED || messageStatus == CDMA_UNDEFINED) return null
+    return when (errorClass) {
+        CDMA_ERROR_NONE ->
+            if (messageStatus == CDMA_STATUS_CANCELLED) Telephony.Sms.STATUS_FAILED
+            else Telephony.Sms.STATUS_COMPLETE
+        CDMA_ERROR_TEMPORARY -> Telephony.Sms.STATUS_PENDING
+        CDMA_ERROR_PERMANENT -> Telephony.Sms.STATUS_FAILED
+        else -> null
+    }
+}
+
+/**
+ * Which rows a delivery report may write (UNFY-293):
+ * - not already `STATUS_FAILED`: a failed part is terminal for the whole
+ *   message, so a multipart SMS whose later parts report delivered stays
+ *   failed;
+ * - an outbound row whose send was not marked failed (sent, outbox or
+ *   queued), so a late report for a deleted message never stamps an inbound
+ *   row that reused its id.
+ */
+internal const val DELIVERY_REPORT_SELECTION =
+    "(${Telephony.Sms.STATUS} IS NULL OR ${Telephony.Sms.STATUS} != ?) " +
+        "AND ${Telephony.Sms.TYPE} IN (?, ?, ?)"
+internal val DELIVERY_REPORT_ARGS = arrayOf(
+    Telephony.Sms.STATUS_FAILED.toString(),
+    Telephony.Sms.MESSAGE_TYPE_SENT.toString(),
+    Telephony.Sms.MESSAGE_TYPE_OUTBOX.toString(),
+    Telephony.Sms.MESSAGE_TYPE_QUEUED.toString(),
+)
+
+/** Records an SMS delivery report's [status] on [messageUri] (see [DELIVERY_REPORT_SELECTION]). */
+internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status: Int): Int =
+    context.contentResolver.update(
+        messageUri,
+        ContentValues().apply { put(Telephony.Sms.STATUS, status) },
+        DELIVERY_REPORT_SELECTION,
+        DELIVERY_REPORT_ARGS,
+    )
+
+// TP-Status range boundaries (3GPP TS 23.040 9.2.3.15).
+private const val TP_STATUS_TRYING = 0x20
+private const val TP_STATUS_FAILED = 0x40
+
+// CDMA bearer-data values (3GPP2 C.S0015-B 4.5.21), as the platform reports them.
+private const val CDMA_ERROR_NONE = 0
+private const val CDMA_ERROR_TEMPORARY = 2
+private const val CDMA_ERROR_PERMANENT = 3
+private const val CDMA_STATUS_CANCELLED = 3
+private const val CDMA_UNDEFINED = 0xFF
+
+private const val TAG_RECEIVER = "OutboundMessagingReceiver"
+
+/**
+ * Receives outbound status broadcasts.
+ *
+ * - SENT results arrive at the instance [OutboundMessagingHandler] registers
+ *   at runtime, which settles the pending send through [onStatusUpdate].
+ * - SMS delivery reports target the manifest-declared instance directly, so
+ *   Android delivers them even after the app process has gone; they only
+ *   record the parsed status on the row named by the intent data (UNFY-293).
+ */
 class OutboundMessagingReceiver(
     // Callback to notify the handler with messageId, event type, status string, and raw resultCode
     private var onStatusUpdate: ((messageId: Int, messageUri: Uri, eventType: String, statusString: String, resultCode: Int) -> Unit)? = null
@@ -17,56 +142,61 @@ class OutboundMessagingReceiver(
     // Public no-arg constructor required for framework instantiation
     constructor() : this(null)
 
-    companion object {
-        const val SENTSMS_ACTION = "com.simplezen.simple_sms.SMS_SENT"
-        const val SENTMMS_ACTION = "com.simplezen.simple_sms.MMS_SENT"
-        const val DELIVEREDSMS_ACTION = "com.simplezen.simple_sms.SMS_DELIVERED"
-        const val DELIVEREDMMS_ACTION = "com.simplezen.simple_sms.MMS_DELIVERED"
-    }
-
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent == null || context == null) {
-            Log.e("OutboundMessagingReceiver", "Received null intent or context.")
+            Log.e(TAG_RECEIVER, "Received null intent or context.")
             return
+        }
+        val currentResultCode = resultCode // This is the result code from the broadcast
+        val eventType = intent.action ?: run {
+            Log.w(TAG_RECEIVER, "Received a broadcast with no action.")
+            return
+        }
+        val statusString = when (eventType) {
+            DELIVEREDSMS_ACTION -> {
+                onDeliveryReport(context, intent)
+                return
+            }
+            SENTSMS_ACTION -> getSentStatusString(currentResultCode)
+            SENTMMS_ACTION -> getMmsSentStatusString(currentResultCode)
+            else -> {
+                Log.w(TAG_RECEIVER, "Received unknown action: $eventType")
+                return
+            }
         }
 
         val messageId = intent.getIntExtra("messageID", -1)
         if (messageId == -1) {
-            Log.e("OutboundMessagingReceiver", "Received broadcast with no messageID.")
+            Log.e(TAG_RECEIVER, "Received $eventType broadcast with no messageID.")
             return
         }
-
-        val currentResultCode = resultCode // This is the result code from the broadcast
         val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
-        val eventType: String
-        val statusString: String
+        Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $currentResultCode, Status: $statusString")
+        onStatusUpdate?.invoke(messageId, messageUri, eventType, statusString, currentResultCode)
+    }
 
-        when (intent.action) {
-            SENTSMS_ACTION -> {
-                eventType = SENTSMS_ACTION
-                statusString = getSentStatusString(currentResultCode)
-            }
-            DELIVEREDSMS_ACTION -> {
-                eventType = DELIVEREDSMS_ACTION
-                statusString = getDeliveredStatusString(currentResultCode)
-            }
-            SENTMMS_ACTION -> {
-                eventType = SENTMMS_ACTION
-                statusString = getMmsSentStatusString(currentResultCode)
-            }
-            DELIVEREDMMS_ACTION -> {
-                eventType = DELIVEREDMMS_ACTION
-                statusString = getDeliveredStatusString(currentResultCode)
-            }
-            else -> {
-                eventType = "UNKNOWN_ACTION"
-                statusString = "Unknown action: ${intent.action}"
-                Log.w("OutboundMessagingReceiver", "Received unknown action: ${intent.action}")
-            }
+    /**
+     * Records an SMS delivery report on its row. The row comes from the intent
+     * data, which the platform's fill-in cannot replace (no `FILL_IN_DATA`).
+     * Failures are logged, never thrown: nothing is pending on a report.
+     */
+    private fun onDeliveryReport(context: Context, intent: Intent) {
+        val messageUri = intent.data
+        if (messageUri == null) {
+            Log.e(TAG_RECEIVER, "Delivery report without a message URI.")
+            return
         }
-        Log.d("OutboundMessagingReceiver", "MessageID: $messageId, Action: ${intent.action}, ResultCode: $currentResultCode, Status: $statusString")
-    // Invoke callback if provided
-    onStatusUpdate?.invoke(messageId, messageUri, eventType, statusString, currentResultCode)
+        val status = smsDeliveryStatus(intent.getByteArrayExtra("pdu"), intent.getStringExtra("format"))
+        if (status == null) {
+            Log.w(TAG_RECEIVER, "No delivery status in the report for $messageUri; row left unchanged.")
+            return
+        }
+        try {
+            val updated = persistSmsDeliveryStatus(context, messageUri, status)
+            Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri (rows=$updated)")
+        } catch (e: Exception) {
+            Log.e(TAG_RECEIVER, "Failed recording the delivery status for $messageUri", e)
+        }
     }
 
     private fun getSentStatusString(resultCode: Int): String {
@@ -140,12 +270,11 @@ class OutboundMessagingReceiver(
         }
     }
 
-    private fun getDeliveredStatusString(resultCode: Int): String {
-        return when (resultCode) {
-            Activity.RESULT_OK -> "DELIVERED_OK"
-            Activity.RESULT_CANCELED -> "DELIVERED_FAILED" // Often used for failure
-            else -> "DELIVERED_STATUS_UNKNOWN ($resultCode)"
-        }
+    private fun getSmsDeliveryStatusString(deliveryStatus: Int?): String = when (deliveryStatus) {
+        Telephony.Sms.STATUS_COMPLETE -> "DELIVERED_OK"
+        Telephony.Sms.STATUS_PENDING -> "DELIVERY_PENDING"
+        Telephony.Sms.STATUS_FAILED -> "DELIVERY_FAILED"
+        else -> "DELIVERY_STATUS_UNKNOWN"
     }
 
     // MMS *sent* result codes are SmsManager.MMS_ERROR_* values, a different
