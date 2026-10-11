@@ -88,7 +88,9 @@ class AndroidMessaging {
   /// ```
   ///
   /// Throws a [PlatformException] if the device lacks telephony capability
-  /// or the send can't be started. Otherwise the future settles once the
+  /// or the send can't be started; without the `DefaultSmsApp` role the
+  /// provider refuses the SMS row and the send fails with `PERMISSION_DENIED`
+  /// before anything is sent. Otherwise the future settles once the
   /// carrier reports the result. A multipart SMS settles as failed at its
   /// first failed part, and as sent only once every part was sent.
   ///
