@@ -107,11 +107,12 @@ object BackgroundEngineManager {
     }
 
     private fun ensureMethodChannels(context: Context, messenger: BinaryMessenger) {
-        // Initialize the messaging and destructive channels on this messenger so
-        // the Dart side can also send outbound messages, delete, etc. from the
-        // background isolate. The actions channel needs no call here: the
-        // plugin registers it in onAttachedToEngine, which this engine's
-        // automatic plugin registration already ran.
+        // Register the destructive channel and start listening for send
+        // results on this messenger, so the Dart side can also send outbound
+        // messages, delete, etc. from the background isolate. The actions and
+        // messaging channels need no call here: the plugin registers them in
+        // onAttachedToEngine, which this engine's automatic plugin
+        // registration already ran.
         SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
     }
 

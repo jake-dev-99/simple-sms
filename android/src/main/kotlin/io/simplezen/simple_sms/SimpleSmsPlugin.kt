@@ -31,7 +31,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
   private var ownBinding: FlutterPlugin.FlutterPluginBinding? = null
 
   // Method Channels
-  private lateinit var messageChannel: MethodChannel
   private lateinit var destructiveActionsChannel: MethodChannel
 
   companion object {
@@ -108,32 +107,43 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       java.util.IdentityHashMap<BinaryMessenger, OutboundMessagingHandler>()
 
     /**
-     * Initialize method channels on a given BinaryMessenger. Used by both the
-     * foreground plugin lifecycle and BackgroundEngineManager for background delivery.
+     * Initialize the Activity / background-delivery channel state on a given
+     * BinaryMessenger. Used by both the foreground plugin lifecycle and
+     * BackgroundEngineManager for background delivery.
      *
-     * Idempotent per-messenger: the `OutboundMessagingHandler` instance
-     * is cached so repeat invocations for the same messenger don't
-     * register additional `OutboundMessagingReceiver`s.
+     * Registers the destructive channel and creates [binaryMessenger]'s
+     * `OutboundMessagingHandler` up front, so its status receiver listens
+     * from engine start as it always has. Idempotent per-messenger: the
+     * handler is cached so repeat invocations don't register additional
+     * `OutboundMessagingReceiver`s.
+     *
+     * The actions and messaging channels are not registered here:
+     * [onAttachedToEngine] registers them on every engine, and both callers'
+     * engines attach the plugin (the Activity engine, and
+     * BackgroundEngineManager's `FlutterEngine(appContext)`, which registers
+     * plugins automatically).
      */
     fun initializeMethodChannelsStatic(context: Context, binaryMessenger: BinaryMessenger) {
       val appContext = context.applicationContext
 
-      val outboundHandler = synchronized(handlersByMessenger) {
-        handlersByMessenger[binaryMessenger] ?: OutboundMessagingHandler(appContext).also {
-          handlersByMessenger[binaryMessenger] = it
-        }
-      }
-
-      MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
-        .setMethodCallHandler(outboundHandler)
+      outboundHandlerFor(appContext, binaryMessenger)
 
       MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
         .setMethodCallHandler(DestructiveActions(appContext))
+    }
 
-      // The actions channel is not registered here: [onAttachedToEngine]
-      // registers it on every engine, and both callers' engines attach the
-      // plugin (the Activity engine, and BackgroundEngineManager's
-      // `FlutterEngine(appContext)`, which registers plugins automatically).
+    /**
+     * The cached [OutboundMessagingHandler] for [binaryMessenger], created on
+     * first use. Creating one registers its status receiver.
+     */
+    internal fun outboundHandlerFor(
+      context: Context,
+      binaryMessenger: BinaryMessenger,
+    ): OutboundMessagingHandler = synchronized(handlersByMessenger) {
+      handlersByMessenger[binaryMessenger]
+        ?: OutboundMessagingHandler(context.applicationContext).also {
+          handlersByMessenger[binaryMessenger] = it
+        }
     }
 
     /**
@@ -163,24 +173,34 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // dispatcher, BackgroundEngineManager-spawned bg engines) attach
     // here too, and used to clobber the foreground reference.
     ownBinding = binding
-    attachActionsChannel(binding.applicationContext, binding.binaryMessenger)
+    attachEngineChannels(binding.applicationContext, binding.binaryMessenger)
   }
 
   /**
-   * The engine-attach work shared by every engine, Activity or not. Registers
-   * the actions channel (read-state writes, contact lookups): its handler owns
-   * no receivers or caches, so it is safe on any engine — including headless
-   * ones such as flutter_local_notifications' notification-action dispatcher,
-   * which must mark a message read without opening the app (UNFY-241). The
-   * channel's `launchAddContact` starts an Activity, which Android may block
-   * from a headless engine; read-state writes have no such limit. The
-   * stateful messaging channel and the destructive channel stay on the
-   * Activity engine and BackgroundEngineManager engines only.
+   * The engine-attach work shared by every engine, Activity or not, including
+   * headless ones such as flutter_local_notifications' notification-action
+   * dispatcher, so a notification action can work without opening the app.
+   *
+   * - The actions channel (read-state writes, contact lookups) lets "Mark
+   *   Read" write native read-state (UNFY-241). Its handler owns no receivers
+   *   or caches. Its `launchAddContact` starts an Activity, which Android may
+   *   block from a headless engine; read-state writes have no such limit.
+   * - The messaging channel lets an inline "Reply" send (UNFY-306). Its
+   *   handler is stateful (it registers a status receiver), so it is resolved
+   *   per call through [outboundHandlerFor]: an engine that never sends never
+   *   registers a receiver.
+   *
+   * The destructive channel stays on the Activity engine and
+   * BackgroundEngineManager engines only.
    */
-  internal fun attachActionsChannel(context: Context, binaryMessenger: BinaryMessenger) {
+  internal fun attachEngineChannels(context: Context, binaryMessenger: BinaryMessenger) {
     applicationContext = context
+    val appContext = context.applicationContext
     MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
-      .setMethodCallHandler(DeviceActions(context.applicationContext))
+      .setMethodCallHandler(DeviceActions(appContext))
+    MethodChannel(binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler { call, result ->
+      outboundHandlerFor(appContext, binaryMessenger).onMethodCall(call, result)
+    }
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -189,16 +209,17 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // its BroadcastReceiver is unregistered. Without this, every engine
     // teardown would leave a live receiver in the Android registry.
     releaseHandler(binding.binaryMessenger)
-    // The actions channel is registered on every engine in onAttachedToEngine.
+    // The actions and messaging channels are registered on every engine in
+    // onAttachedToEngine.
     MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)
-    // The other channel `lateinit var`s are only populated in
+    MethodChannel(binding.binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler(null)
+    // The destructive channel `lateinit var` is only populated in
     // onAttachedToActivity (via initializeMethodChannels). A background
     // FlutterEngine — e.g. the one Workmanager spins up for a headless sync
     // task — attaches and detaches from the engine without ever seeing an
-    // Activity, so these channels may legitimately be unset here. Guard each
-    // access instead of crashing with UninitializedPropertyAccessException on
+    // Activity, so it may legitimately be unset here. Guard the access
+    // instead of crashing with UninitializedPropertyAccessException on
     // engine teardown.
-    if (::messageChannel.isInitialized) messageChannel.setMethodCallHandler(null)
     if (::destructiveActionsChannel.isInitialized) destructiveActionsChannel.setMethodCallHandler(null)
     // Only clear `foregroundBinding` if this instance was the one that
     // owned it. Headless-engine detaches must not clobber the
@@ -282,7 +303,6 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
   fun initializeMethodChannels(context: Context, binaryMessenger: BinaryMessenger) {
     applicationContext = context
 
-    messageChannel = MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
     destructiveActionsChannel = MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
 
     initializeMethodChannelsStatic(applicationContext, binaryMessenger)
