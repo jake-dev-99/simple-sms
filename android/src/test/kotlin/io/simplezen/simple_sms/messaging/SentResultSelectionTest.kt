@@ -79,6 +79,18 @@ class SentResultSelectionTest {
     }
 
     @Test
+    fun carrierFailureAfterATimeout_isNotRecoveredByALaterSuccess() {
+        // Timed out (marker), then a real failed part, then a successful part.
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_FAILED, errorCode = NO_SENT_RESULT_ERROR_CODE)
+
+        result(1, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        result(1, Activity.RESULT_OK)
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(1))
+        assertEquals(SmsManager.RESULT_ERROR_GENERIC_FAILURE, provider.errorCode(1))
+    }
+
+    @Test
     fun timedOutRow_isFailedWithTheNoResultMarker_onlyWhileOnItsWayOut() {
         insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
         insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_SENT) // a result already settled it

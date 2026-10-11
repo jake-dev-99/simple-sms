@@ -382,7 +382,17 @@ internal fun recordSendResult(
     val sendFailed = resultCode != Activity.RESULT_OK
     val resolver = context.contentResolver
     when {
-        sendFailed -> resolver.update(messageUri, failedBoxValues(isMms = eventType == SENTMMS_ACTION), null, null)
+        sendFailed -> resolver.update(
+            messageUri,
+            failedBoxValues(isMms = eventType == SENTMMS_ACTION).apply {
+                // A carrier failure is final: its own (positive) error code
+                // replaces any no-result marker, so a later successful part
+                // can't move the row to sent.
+                if (eventType != SENTMMS_ACTION) put(Telephony.Sms.ERROR_CODE, resultCode)
+            },
+            null,
+            null,
+        )
         eventType == SENTMMS_ACTION -> resolver.update(
             messageUri,
             ContentValues().apply {
