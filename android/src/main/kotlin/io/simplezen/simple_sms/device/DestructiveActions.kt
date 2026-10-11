@@ -17,9 +17,8 @@ import io.simplezen.simple_query.ContentQuery
  * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
  *
  * Each delete succeeds with `"deleted"` or `"alreadyAbsent"` only when a
- * read-back finds nothing left and the target's absence is provable (or, for a
- * thread, `"newMessagesArrived"` when only messages that arrived during the
- * delete remain); otherwise it fails
+ * read-back finds nothing left (or, for a thread, `"newMessagesArrived"` when
+ * only messages that arrived during the delete remain); otherwise it fails
  * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
  * its read-backs are blocking provider I/O, so the plugin registers this
  * handler on a background task queue rather than the platform main thread.

@@ -11,8 +11,7 @@ import '../models/enums/sms_mms_enums.dart';
 ///
 /// Every delete is verified (UNFY-244): the native side reads the target back
 /// after deleting and resolves to a [DeleteResult] only when nothing that
-/// existed before the delete remains and the target's absence is provable —
-/// [DeleteResult.newMessagesArrived] means the thread is on the device again
+/// existed before the delete remains — [DeleteResult.newMessagesArrived] means the thread is on the device again
 /// with messages that arrived mid-delete, so the caller must keep its record
 /// of it.
 /// Otherwise it throws a [DeleteFailedException] carrying the

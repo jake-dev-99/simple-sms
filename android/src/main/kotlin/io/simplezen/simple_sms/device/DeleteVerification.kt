@@ -56,7 +56,9 @@ enum class DeleteOutcome {
  * From Android 14 every SMS/MMS read and delete is filtered to the
  * subscriptions associated with the calling user (AOSP
  * `ProviderUtil.getSelectionBySubIds`). A message that filter hides is out of
- * this app's reach for reads and writes alike, so it reads back as gone. The
+ * this app's reach for reads and writes alike: a single message has no
+ * unfiltered witness, so it reads back as zero rows and is treated as deleted
+ * (UNFY-330). The
  * `threads` table behind the conversation list is read unfiltered, so a
  * thread kept by hidden messages stays listed ([threadRowListed]).
  */

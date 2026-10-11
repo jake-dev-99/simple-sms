@@ -1,6 +1,6 @@
 /// Verified outcome of an `AndroidDestructiveAction` delete (UNFY-244).
 ///
-/// [deleted] and [alreadyAbsent] mean the target is no longer on the device;
+/// [deleted] and [alreadyAbsent] mean the provider no longer returns the target;
 /// [newMessagesArrived] means everything it held is gone but new messages
 /// re-populated the thread mid-delete. A delete that could not be verified
 /// (the app is not the default SMS app, the provider ignored or only partly
