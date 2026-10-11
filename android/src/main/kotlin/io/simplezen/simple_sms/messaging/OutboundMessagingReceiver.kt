@@ -11,6 +11,8 @@ import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import android.util.Log
 import androidx.core.net.toUri
+import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
+import java.io.File
 
 /**
  * The [Telephony.Sms] delivery status (`STATUS_COMPLETE` / `STATUS_PENDING` /
@@ -112,6 +114,31 @@ internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status:
         DELIVERY_REPORT_ARGS,
     )
 
+/**
+ * Deletes the encoded PDU an outbound MMS was sent from, once its SENT result
+ * has arrived: the platform has finished reading it, success or failure
+ * (UNFY-311). Only a `send.*.dat` file directly in [Context.getCacheDir] —
+ * where `Transaction` writes it — is deleted; anything else is logged and
+ * left alone. Returns whether a file was deleted.
+ */
+internal fun deleteMmsSendFile(context: Context, path: String?): Boolean {
+    if (path == null) {
+        Log.w(TAG_RECEIVER, "MMS SENT result without a send-file path; nothing to delete.")
+        return false
+    }
+    val file = File(path)
+    val inCache = file.parentFile?.canonicalFile == context.cacheDir.canonicalFile
+    if (!inCache || !file.name.startsWith("send.") || !file.name.endsWith(".dat")) {
+        Log.e(TAG_RECEIVER, "Refusing to delete $path: not an MMS send file in the cache directory.")
+        return false
+    }
+    if (!file.delete()) {
+        Log.w(TAG_RECEIVER, "MMS send file $path was not deleted (exists=${file.exists()}).")
+        return false
+    }
+    return true
+}
+
 // TP-Status range boundaries (3GPP TS 23.040 9.2.3.15).
 private const val TP_STATUS_TRYING = 0x20
 private const val TP_STATUS_FAILED = 0x40
@@ -169,6 +196,9 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $currentResultCode, Status: $statusString")
         OutboundSendResults.onSentBroadcast(context, messageId, messageUri, eventType, statusString, currentResultCode)
+        if (eventType == SENTMMS_ACTION) {
+            deleteMmsSendFile(context, intent.getStringExtra(MmsSentReceiver.EXTRA_FILE_PATH))
+        }
     }
 
     /**
