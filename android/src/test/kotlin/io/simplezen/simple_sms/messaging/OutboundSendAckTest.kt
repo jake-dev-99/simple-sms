@@ -48,7 +48,7 @@ class OutboundSendAckTest {
     private val mmsUri: Uri = Uri.parse("content://mms/7")
     private lateinit var smsProvider: FakeMessageProvider
     private lateinit var mmsProvider: FakeMessageProvider
-    private val owner = OutboundMessagingHandler(context)
+    private val owner = OutboundSender(context)
 
     @Before
     fun setUp() {
@@ -166,13 +166,13 @@ class OutboundSendAckTest {
         // The engine that started the send detached: nobody awaits its reply,
         // and other engines' sends stay tracked (UNFY-306).
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
-        val otherOwner = OutboundMessagingHandler(context)
+        val otherOwner = OutboundSender(context)
         val forgotten = pendingSend(smsUri)
         val kept = RecordingResult()
         OutboundSendResults.track(
             otherOwner,
             mmsUri,
-            OutboundMessagingHandler.MessageRequestDetails(
+            OutboundSender.MessageRequestDetails(
                 threadId = 1L,
                 addresses = listOf("5551234"),
                 body = "hi",
@@ -458,7 +458,7 @@ class OutboundSendAckTest {
         OutboundSendResults.track(
             owner,
             messageUri,
-            OutboundMessagingHandler.MessageRequestDetails(
+            OutboundSender.MessageRequestDetails(
                 threadId = 1L,
                 addresses = listOf("5551234"),
                 body = "hi",

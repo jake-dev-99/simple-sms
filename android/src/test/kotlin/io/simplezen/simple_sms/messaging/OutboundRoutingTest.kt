@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Phase 3 (outbound port) — pins the SMS-vs-MMS routing and multi-SIM
- * subscription-id selection extracted from `OutboundMessagingHandler.onMethodCall`
+ * subscription-id selection extracted from `OutboundSender.onMethodCall`
  * into the pure functions [routeMessage] / [selectSubscriptionId]. These were
  * previously inline and untestable (entangled with static SmsManager/Telephony
  * + the Flutter Result); pinning them is the outbound net for the live

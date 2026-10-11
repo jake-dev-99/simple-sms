@@ -27,10 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
  * gone, is no longer tracked; its row is still recorded.
  */
 internal object OutboundSendResults {
-    /** A send awaiting its SENT result, and the engine's handler that started it. */
+    /** A send awaiting its SENT result, and the engine's sender that started it. */
     private class Tracked(
-            val owner: OutboundMessagingHandler,
-            val request: OutboundMessagingHandler.MessageRequestDetails,
+            val owner: OutboundSender,
+            val request: OutboundSender.MessageRequestDetails,
     )
 
     /** Sends awaiting their SENT result, by message row, across every engine in this process. */
@@ -38,9 +38,9 @@ internal object OutboundSendResults {
 
     /** Waits for [messageUri]'s SENT result to settle [request], started by [owner]. */
     fun track(
-            owner: OutboundMessagingHandler,
+            owner: OutboundSender,
             messageUri: Uri,
-            request: OutboundMessagingHandler.MessageRequestDetails,
+            request: OutboundSender.MessageRequestDetails,
     ) {
         tracked[messageUri] = Tracked(owner, request)
     }
@@ -55,7 +55,7 @@ internal object OutboundSendResults {
      * so no Dart caller awaits their replies. Their results are still recorded
      * on their rows when they arrive.
      */
-    fun forget(owner: OutboundMessagingHandler) {
+    fun forget(owner: OutboundSender) {
         tracked.values.removeIf { it.owner === owner }
     }
 

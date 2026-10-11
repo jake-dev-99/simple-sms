@@ -111,7 +111,7 @@ class EngineChannelRegistrationTest {
         val messenger = RecordingMessenger()
         SimpleSmsPlugin().attachEngineChannels(context, messenger)
 
-        // Robolectric reports no telephony feature, so the handler answers
+        // Robolectric reports no telephony feature, so the sender answers
         // with its own NO_TELEPHONY error — proof the call reached it
         // instead of failing with MissingPluginException.
         val code = messenger.invokeExpectingError(

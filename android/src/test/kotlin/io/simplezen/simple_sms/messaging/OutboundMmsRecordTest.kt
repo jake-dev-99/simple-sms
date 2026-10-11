@@ -70,20 +70,20 @@ class OutboundMmsRecordTest {
         val provider = MmsRecordProvider()
         ShadowContentResolver.registerProviderInternal("mms", provider)
         val result = MmsRecordResult()
-        val request = OutboundMessagingHandler.MessageRequestDetails(
+        val request = OutboundSender.MessageRequestDetails(
             threadId = 7,
             addresses = listOf("+15551234567"),
             body = "MMS test",
             flutterResult = result,
         )
-        val owner = OutboundMessagingHandler(context)
+        val owner = OutboundSender(context)
         OutboundSendResults.track(owner, Uri.parse("content://mms/9001"), request)
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
             OutboundSendResults.track(
                 owner,
                 Uri.parse("content://sms/9001"),
-                OutboundMessagingHandler.MessageRequestDetails(
+                OutboundSender.MessageRequestDetails(
                     threadId = 7,
                     addresses = listOf("+15551234567"),
                     body = "MMS test",

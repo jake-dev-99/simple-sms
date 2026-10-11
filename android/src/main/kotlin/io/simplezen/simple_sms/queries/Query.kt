@@ -7,7 +7,7 @@ import io.simplezen.simple_query.ContentQuery
  * Thin Kotlin-side wrapper around `simple_query`'s [ContentQuery] helper.
  *
  * Exists only so the four internal callers (MmsDatabaseWriter, InboundSmsHandler,
- * OutboundMessagingHandler, and this file's legacy wrappers) can share a single
+ * OutboundSender, and this file's legacy wrappers) can share a single
  * `QueryObj`-to-cursor coercion. Delegates all actual provider reads to
  * [ContentQuery] so Rule 1 ("content-provider queries route through
  * simple-query") holds at the Kotlin layer just as it does on the Dart side.

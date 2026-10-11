@@ -14,7 +14,7 @@ import android.provider.Telephony.Mms
 // AOSP MMS PDU library at `io.simplezen.simple_sms.mms.codec`.
 import io.simplezen.simple_sms.mms.codec.PduHeaders
 import android.util.Log
-import io.simplezen.simple_sms.messaging.OutboundMessagingHandler.MessageRequestDetails
+import io.simplezen.simple_sms.messaging.OutboundSender.MessageRequestDetails
 import io.simplezen.simple_sms.models.MmsAddr
 import io.simplezen.simple_sms.models.MmsObject
 import io.simplezen.simple_sms.models.MmsPart
