@@ -166,6 +166,25 @@ class SmsPartLedgerTest {
     }
 
     @Test
+    fun aLaterSendToTheRow_keepsAnEarlierSendsMark() {
+        start(parts = 1, rowId = 41L, markUntrackedSend = true)
+        // The earlier send's intents are cancelled already: nothing to mark.
+        val parts = start(parts = 1, rowId = 41L)
+        ledger().recordSent(parts[0], ok)
+        ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP)
+
+        assertTrue(ledger().tracks(41L))
+    }
+
+    @Test
+    fun aRecordUntouchedForTheWindow_tracksNothing() {
+        // As if the process died before the radio saw a part.
+        start(parts = 1, rowId = 41L)
+        now += DELIVERY_REPORT_WAIT_MS + 60_000
+        assertFalse(ledger().tracks(41L))
+    }
+
+    @Test
     fun aMarkThatCannotBeWritten_failsTheStart_leavingNoRecord() {
         val row = File(directory, "41")
         File(File(row, "untracked-send"), "blocker").apply { parentFile!!.mkdirs(); writeText("") }
@@ -206,7 +225,7 @@ class SmsPartLedgerTest {
         File(File(directory, "41"), "${parts[0].token}.json").writeText("{ not json")
 
         assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
-        assertFalse(File(File(directory, "41"), "${parts[0].token}.json").exists())
+        assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
     }
 
     @Test

@@ -149,12 +149,11 @@ internal class SmsPartLedger(
             require(partCount >= 1) { "An SMS has at least one part, got $partCount" }
             pruneOlderThan(nowMillis() - DELIVERY_REPORT_WAIT_MS)
             val row = rowDirectory(rowId)
-            row.listFiles().orEmpty().forEach { it.delete() }
+            // An earlier send's mark stays for its window: its result may
+            // still come, though this send's start found nothing to cancel.
+            row.listFiles().orEmpty().filter { it.name != UNTRACKED_SEND_MARKER }.forEach { it.delete() }
             // Before the record, so a failed mark leaves no record behind.
-            if (markUntrackedSend) {
-                if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
-                File(row, UNTRACKED_SEND_MARKER).writeBytes(ByteArray(0))
-            }
+            if (markUntrackedSend) File(ensureRowDirectory(rowId), UNTRACKED_SEND_MARKER).writeBytes(ByteArray(0))
             val token = UUID.randomUUID().toString()
             write(rowId, SmsPartsRecord(token, List(partCount) { null }, List(partCount) { null }))
             (0 until partCount).map { SmsPartRef(token, rowId, it, partCount) }
@@ -167,13 +166,14 @@ internal class SmsPartLedger(
      * after cancelling an earlier, untracked send's status intents.
      *
      * @param rowId the message row's `_id`.
-     * @returns true while the row holds a record, or a fresh mark.
+     * @returns true while the row holds a record or a mark, untouched for
+     *   less than [DELIVERY_REPORT_WAIT_MS] (as [start] prunes them).
      * @throws nothing; an unreadable ledger tracks nothing.
      */
     fun tracks(rowId: Long): Boolean = synchronized(LOCK) {
         val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
         rowDirectory(rowId).listFiles().orEmpty().any {
-            it.name.endsWith(RECORD_SUFFIX) || (it.name == UNTRACKED_SEND_MARKER && it.lastModified() >= cutoff)
+            (it.name.endsWith(RECORD_SUFFIX) || it.name == UNTRACKED_SEND_MARKER) && it.lastModified() >= cutoff
         }
     }
 
@@ -258,9 +258,7 @@ internal class SmsPartLedger(
     }
 
     private fun write(rowId: Long, record: SmsPartsRecord) {
-        val row = rowDirectory(rowId)
-        if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
-        val file = AtomicFile(File(row, record.token + RECORD_SUFFIX))
+        val file = AtomicFile(File(ensureRowDirectory(rowId), record.token + RECORD_SUFFIX))
         val stream = file.startWrite()
         try {
             stream.write(json.encodeToString(SmsPartsRecord.serializer(), record).toByteArray())
@@ -292,6 +290,10 @@ internal class SmsPartLedger(
     }
 
     private fun rowDirectory(rowId: Long) = File(directory, rowId.toString())
+
+    private fun ensureRowDirectory(rowId: Long): File = rowDirectory(rowId).also { row ->
+        if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
+    }
 
     // Tokens are minted here (UUIDs); anything else could step outside the
     // ledger directory, so it names no record.
