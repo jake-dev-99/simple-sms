@@ -526,122 +526,124 @@ class Transaction(private val context: Context, settings: Settings) {
             existingMessageUri: Uri?,
             onPersisted: ((Uri) -> Unit)?,
         ) {
-            val mSendFile = newMmsSendFile(context)
             try {
+                useMmsSendFile(context) { mSendFile ->
+                    val sendReq = buildPdu(context, fromAddress, addresses, subject, parts)
+                    val messageUri: Uri?
+                    if (save) {
+                        // default behavior unless the save flag is explicitly false
+                        val persister = PduPersister.getPduPersister(context)
+                        messageUri = persister.persist(
+                            sendReq, Uri.parse("content://mms/outbox"),
+                            true, settings.group, null, settings.getSubscriptionId(),
+                        )
+                    } else {
+                        messageUri = existingMessageUri
+                        Log.v(TAG, messageUri.toString())
 
-                val sendReq = buildPdu(context, fromAddress, addresses, subject, parts)
-                val messageUri: Uri?
-                if (save) {
-                    // default behavior unless the save flag is explicitly false
-                    val persister = PduPersister.getPduPersister(context)
-                    messageUri = persister.persist(
-                        sendReq, Uri.parse("content://mms/outbox"),
-                        true, settings.group, null, settings.getSubscriptionId(),
+                        // update message status to outbox as we are resending the same message
+                        val values = ContentValues(1)
+                        values.put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_OUTBOX)
+                        val rowsUpdated = SqliteWrapper.update(
+                            context, context.contentResolver, messageUri!!, values,
+                            null, null,
+                        )
+                        Log.v(TAG, "rowsUpdated=$rowsUpdated")
+                    }
+
+                    val intent: Intent
+                    if (explicitSentMmsReceiver == null) {
+                        intent = Intent(MmsSentReceiver.MMS_SENT)
+                        BroadcastUtils.addClassName(context, intent, MmsSentReceiver.MMS_SENT)
+                    } else {
+                        intent = explicitSentMmsReceiver
+                    }
+
+                    if (onPersisted != null) {
+                        // The first-party sender owns the result callback. Its URI,
+                        // parts and addresses must all refer to this persisted PDU.
+                        val recordUri = bindMmsSentIntent(intent, requireNotNull(messageUri))
+                        onPersisted(recordUri)
+                    }
+
+                    intent.putExtra(MmsSentReceiver.EXTRA_CONTENT_URI, messageUri.toString())
+                    intent.putExtra(MmsSentReceiver.EXTRA_FILE_PATH, mSendFile.path)
+                    // Android 12+ requires FLAG_IMMUTABLE / FLAG_MUTABLE (see SMS-side note).
+                    val pendingIntent = PendingIntent.getBroadcast(
+                        context, ContentUris.parseId(requireNotNull(messageUri)).toInt(), intent,
+                        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                     )
-                } else {
-                    messageUri = existingMessageUri
-                    Log.v(TAG, messageUri.toString())
 
-                    // update message status to outbox as we are resending the same message
-                    val values = ContentValues(1)
-                    values.put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_OUTBOX)
-                    val rowsUpdated = SqliteWrapper.update(
-                        context, context.contentResolver, messageUri!!, values,
-                        null, null,
-                    )
-                    Log.v(TAG, "rowsUpdated=$rowsUpdated")
-                }
-
-                val intent: Intent
-                if (explicitSentMmsReceiver == null) {
-                    intent = Intent(MmsSentReceiver.MMS_SENT)
-                    BroadcastUtils.addClassName(context, intent, MmsSentReceiver.MMS_SENT)
-                } else {
-                    intent = explicitSentMmsReceiver
-                }
-
-                if (onPersisted != null) {
-                    // The first-party sender owns the result callback. Its URI,
-                    // parts and addresses must all refer to this persisted PDU.
-                    val recordUri = bindMmsSentIntent(intent, requireNotNull(messageUri))
-                    onPersisted(recordUri)
-                }
-
-                intent.putExtra(MmsSentReceiver.EXTRA_CONTENT_URI, messageUri.toString())
-                intent.putExtra(MmsSentReceiver.EXTRA_FILE_PATH, mSendFile.path)
-                // Android 12+ requires FLAG_IMMUTABLE / FLAG_MUTABLE (see SMS-side note).
-                val pendingIntent = PendingIntent.getBroadcast(
-                    context, ContentUris.parseId(requireNotNull(messageUri)).toInt(), intent,
-                    PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-                // Hand MmsService a content:// URI it can actually resolve
-                // (UNFY-182). The vendored code pointed at
-                // `<pkg>.MmsFileProvider` — Klinker's ContentProvider that the
-                // vendoring cleanup deleted (its only references were a
-                // manifest entry and this runtime string, invisible to
-                // dead-code analysis) — so the system read no PDU and every
-                // send failed with MMS_ERROR_IO_ERROR before any network
-                // attempt. Route through the androidx FileProvider declared in
-                // this plugin's manifest (`${applicationId}.provider`,
-                // cache-path mapped in res/xml/file_paths.xml) — the same
-                // mechanism the working MMS *download* path uses
-                // (InboundMmsHandler). A null here (unmapped path) degrades
-                // into the existing contentUri == null branch below, which
-                // reports MMS_ERROR_IO_ERROR through the sent broadcast.
-                val writerUri: Uri? = try {
-                    FileProvider.getUriForFile(
-                        context,
-                        context.packageName + ".provider",
-                        mSendFile,
-                    )
-                } catch (e: IllegalArgumentException) {
-                    Log.e(
-                        TAG,
-                        "FileProvider.getUriForFile failed for " +
-                            "${mSendFile.absolutePath}; check file_paths.xml " +
-                            "cache-path coverage.",
-                        e,
-                    )
-                    null
-                }
-                var writer: FileOutputStream? = null
-                var contentUri: Uri? = null
-                try {
-                    writer = FileOutputStream(mSendFile)
-                    writer.write(PduComposer(context, sendReq).make())
-                    contentUri = writerUri
-                } catch (e: IOException) {
-                    Log.e(TAG, "Error writing send file", e)
-                } finally {
-                    if (writer != null) {
-                        try {
-                            writer.close()
-                        } catch (e: IOException) {
+                    // Hand MmsService a content:// URI it can actually resolve
+                    // (UNFY-182). The vendored code pointed at
+                    // `<pkg>.MmsFileProvider` — Klinker's ContentProvider that the
+                    // vendoring cleanup deleted (its only references were a
+                    // manifest entry and this runtime string, invisible to
+                    // dead-code analysis) — so the system read no PDU and every
+                    // send failed with MMS_ERROR_IO_ERROR before any network
+                    // attempt. Route through the androidx FileProvider declared in
+                    // this plugin's manifest (`${applicationId}.provider`,
+                    // cache-path mapped in res/xml/file_paths.xml) — the same
+                    // mechanism the working MMS *download* path uses
+                    // (InboundMmsHandler). A null here (unmapped path) degrades
+                    // into the existing contentUri == null branch below, which
+                    // reports MMS_ERROR_IO_ERROR through the sent broadcast.
+                    val writerUri: Uri? = try {
+                        FileProvider.getUriForFile(
+                            context,
+                            context.packageName + ".provider",
+                            mSendFile,
+                        )
+                    } catch (e: IllegalArgumentException) {
+                        Log.e(
+                            TAG,
+                            "FileProvider.getUriForFile failed for " +
+                                "${mSendFile.absolutePath}; check file_paths.xml " +
+                                "cache-path coverage.",
+                            e,
+                        )
+                        null
+                    }
+                    var writer: FileOutputStream? = null
+                    var contentUri: Uri? = null
+                    try {
+                        writer = FileOutputStream(mSendFile)
+                        writer.write(PduComposer(context, sendReq).make())
+                        contentUri = writerUri
+                    } catch (e: IOException) {
+                        Log.e(TAG, "Error writing send file", e)
+                    } finally {
+                        if (writer != null) {
+                            try {
+                                writer.close()
+                            } catch (e: IOException) {
+                            }
                         }
                     }
-                }
 
-                val configOverrides = settings.toMmsConfigOverrides()
+                    val configOverrides = settings.toMmsConfigOverrides()
 
-                if (contentUri != null) {
-                    SmsManagerFactory.createSmsManager(settings).sendMultimediaMessage(
-                        context,
-                        contentUri, null, configOverrides, pendingIntent,
-                    )
-                } else {
-                    Log.e(TAG, "Error writing sending Mms")
-                    try {
-                        pendingIntent.send(SmsManager.MMS_ERROR_IO_ERROR)
-                    } catch (ex: PendingIntent.CanceledException) {
-                        Log.e(TAG, "Mms pending intent cancelled?", ex)
+                    // Whether the platform took the send file: its SENT result
+                    // then deletes it (UNFY-311).
+                    if (contentUri != null) {
+                        SmsManagerFactory.createSmsManager(settings).sendMultimediaMessage(
+                            context,
+                            contentUri, null, configOverrides, pendingIntent,
+                        )
+                        true
+                    } else {
+                        Log.e(TAG, "Error writing sending Mms")
+                        try {
+                            pendingIntent.send(SmsManager.MMS_ERROR_IO_ERROR)
+                            true
+                        } catch (ex: PendingIntent.CanceledException) {
+                            Log.e(TAG, "Mms pending intent cancelled?", ex)
+                            false
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "error using system sending method", e)
-                // No SENT broadcast will report this send, so its receiver
-                // won't delete the send file (UNFY-311).
-                if (mSendFile.exists()) deleteMmsSendFile(context, mSendFile.path)
                 throw e
             }
         }

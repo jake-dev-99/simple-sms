@@ -4,26 +4,40 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.IOException
-import java.util.Random
-import kotlin.math.abs
 
 // The encoded PDU of one outbound MMS: written to the cache directory before
-// the send, and deleted once the platform has read it (UNFY-311). Naming and
-// deletion live together so the delete always recognizes what was written.
+// the send, and deleted once the platform is done with it (UNFY-311). Naming
+// and deletion live together so the delete always recognizes what was
+// written.
 
 private const val SEND_FILE_PREFIX = "send."
 private const val SEND_FILE_SUFFIX = ".dat"
 private const val TAG = "MmsSendFile"
 
-/** A new, randomly named send file in [Context.getCacheDir]. Not yet created on disk. */
-internal fun newMmsSendFile(context: Context): File =
-    File(context.cacheDir, SEND_FILE_PREFIX + abs(Random().nextLong()).toString() + SEND_FILE_SUFFIX)
+/**
+ * Runs [send] with a new, empty send file in [Context.getCacheDir]. [send]
+ * writes the PDU and hands the file to the platform, returning true once the
+ * platform owns it — the send's SENT result then deletes it (see
+ * [deleteMmsSendFile]). In every other case — [send] returns false or throws
+ * anything — no SENT result will name the file, so it is deleted here.
+ */
+internal fun useMmsSendFile(context: Context, send: (File) -> Boolean) {
+    val file = File.createTempFile(SEND_FILE_PREFIX, SEND_FILE_SUFFIX, context.cacheDir)
+    var handedOff = false
+    try {
+        handedOff = send(file)
+    } finally {
+        if (!handedOff && !file.delete()) {
+            Log.w(TAG, "MMS send file ${file.path} was not deleted (exists=${file.exists()}).")
+        }
+    }
+}
 
 /**
- * Deletes the send file at [path]. Only a file [newMmsSendFile] could have
- * named — directly in [Context.getCacheDir] — is deleted; anything else is
- * logged and left alone. Never throws: it runs inside a broadcast receiver
- * and after a failed send. Returns whether a file was deleted.
+ * Deletes the send file at [path], named by a SENT result. Only a file
+ * [useMmsSendFile] could have created — directly in [Context.getCacheDir] —
+ * is deleted; anything else is logged and left alone. Never throws: it runs
+ * inside a broadcast receiver. Returns whether a file was deleted.
  */
 internal fun deleteMmsSendFile(context: Context, path: String?): Boolean {
     if (path == null) {

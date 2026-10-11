@@ -7,9 +7,11 @@ import android.telephony.SmsManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
 import io.simplezen.simple_sms.mms.sending.deleteMmsSendFile
-import io.simplezen.simple_sms.mms.sending.newMmsSendFile
+import io.simplezen.simple_sms.mms.sending.useMmsSendFile
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,8 +21,8 @@ import org.robolectric.annotation.Config
 
 /**
  * UNFY-311: the encoded PDU an outbound MMS is sent from is deleted once its
- * SENT result arrives, whatever the result — and nothing outside the cache's
- * send files is ever deleted.
+ * SENT result arrives, whatever the result, or at once when the platform never
+ * took it — and nothing outside the cache's send files is ever deleted.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -28,8 +30,16 @@ class MmsSendFileCleanupTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
-    private fun sendFile(): File =
-        newMmsSendFile(context).apply { writeBytes(byteArrayOf(1, 2, 3)) }
+    /** A send file the platform took, as the send path leaves it. */
+    private fun sendFile(): File {
+        var taken: File? = null
+        useMmsSendFile(context) { file ->
+            file.writeBytes(byteArrayOf(1, 2, 3))
+            taken = file
+            true
+        }
+        return taken!!
+    }
 
     private fun deliverMmsSent(resultCode: Int, filePath: String?) {
         val intent = statusReceiverIntent(context, SENTMMS_ACTION)
@@ -100,5 +110,57 @@ class MmsSendFileCleanupTest {
         assertTrue(outside.exists())
         assertTrue(otherName.exists())
         assertTrue(nested.exists())
+    }
+
+    @Test
+    fun aFileThePlatformTook_isLeftForItsResult() {
+        val file = sendFile()
+
+        assertTrue(file.exists())
+        assertTrue(file.parentFile == context.cacheDir)
+        assertTrue(file.name.startsWith("send.") && file.name.endsWith(".dat"))
+    }
+
+    @Test
+    fun aFileThePlatformDidNotTake_isDeleted() {
+        var used: File? = null
+
+        useMmsSendFile(context) { file ->
+            file.writeBytes(byteArrayOf(1))
+            used = file
+            false
+        }
+
+        assertFalse(used!!.exists())
+    }
+
+    @Test
+    fun aSendThatThrows_deletesItsFileAndRethrows() {
+        var used: File? = null
+
+        val thrown = assertThrows(SecurityException::class.java) {
+            useMmsSendFile(context) { file ->
+                file.writeBytes(byteArrayOf(1))
+                used = file
+                throw SecurityException("role revoked")
+            }
+        }
+
+        assertEquals("role revoked", thrown.message)
+        assertFalse(used!!.exists())
+    }
+
+    @Test
+    fun aSendThatErrors_deletesItsFileToo() {
+        var used: File? = null
+
+        assertThrows(OutOfMemoryError::class.java) {
+            useMmsSendFile(context) { file ->
+                used = file
+                throw OutOfMemoryError("PDU too large")
+            }
+        }
+
+        assertFalse(used!!.exists())
     }
 }
