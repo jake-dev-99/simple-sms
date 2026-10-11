@@ -36,30 +36,33 @@ internal const val DELIVERY_REPORT_WAIT_MS = 7 * 24 * 60 * 60 * 1000L
  * @param sentResultCodes each part's SENT result code, `null` until reported.
  * @param deliveryStatuses each part's [Telephony.Sms] delivery status, `null`
  *   until its report arrives.
+ * @param firstFailedResultCode the result code of the first part to report a
+ *   failure, in the order the reports arrived; `null` while none has.
  */
 @Serializable
 internal data class SmsPartsRecord(
     val token: String,
     val sentResultCodes: List<Int?>,
     val deliveryStatuses: List<Int?>,
+    val firstFailedResultCode: Int? = null,
 ) {
     init {
         require(sentResultCodes.isNotEmpty()) { "An SMS has at least one part" }
         require(deliveryStatuses.size == sentResultCodes.size) { "Part counts disagree: $this" }
+        require((firstFailedResultCode == null) == sentResultCodes.none { it != null && it != Activity.RESULT_OK }) {
+            "First failure disagrees with the parts' results: $this"
+        }
     }
 
     val partCount: Int get() = sentResultCodes.size
 
     /**
-     * The message's SENT outcome once every part reported: the first failed
-     * part's result code, or [Activity.RESULT_OK] when every part was sent.
+     * The message's SENT outcome once every part reported: the result code of
+     * the first part to report a failure, or [Activity.RESULT_OK] when every
+     * part was sent.
      */
     val sendResultCode: Int?
-        get() = if (sentResultCodes.any { it == null }) {
-            null
-        } else {
-            sentResultCodes.firstOrNull { it != Activity.RESULT_OK } ?: Activity.RESULT_OK
-        }
+        get() = if (sentResultCodes.any { it == null }) null else firstFailedResultCode ?: Activity.RESULT_OK
 
     /**
      * The message's delivery status from its parts' reports: failed if any
@@ -209,7 +212,13 @@ internal class SmsPartLedger(
             val record = read(part) ?: return SentPartProgress.UnknownSend
             requireFits(record, part)
             if (record.sentResultCodes[part.index] != null) return SentPartProgress.DuplicatePart
-            val updated = record.copy(sentResultCodes = record.sentResultCodes.replaced(part.index, resultCode))
+            val updated = record.copy(
+                sentResultCodes = record.sentResultCodes.replaced(part.index, resultCode),
+                // Parts may report out of order; the first failure to arrive
+                // is the send's, as when the send settled on it (UNFY-283).
+                firstFailedResultCode = record.firstFailedResultCode
+                    ?: resultCode.takeIf { it != Activity.RESULT_OK },
+            )
             save(part, updated)
             return updated.sendResultCode?.let(SentPartProgress::Settled) ?: SentPartProgress.AwaitingParts
         }

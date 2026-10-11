@@ -72,6 +72,15 @@ class SmsPartLedgerTest {
     }
 
     @Test
+    fun multipart_failuresOutOfOrder_settleWithTheFirstFailureToArrive() {
+        val parts = start(parts = 3)
+        val noService = SmsManager.RESULT_ERROR_NO_SERVICE
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[2], noService))
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[0], failure))
+        assertEquals(SentPartProgress.Settled(noService), ledger().recordSent(parts[1], ok))
+    }
+
+    @Test
     fun aRepeatedPart_isIgnored() {
         val parts = start(parts = 2)
         ledger().recordSent(parts[0], ok)

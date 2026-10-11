@@ -34,7 +34,8 @@ return typed results.
 
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
   answers only once every part has reported its carrier result, failed if any
-  part failed, rather than at the first failed part. The row moves to sent or
+  part failed (with the first failure to arrive), rather than at the first
+  failed part. The row moves to sent or
   failed at the same point, even when the parts report to different app
   processes: each part has its own status intents, and the parts' results are
   persisted until they add up. The row's delivery status likewise comes from
