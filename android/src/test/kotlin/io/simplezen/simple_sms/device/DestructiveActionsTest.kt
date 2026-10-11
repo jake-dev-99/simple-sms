@@ -23,16 +23,18 @@ import org.robolectric.shadows.ShadowRoleManager
 
 /**
  * Purpose: pin the verified-delete contract at the native provider boundary
- * (UNFY-244) — a delete reports success only when the read-back finds nothing
- * left, and every unverifiable state surfaces as its own error code.
+ * (UNFY-244) — a delete reports success only when the read-back finds no row
+ * that existed before it, messages that arrive mid-delete are told apart from
+ * those survivors, and every unverifiable state surfaces as its own error code.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class DestructiveActionsTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val sms = ScriptedProvider()
-    private val mms = ScriptedProvider()
-    private val mmsSms = ScriptedProvider()
+    private val device = Device()
+    private val sms = ScriptedProvider(device)
+    private val mms = ScriptedProvider(device)
+    private val mmsSms = ScriptedProvider(device)
     private val actions = DestructiveActions(context)
 
     /** Purpose: isolate provider state per test and start as the default SMS app. */
@@ -49,9 +51,11 @@ class DestructiveActionsTest {
 
     // ── deleteThread ──────────────────────────────────────────────────
 
-    /** Purpose: delete through the conversation URI and read back every place the thread lives. */
+    /** Purpose: snapshot, delete through the conversation URI, and read back every place the thread lives. */
     @Test
-    fun deleteThread_deletesViaConversationUri_andReadsBackMessagesAndThreadRow() {
+    fun deleteThread_marksDeletesViaConversationUri_andReadsBackMessagesAndThreadRow() {
+        sms.rowsBefore = rows(5L, 6L)
+        mms.rowsBefore = rows(9L)
         mmsSms.deletedRows = 3
 
         val result = invoke(MethodCall("deleteThread", "5"))
@@ -61,8 +65,9 @@ class DestructiveActionsTest {
         assertEquals(listOf("content://mms-sms/conversations/5"), mmsSms.deletes.map { it.toString() })
         assertTrue(sms.deletes.isEmpty())
         assertTrue(mms.deletes.isEmpty())
-        assertEquals(ProviderQuery("content://sms", "thread_id = ?", listOf("5")), sms.queries.single())
-        assertEquals(ProviderQuery("content://mms", "thread_id = ?", listOf("5")), mms.queries.single())
+        val inThread = { table: String -> ProviderQuery("content://$table", "thread_id = ?", listOf("5")) }
+        assertEquals(listOf(inThread("sms"), inThread("sms")), sms.queries) // snapshot, then read-back
+        assertEquals(listOf(inThread("mms"), inThread("mms")), mms.queries)
         assertEquals(
             ProviderQuery("content://mms-sms/conversations?simple=true", "_id = ?", listOf("5")),
             mmsSms.queries.single(),
@@ -78,12 +83,13 @@ class DestructiveActionsTest {
         assertTrue(result.errors.isEmpty())
     }
 
-    /** Purpose: never report success while messages or the thread row survive. */
+    /** Purpose: never report success while a message that existed before the delete survives. */
     @Test
-    fun deleteThread_anythingLeft_isIncomplete() {
-        for (survivor in listOf(sms, mms, mmsSms)) {
-            listOf(sms, mms, mmsSms).forEach { it.remainingRows = 0 }
-            survivor.remainingRows = 1
+    fun deleteThread_preexistingMessageSurvives_isIncomplete() {
+        for (survivor in listOf(sms, mms)) {
+            listOf(sms, mms, mmsSms).forEach { it.reset() }
+            survivor.rowsBefore = rows(5L, 6L)
+            survivor.rowsAfter = rows(6L)
 
             val result = invoke(MethodCall("deleteThread", "5"))
 
@@ -92,14 +98,118 @@ class DestructiveActionsTest {
         }
     }
 
-    /** Purpose: never delete — or report success — without the default-SMS role. */
+    /** Purpose: an unpruned, empty thread row would still list the conversation — not a success. */
     @Test
-    fun deleteThread_withoutSmsRole_failsBeforeDeleting() {
+    fun deleteThread_emptyThreadRowLeft_isIncomplete() {
+        sms.rowsBefore = rows(5L)
+        mmsSms.deletedRows = 1
+        mmsSms.rowsAfter = rows(5L) // the threads row, still listed with no messages
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+    }
+
+    /** Purpose: messages that arrive mid-delete are reported as new arrivals, not survivors. */
+    @Test
+    fun deleteThread_onlyMessagesAbsentFromTheSnapshotRemain_isNewMessagesArrived() {
+        sms.rowsBefore = rows(5L, 6L)
+        mms.rowsBefore = rows(9L)
+        mmsSms.deletedRows = 3
+        sms.rowsAfter = rows(7L) // not in the snapshot
+        mms.rowsAfter = rows(10L)
+        mmsSms.rowsAfter = rows(5L) // the thread is listed again because of them
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf<Any?>("newMessagesArrived"), result.successes)
+        assertTrue(result.errors.isEmpty())
+    }
+
+    /** Purpose: a survivor is never masked by new arrivals alongside it. */
+    @Test
+    fun deleteThread_survivorBesideNewArrivals_isIncomplete() {
+        sms.rowsBefore = rows(5L, 6L)
+        sms.rowsAfter = rows(6L, 7L)
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+    }
+
+    /**
+     * Purpose: `sms._id` is a plain INTEGER PRIMARY KEY, so a reply can reuse the
+     * id of a just-deleted message; its own `date` still marks it as new.
+     */
+    @Test
+    fun deleteThread_newMessageReusingADeletedId_isAnArrival() {
+        sms.rowsBefore = listOf(Row(5L, 1_000L), Row(6L, 2_000L))
+        mmsSms.deletedRows = 2
+        sms.rowsAfter = listOf(Row(6L, 9_000L)) // reused _id, new receive time
+        mmsSms.rowsAfter = rows(5L)
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf<Any?>("newMessagesArrived"), result.successes)
+    }
+
+    /** Purpose: an MMS whose `date` the app rewrote after insert is still the same, surviving row. */
+    @Test
+    fun deleteThread_survivingMmsWithRewrittenDate_isIncomplete() {
+        mms.rowsBefore = listOf(Row(9L, 1_000L)) // PDU date
+        mms.rowsAfter = listOf(Row(9L, 1_700L)) // local receive time, written later
+        mmsSms.rowsAfter = rows(5L)
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+    }
+
+    /** Purpose: arrivals under a thread row the list no longer shows aren't a live thread. */
+    @Test
+    fun deleteThread_arrivalsWithoutAListedThreadRow_isIncomplete() {
+        sms.rowsBefore = rows(5L)
+        mmsSms.deletedRows = 1
+        sms.rowsAfter = rows(7L) // threads row 5 not listed
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_INCOMPLETE"), result.errors)
+    }
+
+    /** Purpose: an OEM provider returning `_id` as text is still read; a non-numeric one is unverifiable. */
+    @Test
+    fun deleteThread_readsTextIdsAndRejectsNonNumericOnes() {
+        sms.rowsBefore = rows("5")
+        sms.rowsAfter = rows("7")
+        mmsSms.rowsAfter = rows(5L)
+        assertEquals(listOf<Any?>("newMessagesArrived"), invoke(MethodCall("deleteThread", "5")).successes)
+
+        listOf(sms, mms, mmsSms).forEach { it.reset() }
+        sms.rowsAfter = rows("abc")
+        assertEquals(listOf("VERIFY_FAILED"), invoke(MethodCall("deleteThread", "5")).errors)
+    }
+
+    /** Purpose: never read, delete — or report success — without the default-SMS role. */
+    @Test
+    fun deleteThread_withoutSmsRole_failsBeforeTouchingTheProvider() {
         roleManager().removeHeldRole(RoleManager.ROLE_SMS)
 
         val result = invoke(MethodCall("deleteThread", "5"))
 
         assertEquals(listOf("NOT_DEFAULT_SMS_APP"), result.errors)
+        assertTrue(mmsSms.deletes.isEmpty())
+        assertTrue(sms.queries.isEmpty())
+    }
+
+    /** Purpose: without a snapshot nothing is deleted, and the failure says so. */
+    @Test
+    fun deleteThread_unreadableSnapshot_failsBeforeDeleting() {
+        sms.nullCursorBefore = true
+
+        val result = invoke(MethodCall("deleteThread", "5"))
+
+        assertEquals(listOf("DELETE_FAILED"), result.errors)
         assertTrue(mmsSms.deletes.isEmpty())
     }
 
@@ -119,8 +229,8 @@ class DestructiveActionsTest {
     fun deleteThread_unreadableReadBack_isVerifyFailed() {
         for (provider in listOf(sms, mms, mmsSms)) {
             for (failure in listOf<(ScriptedProvider) -> Unit>(
-                { it.nullCursor = true },
-                { it.queryFailure = SecurityException("READ_SMS revoked") },
+                { it.nullCursorAfter = true },
+                { it.queryFailureAfter = SecurityException("READ_SMS revoked") },
             )) {
                 listOf(sms, mms, mmsSms).forEach { it.reset() }
                 failure(provider)
@@ -171,11 +281,12 @@ class DestructiveActionsTest {
 
         assertEquals(listOf<Any?>("alreadyAbsent"), invoke(call).successes)
 
-        sms.remainingRows = 1
+        sms.reset()
+        sms.rowsAfter = rows(42L)
         assertEquals(listOf("DELETE_INCOMPLETE"), invoke(call).errors)
 
         sms.reset()
-        sms.nullCursor = true
+        sms.nullCursorAfter = true
         assertEquals(listOf("VERIFY_FAILED"), invoke(call).errors)
     }
 
@@ -215,44 +326,64 @@ class DestructiveActionsTest {
 
     /** Purpose: exercise the real method dispatcher and capture its public result. */
     private fun invoke(call: MethodCall): CapturedResult {
+        device.deleted = false
         val result = CapturedResult()
         actions.onMethodCall(call, result)
         return result
     }
 }
 
-/** Purpose: script one provider authority's deletes and read-backs; the handler and resolver stay real. */
-private class ScriptedProvider : ContentProvider() {
+/** Purpose: one provider row — its `_id` and `date` (either may be text, as on some OEMs). */
+private data class Row(val id: Any, val date: Any? = 1_000L)
+
+/** Purpose: rows with the given ids and one shared `date`. */
+private fun rows(vararg ids: Any): List<Row> = ids.map { Row(it) }
+
+/** Purpose: provider state shared across authorities — whether the delete has run yet. */
+private class Device {
+    var deleted = false
+}
+
+/**
+ * Purpose: script one provider authority — the rows it holds before and after
+ * the delete, and its failures; the handler and resolver stay real.
+ */
+private class ScriptedProvider(private val device: Device) : ContentProvider() {
     val deletes = mutableListOf<Uri>()
     val queries = mutableListOf<ProviderQuery>()
+    var rowsBefore: List<Row> = emptyList()
+    var rowsAfter: List<Row> = emptyList()
     var deletedRows = 0
     var deleteFailure: RuntimeException? = null
-    var remainingRows = 0
-    var nullCursor = false
-    var queryFailure: RuntimeException? = null
+    var nullCursorBefore = false
+    var nullCursorAfter = false
+    var queryFailureAfter: RuntimeException? = null
 
-    /** Purpose: restore the "nothing deleted, nothing left" baseline between scenarios. */
+    /** Purpose: restore the "nothing held, nothing left" baseline between scenarios. */
     fun reset() {
         deletes.clear()
         queries.clear()
+        rowsBefore = emptyList()
+        rowsAfter = emptyList()
         deletedRows = 0
         deleteFailure = null
-        remainingRows = 0
-        nullCursor = false
-        queryFailure = null
+        nullCursorBefore = false
+        nullCursorAfter = false
+        queryFailureAfter = null
     }
 
     /** Purpose: permit registration without allocating external resources. */
     override fun onCreate() = true
 
-    /** Purpose: record the delete target so mistargeted deletes fail the contract tests. */
+    /** Purpose: record the delete target and flip the device to its post-delete state. */
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
         deleteFailure?.let { throw it }
         deletes.add(uri)
+        device.deleted = true
         return deletedRows
     }
 
-    /** Purpose: answer the read-back with the scripted remaining rows, a null cursor, or a failure. */
+    /** Purpose: answer with the rows held before or after the delete, a null cursor, or a failure. */
     override fun query(
         uri: Uri,
         projection: Array<out String>?,
@@ -260,11 +391,11 @@ private class ScriptedProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?,
     ): Cursor? {
-        queryFailure?.let { throw it }
+        if (device.deleted) queryFailureAfter?.let { throw it }
         queries.add(ProviderQuery(uri.toString(), selection, selectionArgs?.toList()))
-        if (nullCursor) return null
-        return MatrixCursor(arrayOf("_id")).apply {
-            repeat(remainingRows) { addRow(arrayOf<Any>(it + 1L)) }
+        if (if (device.deleted) nullCursorAfter else nullCursorBefore) return null
+        return MatrixCursor(arrayOf("_id", "date")).apply {
+            (if (device.deleted) rowsAfter else rowsBefore).forEach { addRow(arrayOf(it.id, it.date)) }
         }
     }
 
@@ -281,7 +412,7 @@ private class ScriptedProvider : ContentProvider() {
         throw UnsupportedOperationException("Deletes must not inspect MIME types")
 }
 
-/** Purpose: snapshot one read-back query's target and filter. */
+/** Purpose: snapshot one query's target and filter. */
 private data class ProviderQuery(val uri: String, val selection: String?, val arguments: List<String>?)
 
 /** Purpose: capture the handler's single reply, keeping success values apart from error codes. */

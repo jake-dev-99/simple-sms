@@ -1,9 +1,11 @@
 /// Verified outcome of an `AndroidDestructiveAction` delete (UNFY-244).
 ///
-/// Both values mean the target is no longer on the device. A delete that could
-/// not be verified (the app is not the default SMS app, the provider ignored or
-/// only partly applied the delete, the read-back failed, or the provider threw)
-/// is never one of these values — it throws [DeleteFailedException] instead.
+/// [deleted] and [alreadyAbsent] mean the target is no longer on the device;
+/// [newMessagesArrived] means everything it held is gone but new messages
+/// re-populated the thread mid-delete. A delete that could not be verified
+/// (the app is not the default SMS app, the provider ignored or only partly
+/// applied the delete, the read-back failed, or the provider threw) is never
+/// one of these values — it throws [DeleteFailedException] instead.
 enum DeleteResult {
   /// The target had rows and they were all deleted.
   deleted('deleted'),
@@ -11,7 +13,12 @@ enum DeleteResult {
   /// No messages needed deleting and nothing remains — the target was already
   /// gone (a thread with no messages may still have had its empty thread row
   /// pruned).
-  alreadyAbsent('alreadyAbsent');
+  alreadyAbsent('alreadyAbsent'),
+
+  /// Thread deletes only: every message the thread held before the delete is
+  /// gone, but new messages arrived while it ran, so the thread is on the
+  /// device again holding only those.
+  newMessagesArrived('newMessagesArrived');
 
   const DeleteResult(this.wireName);
 
@@ -40,11 +47,14 @@ enum DeleteFailureReason {
   /// ignore the delete; nothing was attempted.
   notDefaultSmsApp('NOT_DEFAULT_SMS_APP'),
 
-  /// Rows remain after the delete (the provider ignored or partly applied it,
-  /// or a row arrived mid-delete).
+  /// Rows that existed before the delete remain (the provider ignored or
+  /// partly applied it), or the thread's messages and its conversation-list
+  /// row disagree. Messages that merely arrived mid-delete are reported as
+  /// [DeleteResult.newMessagesArrived] instead.
   deleteIncomplete('DELETE_INCOMPLETE'),
 
-  /// The provider threw during the delete.
+  /// The provider threw during the delete, or the target couldn't be read
+  /// before it (in which case nothing was deleted).
   deleteFailed('DELETE_FAILED'),
 
   /// The delete ran but the target couldn't be read back.

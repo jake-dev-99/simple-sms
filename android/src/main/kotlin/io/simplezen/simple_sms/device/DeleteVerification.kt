@@ -7,10 +7,10 @@ package io.simplezen.simple_sms.device
  * delete the provider ignored or only partly applied (Android drops provider
  * writes from a non-default SMS app as 0 rows, and OEM providers can fail the
  * same way). Every delete is therefore followed by a read-back of the target,
- * and the pair classifies into exactly one of these states.
+ * and the two classify into exactly one of these states.
  */
 enum class DeleteOutcome {
-    /** At least one row was deleted and none remain. */
+    /** At least one row was deleted and nothing remains. */
     DELETED,
 
     /**
@@ -21,19 +21,53 @@ enum class DeleteOutcome {
     ALREADY_ABSENT,
 
     /**
-     * Rows remain after the delete: the provider ignored or partly applied it,
-     * or a row landed mid-delete. Surfaced as an error, never as success, so
-     * the caller keeps its local record of the target.
+     * Every row that existed before the delete is gone, but new messages
+     * arrived in the thread while it ran and the thread is listed again,
+     * holding only those. Thread deletes only.
+     */
+    NEW_MESSAGES_ARRIVED,
+
+    /**
+     * Rows that existed before the delete remain (the provider ignored or
+     * partly applied it), the thread row survived with no messages, or new
+     * messages reference a thread row that is no longer listed. Surfaced as
+     * an error, never as success, so the caller keeps its local record of the
+     * target; retrying the thread delete removes rows by `thread_id`.
      */
     INCOMPLETE,
 }
 
 /**
- * Classify a delete from the rows it removed ([deletedRows]) and the rows the
- * read-back still found for the target ([remainingRows]).
+ * What the read-back after a delete found.
+ *
+ * Thread rows are compared against a snapshot of the rows the thread held
+ * before the delete, so messages inserted while the delete and its sequential
+ * read-backs run are told apart from rows the delete failed to remove. An SMS
+ * is matched by `(_id, date)`: the `sms` table's `_id` is a plain
+ * `INTEGER PRIMARY KEY`, so after the newest messages are deleted a new one can
+ * reuse an `_id`, but it carries its own receive `date`. An MMS is matched by
+ * `_id` alone (`pdu._id` is AUTOINCREMENT, and MMS `date` is rewritten after
+ * insert).
  */
-fun classifyDelete(deletedRows: Int, remainingRows: Int): DeleteOutcome = when {
-    remainingRows > 0 -> DeleteOutcome.INCOMPLETE
+data class DeleteReadBack(
+    /** Rows that existed before the delete: they survived it. */
+    val survivingRows: Int,
+    /** Rows that were not there before: messages that arrived mid-delete. */
+    val arrivedRows: Int = 0,
+    /** The thread row the conversation list reads is still listed. */
+    val threadRowListed: Boolean = false,
+)
+
+/**
+ * Classify a delete from the rows it removed ([deletedRows]) and what the
+ * [readBack] found. Surviving rows always mean failure, whatever else arrived.
+ */
+fun classifyDelete(deletedRows: Int, readBack: DeleteReadBack): DeleteOutcome = when {
+    readBack.survivingRows > 0 -> DeleteOutcome.INCOMPLETE
+    readBack.arrivedRows > 0 && readBack.threadRowListed -> DeleteOutcome.NEW_MESSAGES_ARRIVED
+    // Arrivals under an unlisted thread row, or a listed row with no messages:
+    // the conversation list and the messages disagree, so nothing is verified.
+    readBack.arrivedRows > 0 || readBack.threadRowListed -> DeleteOutcome.INCOMPLETE
     deletedRows > 0 -> DeleteOutcome.DELETED
     else -> DeleteOutcome.ALREADY_ABSENT
 }

@@ -7,34 +7,72 @@ import org.junit.Test
 /**
  * Pins the verified-delete classification and id validation (UNFY-244).
  *
- * The read-back is authoritative: any row left is a failed delete regardless of
- * how many rows the delete reported, so a provider that ignored the write
- * (non-default SMS app, OEM failure) is never reported as already absent.
+ * The read-back is authoritative: any row that existed before the delete and is
+ * still there is a failed delete regardless of how many rows the delete
+ * reported, so a provider that ignored the write (non-default SMS app, OEM
+ * failure) is never reported as already absent — and messages that arrived
+ * mid-delete are told apart from those survivors.
  *
  * Plain JUnit: both functions are pure Kotlin (the handler is exercised in
  * [DestructiveActionsTest]).
  */
 class DeleteVerificationTest {
     @Test
-    fun rowsDeleted_noneRemaining_isDeleted() {
-        assertEquals(DeleteOutcome.DELETED, classifyDelete(deletedRows = 3, remainingRows = 0))
+    fun rowsDeleted_nothingLeft_isDeleted() {
+        assertEquals(DeleteOutcome.DELETED, classifyDelete(3, DeleteReadBack(survivingRows = 0)))
     }
 
     @Test
-    fun nothingDeleted_noneRemaining_isAlreadyAbsent() {
-        assertEquals(DeleteOutcome.ALREADY_ABSENT, classifyDelete(deletedRows = 0, remainingRows = 0))
+    fun nothingDeleted_nothingLeft_isAlreadyAbsent() {
+        assertEquals(DeleteOutcome.ALREADY_ABSENT, classifyDelete(0, DeleteReadBack(survivingRows = 0)))
     }
 
     @Test
-    fun nothingDeleted_rowsRemaining_isIncomplete() {
+    fun nothingDeleted_rowsSurvive_isIncomplete() {
         // The silently ignored write: 0 rows reported while the target survives.
-        assertEquals(DeleteOutcome.INCOMPLETE, classifyDelete(deletedRows = 0, remainingRows = 2))
+        assertEquals(DeleteOutcome.INCOMPLETE, classifyDelete(0, DeleteReadBack(survivingRows = 2)))
     }
 
     @Test
-    fun rowsDeleted_rowsRemaining_isIncomplete() {
-        // A partly applied delete, or a row that landed mid-delete.
-        assertEquals(DeleteOutcome.INCOMPLETE, classifyDelete(deletedRows = 4, remainingRows = 1))
+    fun rowsDeleted_rowsSurvive_isIncomplete() {
+        // A partly applied delete.
+        assertEquals(DeleteOutcome.INCOMPLETE, classifyDelete(4, DeleteReadBack(survivingRows = 1)))
+    }
+
+    @Test
+    fun onlyNewArrivals_threadListed_isNewMessagesArrived() {
+        // Everything that existed is gone; messages that arrived mid-delete remain.
+        assertEquals(
+            DeleteOutcome.NEW_MESSAGES_ARRIVED,
+            classifyDelete(4, DeleteReadBack(survivingRows = 0, arrivedRows = 1, threadRowListed = true)),
+        )
+    }
+
+    @Test
+    fun arrivalsUnderAnUnlistedThread_isIncomplete() {
+        // Orphaned messages the conversation list can't show: not a live thread.
+        assertEquals(
+            DeleteOutcome.INCOMPLETE,
+            classifyDelete(4, DeleteReadBack(survivingRows = 0, arrivedRows = 1, threadRowListed = false)),
+        )
+    }
+
+    @Test
+    fun survivorsWinOverArrivals_isIncomplete() {
+        // New arrivals never mask a failed delete.
+        assertEquals(
+            DeleteOutcome.INCOMPLETE,
+            classifyDelete(4, DeleteReadBack(survivingRows = 1, arrivedRows = 2, threadRowListed = true)),
+        )
+    }
+
+    @Test
+    fun threadRowListedWithNoMessages_isIncomplete() {
+        // Messages gone but the thread row the list reads was never pruned.
+        assertEquals(
+            DeleteOutcome.INCOMPLETE,
+            classifyDelete(3, DeleteReadBack(survivingRows = 0, threadRowListed = true)),
+        )
     }
 
     @Test

@@ -17,10 +17,11 @@ import io.simplezen.simple_query.ContentQuery
  * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
  *
  * Each delete succeeds with `"deleted"` or `"alreadyAbsent"` only when a
- * read-back finds nothing left; otherwise it fails with a code the Dart side
- * mirrors as `DeleteFailureReason`. The delete plus its read-backs are blocking
- * provider I/O, so the plugin registers this handler on a background task
- * queue rather than the platform main thread.
+ * read-back finds nothing left (or, for a thread, `"newMessagesArrived"` when
+ * only messages that arrived during the delete remain); otherwise it fails
+ * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
+ * its read-backs are blocking provider I/O, so the plugin registers this
+ * handler on a background task queue rather than the platform main thread.
  */
 class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
@@ -29,6 +30,12 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
         /** The `threads` table view the conversation list reads. */
         private val SIMPLE_CONVERSATIONS_URI: Uri = Telephony.Threads.CONTENT_URI
             .buildUpon().appendQueryParameter("simple", "true").build()
+
+        private const val SMS_IN_THREAD = "${Telephony.Sms.THREAD_ID} = ?"
+        private const val MMS_IN_THREAD = "${Telephony.Mms.THREAD_ID} = ?"
+
+        /** `Telephony.Sms.DATE` and `Telephony.Mms.DATE` are both `date`. */
+        private const val DATE = Telephony.Sms.DATE
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -46,8 +53,9 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 verifiedDelete(
                     result,
                     target = "thread $threadId",
+                    mark = { threadSnapshot(threadId) },
                     delete = { deleteThread(threadId) },
-                    countRemaining = { countThreadRows(threadId) },
+                    readBack = { snapshot -> readBackThread(threadId, snapshot) },
                 )
             }
             "deleteMessage" -> {
@@ -66,12 +74,15 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 }
                 // The native `_id` is unique only within its own table, so the
                 // channel-derived table targets the one right message (UNFY-213).
+                // A single message has no later arrivals to tell apart, so it
+                // needs no snapshot: any row at its URI survived.
                 val messageUri = ContentUris.withAppendedId(table.contentUri(), messageId)
                 verifiedDelete(
                     result,
                     target = "${table.name} message $messageId",
+                    mark = {},
                     delete = { context.contentResolver.delete(messageUri, null, null) },
-                    countRemaining = { countRows(messageUri) },
+                    readBack = { DeleteReadBack(survivingRows = rowKeys(messageUri).size) },
                 )
             }
             else -> result.notImplemented()
@@ -79,31 +90,42 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
     }
 
     /**
-     * Run [delete], read the target back with [countRemaining], and report the
-     * verified outcome on [result].
+     * Take the target's pre-delete snapshot ([mark]), run [delete], read the
+     * target back with [readBack], and report the verified outcome on [result].
      *
      * Only the default SMS app may write the provider: Android drops any other
      * app's delete as 0 rows, which would read back as an already-absent
-     * target, so the role is asserted before anything is deleted.
+     * target, so the role is asserted before anything is read or deleted.
      */
-    private fun verifiedDelete(
+    private fun <M> verifiedDelete(
         result: MethodChannel.Result,
         target: String,
+        mark: () -> M,
         delete: () -> Int,
-        countRemaining: () -> Int,
+        readBack: (M) -> DeleteReadBack,
     ) {
-        val deletedRows = try {
+        val taken = try {
             PermissionGuards.requireRoleHeld(context, RoleManager.ROLE_SMS)
-            delete()
+            mark()
         } catch (e: PermissionDeniedException) {
             result.error("NOT_DEFAULT_SMS_APP", e.message, null)
             return
         } catch (e: Exception) {
+            result.error(
+                "DELETE_FAILED",
+                "Could not read $target before deleting; nothing was deleted: ${e.message}",
+                e.stackTraceToString(),
+            )
+            return
+        }
+        val deletedRows = try {
+            delete()
+        } catch (e: Exception) {
             result.error("DELETE_FAILED", "Failed to delete $target: ${e.message}", e.stackTraceToString())
             return
         }
-        val remainingRows = try {
-            countRemaining()
+        val found = try {
+            readBack(taken)
         } catch (e: Exception) {
             // The delete ran but can't be confirmed — the provider returned no
             // cursor or the read was refused.
@@ -114,16 +136,37 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
             )
             return
         }
-        Log.d(TAG, "Deleted $target: $deletedRows rows, $remainingRows remaining")
-        when (classifyDelete(deletedRows, remainingRows)) {
+        Log.d(TAG, "Deleted $target: $deletedRows rows, read back $found")
+        when (classifyDelete(deletedRows, found)) {
             DeleteOutcome.DELETED -> result.success("deleted")
             DeleteOutcome.ALREADY_ABSENT -> result.success("alreadyAbsent")
+            DeleteOutcome.NEW_MESSAGES_ARRIVED -> result.success("newMessagesArrived")
             DeleteOutcome.INCOMPLETE -> result.error(
                 "DELETE_INCOMPLETE",
-                "$target still has $remainingRows rows after delete",
+                "$target was not fully deleted: $found",
                 null,
             )
         }
+    }
+
+    /** One message row's identity: its `_id` plus its `date` (see [DeleteReadBack]). */
+    private data class RowKey(val id: Long, val date: Long?)
+
+    /**
+     * A thread's messages, taken before deleting it: each SMS by `(_id, date)`
+     * and each MMS by `_id` alone. The `pdu` table's `_id` is AUTOINCREMENT, so
+     * it is never reused — and MMS `date` can't be part of the key, because it
+     * is rewritten after insert (`InboundMmsPersister` swaps in the local
+     * receive time).
+     */
+    private data class ThreadSnapshot(val sms: Set<RowKey>, val mmsIds: Set<Long>)
+
+    private fun threadSnapshot(threadId: Long): ThreadSnapshot {
+        val args = arrayOf(threadId.toString())
+        return ThreadSnapshot(
+            sms = rowKeys(Telephony.Sms.CONTENT_URI, SMS_IN_THREAD, args).toSet(),
+            mmsIds = rowKeys(Telephony.Mms.CONTENT_URI, MMS_IN_THREAD, args).map { it.id }.toSet(),
+        )
     }
 
     /**
@@ -139,28 +182,56 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
         null,
     )
 
-    /** SMS + MMS rows, plus the thread row the conversation list reads, still in [threadId]. */
-    private fun countThreadRows(threadId: Long): Int {
+    /**
+     * Read [threadId] back: its SMS and MMS rows split against [snapshot] into
+     * survivors and new arrivals, plus whether the thread row the
+     * conversation list reads is still listed.
+     */
+    private fun readBackThread(threadId: Long, snapshot: ThreadSnapshot): DeleteReadBack {
         val args = arrayOf(threadId.toString())
-        return countRows(Telephony.Sms.CONTENT_URI, "${Telephony.Sms.THREAD_ID} = ?", args) +
-            countRows(Telephony.Mms.CONTENT_URI, "${Telephony.Mms.THREAD_ID} = ?", args) +
-            countRows(SIMPLE_CONVERSATIONS_URI, "${BaseColumns._ID} = ?", args)
+        val sms = rowKeys(Telephony.Sms.CONTENT_URI, SMS_IN_THREAD, args)
+        val mms = rowKeys(Telephony.Mms.CONTENT_URI, MMS_IN_THREAD, args)
+        val surviving = sms.count { it in snapshot.sms } + mms.count { it.id in snapshot.mmsIds }
+        return DeleteReadBack(
+            survivingRows = surviving,
+            arrivedRows = sms.size + mms.size - surviving,
+            threadRowListed = rowKeys(SIMPLE_CONVERSATIONS_URI, "${BaseColumns._ID} = ?", args).isNotEmpty(),
+        )
     }
 
     /**
-     * Rows at [uri] matching [selection], read via simple_query's `queryOrNull`.
-     * A null cursor (provider unreachable) throws instead of reading as zero
-     * rows, so the handler reports the delete as unverified.
+     * The `(_id, date)` of rows at [uri] matching [selection], read via
+     * simple_query's `queryOrNull`. A null cursor (provider unreachable) or a
+     * non-numeric value throws instead of reading as fewer rows; a null
+     * `date` stays null, so it still matches only itself.
      */
-    private fun countRows(
+    private fun rowKeys(
         uri: Uri,
         selection: String? = null,
         selectionArgs: Array<String>? = null,
-    ): Int = ContentQuery.queryOrNull(
-        context,
-        uri.toString(),
-        projection = arrayOf(BaseColumns._ID),
-        selection = selection,
-        selectionArgs = selectionArgs,
-    )?.size ?: throw IllegalStateException("Provider returned no cursor for $uri")
+    ): List<RowKey> {
+        val rows = ContentQuery.queryOrNull(
+            context,
+            uri.toString(),
+            projection = arrayOf(BaseColumns._ID, DATE),
+            selection = selection,
+            selectionArgs = selectionArgs,
+        ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
+        return rows.map { row ->
+            RowKey(
+                id = numeric(row[BaseColumns._ID], BaseColumns._ID, uri)
+                    ?: throw IllegalStateException("Missing ${BaseColumns._ID} from $uri"),
+                date = numeric(row[DATE], DATE, uri),
+            )
+        }
+    }
+
+    /** [value] as a Long (providers may return numbers as text); null stays null. */
+    private fun numeric(value: Any?, column: String, uri: Uri): Long? = when (value) {
+        null -> null
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull()
+            ?: throw IllegalStateException("Non-numeric $column \"$value\" from $uri")
+        else -> throw IllegalStateException("Non-numeric $column $value from $uri")
+    }
 }

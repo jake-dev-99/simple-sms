@@ -42,6 +42,14 @@ void main() {
       );
     });
 
+    test('maps "newMessagesArrived"', () async {
+      reply(() async => 'newMessagesArrived');
+      expect(
+        await AndroidDestructiveAction.deleteThread('1'),
+        DeleteResult.newMessagesArrived,
+      );
+    });
+
     test('maps "alreadyAbsent"', () async {
       reply(() async => 'alreadyAbsent');
       expect(
@@ -170,6 +178,8 @@ void main() {
   test('wire values match the native contract', () {
     expect(DeleteResult.deleted.wireName, 'deleted');
     expect(DeleteResult.alreadyAbsent.wireName, 'alreadyAbsent');
+    expect(DeleteResult.newMessagesArrived.wireName, 'newMessagesArrived');
+    expect(DeleteResult.values, hasLength(3));
     expect(
       {for (final r in DeleteFailureReason.values) r: r.code},
       {
