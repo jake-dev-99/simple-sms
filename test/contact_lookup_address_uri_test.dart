@@ -46,4 +46,14 @@ void main() {
     expect(await LookupService().lookupContactableByAddress('  '), isNull);
     expect(provider.queryRequests, isEmpty);
   });
+
+  test('surrounding whitespace is trimmed before encoding', () async {
+    const uri =
+        'content://com.android.contacts/data/emails/filter/ada%40example.com';
+    provider.seed(uri, const [], columns: const ['_id']);
+
+    await LookupService().lookupContactableByAddress(' ada@example.com ');
+
+    expect(provider.requestsTo(uri), hasLength(1));
+  });
 }

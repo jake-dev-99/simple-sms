@@ -116,13 +116,16 @@ class AttachmentExtractor {
     // One after another: no concurrent query fan-out, and the first failure
     // decides deterministically. Each mid's rows come from a single chunk, so
     // grouping keeps the backend's per-message `_id ASC` order.
+    // Deduplicated first, so no mid can straddle two chunks and repeat its
+    // parts.
+    final uniqueIds = mmsIds.toSet().toList(growable: false);
     final rows = <QueryRecord>[];
     for (var start = 0;
-        start < mmsIds.length;
+        start < uniqueIds.length;
         start += _maxMmsIdsPerPartsQuery) {
-      final chunk = mmsIds.sublist(
+      final chunk = uniqueIds.sublist(
         start,
-        min(start + _maxMmsIdsPerPartsQuery, mmsIds.length),
+        min(start + _maxMmsIdsPerPartsQuery, uniqueIds.length),
       );
       rows.addAll((await _queryPartsForMessages(chunk)).records);
     }

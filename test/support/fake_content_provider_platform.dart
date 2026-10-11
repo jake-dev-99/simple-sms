@@ -252,7 +252,7 @@ final class _ProviderTable {
     return _paginate(
       matches.map((match) => match.$2),
       request.page,
-    ).map(_copyRow).toList(growable: false);
+    ).map(_resultRow).toList(growable: false);
   }
 
   /// Purpose: rejects request features this fake does not model.
@@ -338,7 +338,8 @@ void _requireCursorValue(String column, Object? value) {
   throw ArgumentError.value(value, column, 'is not a cursor cell value');
 }
 
-/// Purpose: copies a flat provider row, including its blob cells.
+/// Purpose: copies a flat provider row, including its blob cells, so the
+/// caller's later edits cannot leak into the table.
 ///
 /// @param row a row holding only cursor cell values.
 /// @returns an independent copy.
@@ -346,6 +347,17 @@ void _requireCursorValue(String column, Object? value) {
 QueryRecord _copyRow(QueryRecord row) => row.map(
   (column, value) =>
       MapEntry(column, value is Uint8List ? Uint8List.fromList(value) : value),
+);
+
+/// Purpose: shapes a stored row as the Android backend returns it: blob
+/// cells arrive as null, since the backend never sends BLOB bytes over the
+/// channel (callers stream them instead).
+///
+/// @param row a stored row.
+/// @returns the row as a query result.
+/// @throws nothing.
+QueryRecord _resultRow(QueryRecord row) => row.map(
+  (column, value) => MapEntry(column, value is Uint8List ? null : value),
 );
 
 /// Purpose: compiles one SQL condition into a row predicate, binding its

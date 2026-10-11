@@ -248,6 +248,30 @@ void main() {
       );
     });
 
+    test('a latest MMS shared by threads across a chunk boundary is '
+        'hydrated once', () async {
+      // 500 distinct latest MMS, then thread 501 repeating MMS 1, so the
+      // duplicate would land in a second chunk without deduplication.
+      _seedTables(
+        provider,
+        threads: [for (var t = 1; t <= 501; t++) _thread(t)],
+        mms: [
+          for (var t = 1; t <= 500; t++) _mms(t, threadId: t, seconds: t),
+          _mms(1, threadId: 501, seconds: 1000),
+        ],
+        parts: [
+          for (var t = 1; t <= 500; t++)
+            _part(10000 + t, mid: t, contentType: 'text/plain', text: '$t'),
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final byThread = await _listByThread();
+
+      expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
+      expect(byThread[501]?.latestMms?.parts?.map((p) => p.id), [10001]);
+    });
+
     test(
       'runs parts chunks one after another, stopping at a failure',
       () async {

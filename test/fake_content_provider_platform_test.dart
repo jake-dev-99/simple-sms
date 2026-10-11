@@ -255,24 +255,34 @@ void main() {
     );
   });
 
-  test('blob cells are copied in and out', () async {
-    final blob = Uint8List.fromList([1, 2]);
-    provider.seed(uri, [
-      {'_id': 1, 'data15': blob},
-    ]);
-    blob[0] = 9;
-    Future<Object?> read() async =>
-        (await provider.query(
-          const QueryRequest(
-            domain: QueryDomain.platformSpecific,
-            platformData: {'contentUri': uri},
-          ),
-        )).records.single['data15'];
-    final first = await read();
-    if (first is! Uint8List) fail('expected a blob cell');
-    first[1] = 9;
-    expect(await read(), [1, 2]);
-  });
+  test(
+    'blob cells are filterable but returned as null, as on the device',
+    () async {
+      provider.seed(uri, [
+        {
+          '_id': 1,
+          'data15': Uint8List.fromList([1, 2]),
+        },
+        {'_id': 2, 'data15': null},
+      ]);
+      final result = await provider.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          filters: [
+            QueryFilterCondition(
+              field: 'data15',
+              operator: QueryFilterOperator.notEquals,
+              value: 'x',
+            ),
+          ],
+          platformData: const {'contentUri': uri},
+        ),
+      );
+      expect(result.records, [
+        {'_id': 1, 'data15': null},
+      ]);
+    },
+  );
 
   test('the default _id sort needs an _id column', () async {
     provider.seed(uri, [
