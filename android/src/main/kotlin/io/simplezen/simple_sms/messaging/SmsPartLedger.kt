@@ -37,7 +37,9 @@ internal const val DELIVERY_REPORT_WAIT_MS = 7 * 24 * 60 * 60 * 1000L
  * @param deliveryStatuses each part's [Telephony.Sms] delivery status, `null`
  *   until its report arrives.
  * @param firstFailedResultCode the result code of the first part to report a
- *   failure, in the order the reports arrived; `null` while none has.
+ *   failure, in the order the reports arrived; `null` exactly while no part
+ *   has failed. A record that disagrees with its parts is invalid: reading it
+ *   removes it.
  */
 @Serializable
 internal data class SmsPartsRecord(
@@ -49,10 +51,13 @@ internal data class SmsPartsRecord(
     init {
         require(sentResultCodes.isNotEmpty()) { "An SMS has at least one part" }
         require(deliveryStatuses.size == sentResultCodes.size) { "Part counts disagree: $this" }
-        val failedCodes = sentResultCodes.filter { it != null && it != Activity.RESULT_OK }
-        require(if (firstFailedResultCode == null) failedCodes.isEmpty() else firstFailedResultCode in failedCodes) {
-            "First failure disagrees with the parts' results: $this"
-        }
+        require(
+            if (firstFailedResultCode == null) {
+                sentResultCodes.none { it != null && it != Activity.RESULT_OK }
+            } else {
+                firstFailedResultCode != Activity.RESULT_OK && firstFailedResultCode in sentResultCodes
+            }
+        ) { "First failure disagrees with the parts' results: $this" }
     }
 
     val partCount: Int get() = sentResultCodes.size

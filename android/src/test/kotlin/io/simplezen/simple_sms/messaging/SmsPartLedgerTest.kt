@@ -35,6 +35,7 @@ class SmsPartLedgerTest {
     private var now = System.currentTimeMillis()
     private val ok = Activity.RESULT_OK
     private val failure = SmsManager.RESULT_ERROR_GENERIC_FAILURE
+    private val noService = SmsManager.RESULT_ERROR_NO_SERVICE
 
     /** A ledger over the same files, as a new app process would build it. */
     private fun ledger() = SmsPartLedger(directory) { now }
@@ -74,7 +75,6 @@ class SmsPartLedgerTest {
     @Test
     fun multipart_failuresOutOfOrder_settleWithTheFirstFailureToArrive() {
         val parts = start(parts = 3)
-        val noService = SmsManager.RESULT_ERROR_NO_SERVICE
         assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[2], noService))
         assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[0], failure))
         assertEquals(SentPartProgress.Settled(noService), ledger().recordSent(parts[1], ok))
@@ -252,21 +252,28 @@ class SmsPartLedgerTest {
 
     @Test
     fun aRecordWhoseFirstFailureDisagreesWithItsParts_isRemoved() {
-        val noService = SmsManager.RESULT_ERROR_NO_SERVICE
-        // A failed part but no first failure; a first failure no part
-        // reported; a first failure that is a success.
         listOf(
+            // A failed part, but no first failure.
             """"sentResultCodes":[$failure,null]""",
+            // A first failure that no part reported.
             """"sentResultCodes":[$failure,null],"firstFailedResultCode":$noService""",
-            """"sentResultCodes":[$failure,null],"firstFailedResultCode":$ok""",
+            // A first failure that is a success.
+            """"sentResultCodes":[$ok,$failure],"firstFailedResultCode":$ok""",
+            // A first failure, though no part has failed.
             """"sentResultCodes":[null,null],"firstFailedResultCode":$failure""",
         ).forEach { fields ->
-            val parts = start(parts = 2)
-            File(File(directory, "41"), "${parts[0].token}.json").writeText(
-                """{"token":"${parts[0].token}",$fields,"deliveryStatuses":[null,null]}"""
-            )
+            fun writeRecord(): List<SmsPartRef> = start(parts = 2).also {
+                File(File(directory, "41"), "${it[0].token}.json").writeText(
+                    """{"token":"${it[0].token}",$fields,"deliveryStatuses":[null,null]}"""
+                )
+            }
 
-            assertEquals(fields, SentPartProgress.UnknownSend, ledger().recordSent(parts[1], ok))
+            assertEquals(fields, SentPartProgress.UnknownSend, ledger().recordSent(writeRecord()[1], ok))
+            assertTrue(fields, File(directory, "41").listFiles().orEmpty().isEmpty())
+            assertNull(
+                fields,
+                ledger().recordDelivery(writeRecord()[1], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP),
+            )
             assertTrue(fields, File(directory, "41").listFiles().orEmpty().isEmpty())
         }
     }

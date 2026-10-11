@@ -232,10 +232,14 @@ class OutboundSendAckTest {
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_NO_SERVICE, part(2, 3))
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part(0, 3))
+        assertEquals("failed parts do not settle before the others report", 0, result.calls)
+        assertEquals(0, smsProvider.updates)
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 3))
 
         assertEquals(1, result.calls)
+        assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
         val details = result.errorDetails as Map<*, *>
+        assertEquals(false, details["sent"])
         assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, details["resultCode"])
         assertEquals("ERROR_NO_SERVICE", details["statusString"])
         assertEquals(1, smsProvider.updates)
