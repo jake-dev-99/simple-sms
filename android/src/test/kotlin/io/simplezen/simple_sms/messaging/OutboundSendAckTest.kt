@@ -303,21 +303,35 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun anUnavailableLedger_recordsEachPartOnItsOwn_ratherThanLosingIt() {
+    fun anUnavailableLedger_neverSettlesAMultipartSmsFromOnePart() {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri, parts = 2)
-        val ledgerRoot = File(context.filesDir, "simple_sms_sms_parts")
-        ledgerRoot.deleteRecursively()
-        ledgerRoot.mkdirs()
-        File(ledgerRoot, "42").mkdirs()
-        // The record is now a directory: it cannot be read.
-        File(File(ledgerRoot, "42"), part(0, 2).token + ".json").mkdirs()
+        makeUnreadable(part(0, 2))
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
 
+        assertEquals("the outcome is unknown; the timeout settles it", 0, result.calls)
+        assertEquals(0, smsProvider.updates)
+    }
+
+    @Test
+    fun anUnavailableLedger_stillSettlesAOnePartSms_fromItsOnlyResult() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri, parts = 1)
+        makeUnreadable(part())
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
         assertEquals(1, result.calls)
+        assertTrue(result.successPayload is String)
         assertEquals(1, smsProvider.updates)
-        File(File(ledgerRoot, "42"), part(0, 2).token + ".json").delete()
+    }
+
+    // Replaces [part]'s ledger record with a directory, which cannot be read.
+    private fun makeUnreadable(part: SmsPartRef) {
+        val record = File(File(File(context.filesDir, "simple_sms_sms_parts"), part.rowId.toString()), part.token + ".json")
+        record.delete()
+        record.mkdirs()
     }
 
     @Test

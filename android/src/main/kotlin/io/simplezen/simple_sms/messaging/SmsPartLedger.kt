@@ -182,8 +182,8 @@ internal class SmsPartLedger(
      *
      * @param part the reporting part, from its intent.
      * @param status the report's [Telephony.Sms] delivery status.
-     * @param wholeMessage whether the report stands for every part: a 3GPP2
-     *   (CDMA) multipart SMS asks for a report on its last part only.
+     * @param wholeMessage whether the report stands for every part: the last
+     *   part's 3GPP2 (CDMA) report, the only part CDMA asks one for.
      * @returns the message's delivery status after this report, or `null`
      *   when no send has this token.
      * @throws IOException when the record cannot be read or written.

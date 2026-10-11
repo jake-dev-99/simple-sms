@@ -161,7 +161,8 @@ class SmsPartLedgerTest {
 
     @Test
     fun aWholeMessageReport_settlesEveryPartsDelivery() {
-        // A 3GPP2 multipart SMS asks for a report on its last part only.
+        // A 3GPP2 multipart SMS asks for a report on its last part only; the
+        // receiver passes wholeMessage only for that report.
         val parts = start(parts = 3)
         parts.forEach { ledger().recordSent(it, ok) }
 

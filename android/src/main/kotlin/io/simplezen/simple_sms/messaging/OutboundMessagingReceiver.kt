@@ -261,7 +261,9 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             return
         }
         val part = intent.smsPartRef()
-        val wholeMessage = intent.getStringExtra("format") == SmsMessage.FORMAT_3GPP2
+        // CDMA asks for a report on a multipart SMS's last part only.
+        val wholeMessage = part != null && part.index == part.count - 1 &&
+            intent.getStringExtra("format") == SmsMessage.FORMAT_3GPP2
         val status =
             if (part == null) partStatus
             else messageDeliveryStatus(context, messageUri, part, partStatus, wholeMessage) ?: return
@@ -276,12 +278,12 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
     /**
      * The message-level delivery status after [part]'s report, from every
      * part's report so far (UNFY-180): one part's report never stands for the
-     * whole message, except a 3GPP2 one ([wholeMessage]): CDMA asks for a
-     * report on a multipart SMS's last part only. `null`, leaving the row
-     * unchanged, when the report is for a send no longer tracked (superseded
-     * by a newer send to the same row, or already finished) or names no part
-     * of its send. When the ledger cannot be read or written, the part's own
-     * status is recorded, as before parts were tracked, rather than lost.
+     * whole message, except a 3GPP2 report on the last part
+     * ([wholeMessage]). `null`, leaving the row unchanged, when the report is
+     * for a send no longer tracked (superseded by a newer send to the same
+     * row, or already finished) or names no part of its send. When the ledger
+     * cannot be read or written, a one-part SMS's report is the message's; a
+     * multipart one's is left unrecorded rather than stand for the message.
      */
     private fun messageDeliveryStatus(
         context: Context,
@@ -294,8 +296,8 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             if (it == null) Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send no longer tracked; ignored")
         }
     } catch (e: IOException) {
-        Log.e(TAG_RECEIVER, "SMS part ledger unavailable; recording $messageUri part ${part.index + 1}/${part.count}'s report on its own", e)
-        status
+        Log.e(TAG_RECEIVER, "SMS part ledger unavailable for $messageUri part ${part.index + 1}/${part.count}'s report", e)
+        status.takeIf { part.count == 1 }
     } catch (e: IllegalArgumentException) {
         Log.e(TAG_RECEIVER, "Delivery report for $messageUri names no part of its send", e)
         null

@@ -68,14 +68,16 @@ internal object SendResultRouter {
     }
 
     // The SMS's SENT outcome once [part] completes it, else null (logged).
-    // When the ledger cannot be read or written, the part is settled on its
-    // own, as before parts were tracked, rather than lost.
+    // When the ledger cannot be read or written, a one-part SMS settles on
+    // its own result, which is the message's. A multipart one cannot be
+    // added up, so its outcome is unknown: the row is left for the result
+    // timeout or the stale-outbox sweep, never settled from one part.
     private fun settledSmsResult(context: Context, messageUri: Uri, part: SmsPartRef, resultCode: Int): Int? {
         val progress = try {
             SmsPartLedger.forApp(context).recordSent(part, resultCode)
         } catch (e: IOException) {
-            Log.e(TAG, "SMS part ledger unavailable; recording $messageUri part ${part.index + 1}/${part.count} on its own", e)
-            return resultCode
+            Log.e(TAG, "SMS part ledger unavailable for $messageUri part ${part.index + 1}/${part.count}", e)
+            return resultCode.takeIf { part.count == 1 }
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "SENT result for $messageUri names no part of its send", e)
             return null
