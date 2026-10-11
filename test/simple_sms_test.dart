@@ -299,7 +299,7 @@ void main() {
 
     test('subscriptionId round-trips through toJson/fromJson', () {
       // SIM-606: the picker chooses which SIM a multi-SIM send originates
-      // from. `OutboundMessagingHandler` reads `message["subscriptionId"]`
+      // from. `OutboundSender` reads `message["subscriptionId"]`
       // to build an SmsManager.createForSubscriptionId(...); the Dart field
       // is what lets a caller actually set it.
       final message = OutboundMessage(

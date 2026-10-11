@@ -7,7 +7,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * Routes SENT results from the manifest-declared [OutboundMessagingReceiver]
- * to the live [OutboundMessagingHandler] that owns the send (UNFY-299).
+ * to the live [OutboundSender] that owns the send (UNFY-299).
  *
  * SENT intents target that receiver explicitly, so Android delivers them even
  * after the app process has gone. The owning handler settles its pending
@@ -20,13 +20,13 @@ import java.util.concurrent.CopyOnWriteArraySet
 internal object SendResultRouter {
     private const val TAG = "SendResultRouter"
 
-    private val handlers = CopyOnWriteArraySet<OutboundMessagingHandler>()
+    private val handlers = CopyOnWriteArraySet<OutboundSender>()
 
-    fun register(handler: OutboundMessagingHandler) {
+    fun register(handler: OutboundSender) {
         handlers.add(handler)
     }
 
-    fun unregister(handler: OutboundMessagingHandler) {
+    fun unregister(handler: OutboundSender) {
         handlers.remove(handler)
     }
 

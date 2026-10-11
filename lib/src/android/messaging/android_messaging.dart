@@ -116,9 +116,18 @@ class AndroidMessaging {
   /// `details` also carry `messageUri` and `timeoutMs`.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
-  }) async {
-    return OutboundMessagingInterop.sendMessage(message);
-  }
+  }) =>
+      send(message: message);
+
+  /// [sendMessage] without the singleton. Sending uses none of the inbound
+  /// callbacks [initialize] registers, so an engine that never calls it —
+  /// such as a notification plugin's headless action engine sending an
+  /// inline reply — can still send. Same access state, result and errors as
+  /// [sendMessage].
+  static Future<Map<String, dynamic>> send({
+    required OutboundMessage message,
+  }) =>
+      OutboundMessagingInterop.sendMessage(message);
 
   /// Internal handler for incoming messages from the native platform.
   @pragma('vm:entry-point')

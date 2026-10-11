@@ -35,7 +35,7 @@ class OutboundMessage {
   /// `SmsManager.getDefaultSmsSubscriptionId()` (the system default SMS
   /// SIM), preserving single-SIM behaviour. On a multi-SIM device, set
   /// this to route the send through a specific line:
-  /// `OutboundMessagingHandler` reads it and builds an
+  /// `OutboundSender` reads it and builds an
   /// `SmsManager.createForSubscriptionId(...)`.
   final int? subscriptionId;
 

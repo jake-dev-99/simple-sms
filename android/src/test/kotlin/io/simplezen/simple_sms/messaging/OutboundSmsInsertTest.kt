@@ -32,7 +32,7 @@ class OutboundSmsInsertTest {
 
         val uri = MmsDatabaseWriter.insertSms(
             context,
-            OutboundMessagingHandler.MessageRequestDetails(
+            OutboundSender.MessageRequestDetails(
                 threadId = 3L,
                 addresses = listOf("5551234"),
                 body = "hi",
@@ -57,7 +57,7 @@ class OutboundSmsInsertTest {
         assertThrows(SecurityException::class.java) {
             MmsDatabaseWriter.insertSms(
                 context,
-                OutboundMessagingHandler.MessageRequestDetails(
+                OutboundSender.MessageRequestDetails(
                     threadId = 3L,
                     addresses = listOf("5551234"),
                     body = "hi",

@@ -5,11 +5,31 @@ import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Telephony
 import android.provider.Telephony.Threads.getOrCreateThreadId
+import android.telephony.SubscriptionManager
 import android.util.Log
 import io.simplezen.simple_sms.queries.Query
 import io.simplezen.simple_sms.queries.QueryObj
+
+/**
+ * The subscription id of the SIM an SMS_DELIVER [intent] arrived on, or null
+ * when it carries no valid (non-negative) one. Android sets
+ * [SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX] on API 30+, and the legacy
+ * `subscription` extra — which the MMS path also reads — throughout; the
+ * legacy one is used when the new one is missing or invalid.
+ */
+internal fun inboundSubscriptionId(intent: Intent): Int? {
+    val index =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1)
+        } else {
+            -1
+        }
+    if (index >= 0) return index
+    return intent.getIntExtra("subscription", -1).takeIf { it >= 0 }
+}
 
 // Inbound SMS Messages
 class InboundSmsHandler : BroadcastReceiver() {
@@ -52,6 +72,14 @@ class InboundSmsHandler : BroadcastReceiver() {
                 )
                 put(Telephony.Sms.REPLY_PATH_PRESENT, firstMessage.isReplyPathPresent)
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+                // The SIM it arrived on, so a reply can go out on the same
+                // line (UNFY-306) and the attribution chip names it.
+                val subscriptionId = inboundSubscriptionId(intent)
+                if (subscriptionId != null) {
+                    put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId)
+                } else {
+                    Log.w("InboundSmsHandler", "SMS_DELIVER without a subscription id; row keeps the provider default")
+                }
             }
             val newUri = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)
             if (newUri == null) {

@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
  * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283).
  *
  * Drives the real [OutboundMessagingReceiver] callback registered by
- * [OutboundMessagingHandler] with status broadcasts, against fake `sms` /
+ * [OutboundSender] with status broadcasts, against fake `sms` /
  * `mms` providers, and pins how the pending Flutter result is settled:
  * exactly once — after every SENT part succeeded, or at the first failed
  * part; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
@@ -49,13 +49,13 @@ class OutboundSendAckTest {
     private val mmsUri: Uri = Uri.parse("content://mms/7")
     private lateinit var smsProvider: FakeMessageProvider
     private lateinit var mmsProvider: FakeMessageProvider
-    private lateinit var handler: OutboundMessagingHandler
+    private lateinit var handler: OutboundSender
 
     @Before
     fun setUp() {
         smsProvider = Robolectric.buildContentProvider(FakeMessageProvider::class.java).create("sms").get()
         mmsProvider = Robolectric.buildContentProvider(FakeMessageProvider::class.java).create("mms").get()
-        handler = OutboundMessagingHandler(context)
+        handler = OutboundSender(context)
     }
 
     @After
@@ -167,7 +167,7 @@ class OutboundSendAckTest {
     fun onlyTheOwningHandler_settlesAndReReads() {
         // Foreground and background engines each register a handler; only the
         // owner of the pending send records, re-reads and settles it.
-        val otherHandler = OutboundMessagingHandler(context)
+        val otherHandler = OutboundSender(context)
         try {
             smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
             val result = pendingSend(smsUri)
@@ -522,7 +522,7 @@ class OutboundSendAckTest {
         val result = RecordingResult()
         handler.awaitResult(
             messageUri,
-            OutboundMessagingHandler.MessageRequestDetails(
+            OutboundSender.MessageRequestDetails(
                 threadId = 1L,
                 addresses = listOf("5551234"),
                 body = "hi",
