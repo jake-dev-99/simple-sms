@@ -55,7 +55,7 @@
         <receiver
             android:name="io.simplezen.simple_sms.messaging.OutboundMessagingReceiver"
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             android:directBootAware="true" />
 
         <!-- FileProvider for temp MMS files -->

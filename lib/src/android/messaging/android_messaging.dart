@@ -88,7 +88,23 @@ class AndroidMessaging {
   /// ```
   ///
   /// Throws a [PlatformException] if the device lacks telephony capability
-  /// or if sending fails.
+  /// or the send can't be started. Otherwise the future settles once the
+  /// carrier reports the result. A multipart SMS settles as failed at its
+  /// first failed part, and as sent only once every part was sent.
+  ///
+  /// Normally it resolves with the message row; a send the carrier rejected
+  /// has that row marked failed (SMS `type`, MMS `msg_box`). Two
+  /// [PlatformException] codes instead settle a send whose row can't be
+  /// returned:
+  ///
+  /// - `MESSAGE_ROW_MISSING`: the message row was gone when read back.
+  /// - `SEND_ACK_FAILED`: the provider threw while recording the result or
+  ///   reading the row back; `details['cause']` describes the failure.
+  ///
+  /// For both, `details['sent']` is the carrier result: `true` means the
+  /// message went out (don't resend it), `false` that the send failed.
+  /// `details` also carry `messageUri`, `eventType`, `resultCode`, and
+  /// `statusString`.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
   }) async {
