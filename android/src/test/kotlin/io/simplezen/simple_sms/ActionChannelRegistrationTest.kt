@@ -9,6 +9,7 @@ import io.flutter.plugin.common.StandardMethodCodec
 import java.nio.ByteBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +33,7 @@ class ActionChannelRegistrationTest {
     /** Records the handler registered on each channel. */
     private class RecordingMessenger : BinaryMessenger {
         val handlers = mutableMapOf<String, BinaryMessenger.BinaryMessageHandler>()
+        val taskQueues = mutableMapOf<String, BinaryMessenger.TaskQueue?>()
 
         override fun send(channel: String, message: ByteBuffer?) = Unit
 
@@ -44,8 +46,25 @@ class ActionChannelRegistrationTest {
         override fun setMessageHandler(
             channel: String,
             handler: BinaryMessenger.BinaryMessageHandler?,
+        ) = setMessageHandler(channel, handler, null)
+
+        /** The destructive channel runs on a background task queue (UNFY-244). */
+        override fun makeBackgroundTaskQueue(
+            options: BinaryMessenger.TaskQueueOptions,
+        ): BinaryMessenger.TaskQueue = object : BinaryMessenger.TaskQueue {}
+
+        override fun setMessageHandler(
+            channel: String,
+            handler: BinaryMessenger.BinaryMessageHandler?,
+            taskQueue: BinaryMessenger.TaskQueue?,
         ) {
-            if (handler == null) handlers.remove(channel) else handlers[channel] = handler
+            if (handler == null) {
+                handlers.remove(channel)
+                taskQueues.remove(channel)
+            } else {
+                handlers[channel] = handler
+                taskQueues[channel] = taskQueue
+            }
         }
 
         /** Delivers [call] to [channel]'s handler and returns the reply's error code. */
@@ -106,6 +125,20 @@ class ActionChannelRegistrationTest {
                 ),
                 messenger.handlers.keys,
             )
+        } finally {
+            SimpleSmsPlugin.releaseHandler(messenger)
+        }
+    }
+
+    /** Deletes and their read-backs are blocking provider I/O (UNFY-244). */
+    @Test
+    fun destructiveChannelRunsOnABackgroundTaskQueue() {
+        val messenger = RecordingMessenger()
+        try {
+            SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
+
+            assertNotNull(messenger.taskQueues[SimpleSmsPlugin.DESTRUCTIVE_ACTIONS_CHANNEL])
+            assertNull(messenger.taskQueues[SimpleSmsPlugin.MESSAGING_CHANNEL])
         } finally {
             SimpleSmsPlugin.releaseHandler(messenger)
         }

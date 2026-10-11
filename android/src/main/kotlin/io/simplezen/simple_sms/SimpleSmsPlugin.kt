@@ -10,6 +10,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
+import io.flutter.plugin.common.StandardMethodCodec
 import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
@@ -129,8 +130,14 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
       MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
         .setMethodCallHandler(outboundHandler)
 
-      MethodChannel(binaryMessenger, DESTRUCTIVE_ACTIONS_CHANNEL)
-        .setMethodCallHandler(DestructiveActions(appContext))
+      // Deletes and their verifying read-backs are blocking provider I/O
+      // (UNFY-244): run them on a background task queue, not the main thread.
+      MethodChannel(
+        binaryMessenger,
+        DESTRUCTIVE_ACTIONS_CHANNEL,
+        StandardMethodCodec.INSTANCE,
+        binaryMessenger.makeBackgroundTaskQueue(),
+      ).setMethodCallHandler(DestructiveActions(appContext))
 
       // The actions channel is not registered here: [onAttachedToEngine]
       // registers it on every engine, and both callers' engines attach the
