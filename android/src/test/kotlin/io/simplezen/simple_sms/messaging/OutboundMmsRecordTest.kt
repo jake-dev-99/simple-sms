@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_sms.mms.sending.bindMmsSentIntent
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,18 +74,18 @@ class OutboundMmsRecordTest {
             threadId = 7,
             addresses = listOf("+15551234567"),
             body = "MMS test",
-            sentPendingIntent = null,
-            deliveredPendingIntent = null,
             flutterResult = result,
         )
-        val field = OutboundMessagingHandler::class.java.getDeclaredField("channelResultMap")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val requests = field.get(handler) as MutableMap<Uri, OutboundMessagingHandler.MessageRequestDetails>
+        val requests = handler.channelResultMap
         requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
-            requests[Uri.parse("content://sms/9001")] = request.copy(flutterResult = smsResult)
+            requests[Uri.parse("content://sms/9001")] = OutboundMessagingHandler.MessageRequestDetails(
+                threadId = 7,
+                addresses = listOf("+15551234567"),
+                body = "MMS test",
+                flutterResult = smsResult,
+            )
         }
 
         try {
@@ -97,6 +98,7 @@ class OutboundMmsRecordTest {
             ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
             assertEquals(expectedBox, provider.row.getAsInteger("msg_box"))
+            assertFalse("a send result never writes the delivery status", "st" in provider.writtenKeys)
             assertEquals(1, provider.updates)
             assertEquals(1, result.successes.size)
             val returned = JSONObject(result.successes.single() as String)
@@ -123,13 +125,14 @@ private class MmsRecordProvider : ContentProvider() {
         put("msg_box", Telephony.Mms.MESSAGE_BOX_OUTBOX)
         put("m_type", 128)
         put("sub_id", 3)
-        put("st", Telephony.Sms.STATUS_PENDING)
     }
     var updates = 0
+    val writtenKeys = mutableSetOf<String>()
     override fun onCreate() = true
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
         assertEquals("content://mms/9001", uri.toString())
         row.putAll(requireNotNull(values))
+        writtenKeys += values.keySet()
         updates++
         return 1
     }
