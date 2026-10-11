@@ -28,7 +28,7 @@ import java.io.File
 const val SENTSMS_ACTION = "com.simplezen.simple_sms.SMS_SENT"
 const val SENTMMS_ACTION = "com.simplezen.simple_sms.MMS_SENT"
 const val DELIVEREDSMS_ACTION = "com.simplezen.simple_sms.SMS_DELIVERED"
-const val TAG = "OutboundSender" // For logs
+private const val TAG = "OutboundSender"
 
 // ─── Stable PlatformException error codes ─────────────────────────────
 // Dart-side callers switch on these strings via PlatformException.code.
@@ -442,7 +442,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             requestDetails: MessageRequestDetails,
     ) {
         try {
-            Log.d("OutboundSender", "Sending SMS to ${requestDetails.addresses.size} recipient(s)")
+            Log.d(TAG, "Sending SMS to ${requestDetails.addresses.size} recipient(s)")
             val newSms = insertSms(context, requestDetails)
             val newUri = newSms["uri"] as Uri
             val msgId = ContentUris.parseId(newUri).toInt()

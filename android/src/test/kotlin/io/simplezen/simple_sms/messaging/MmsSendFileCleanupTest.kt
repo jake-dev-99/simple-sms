@@ -6,6 +6,8 @@ import android.os.Looper
 import android.telephony.SmsManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
+import io.simplezen.simple_sms.mms.sending.deleteMmsSendFile
+import io.simplezen.simple_sms.mms.sending.newMmsSendFile
 import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -27,7 +29,7 @@ class MmsSendFileCleanupTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     private fun sendFile(): File =
-        File(context.cacheDir, "send.123.dat").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        newMmsSendFile(context).apply { writeBytes(byteArrayOf(1, 2, 3)) }
 
     private fun deliverMmsSent(resultCode: Int, filePath: String?) {
         val intent = statusReceiverIntent(context, SENTMMS_ACTION)
@@ -52,6 +54,19 @@ class MmsSendFileCleanupTest {
         val file = sendFile()
 
         deliverMmsSent(SmsManager.MMS_ERROR_IO_ERROR, file.path)
+
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun aResultWithoutAMessageId_stillDeletesTheSendFile() {
+        // Recording the result gives up early; the file still goes.
+        val file = sendFile()
+        val intent = statusReceiverIntent(context, SENTMMS_ACTION)
+            .putExtra(MmsSentReceiver.EXTRA_FILE_PATH, file.path)
+
+        context.sendOrderedBroadcast(intent, null, null, null, Activity.RESULT_OK, null, null)
+        shadowOf(Looper.getMainLooper()).idle()
 
         assertFalse(file.exists())
     }

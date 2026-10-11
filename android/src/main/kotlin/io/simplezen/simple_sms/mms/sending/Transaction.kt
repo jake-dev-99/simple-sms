@@ -56,8 +56,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Calendar
-import java.util.Random
-import kotlin.math.abs
 import kotlin.math.ceil
 
 /** Canonical row URI remains queryable after outbox -> sent/failed transitions. */
@@ -528,9 +526,8 @@ class Transaction(private val context: Context, settings: Settings) {
             existingMessageUri: Uri?,
             onPersisted: ((Uri) -> Unit)?,
         ) {
+            val mSendFile = newMmsSendFile(context)
             try {
-                val fileName = "send." + abs(Random().nextLong()).toString() + ".dat"
-                val mSendFile = File(context.cacheDir, fileName)
 
                 val sendReq = buildPdu(context, fromAddress, addresses, subject, parts)
                 val messageUri: Uri?
@@ -642,6 +639,9 @@ class Transaction(private val context: Context, settings: Settings) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "error using system sending method", e)
+                // No SENT broadcast will report this send, so its receiver
+                // won't delete the send file (UNFY-311).
+                if (mSendFile.exists()) deleteMmsSendFile(context, mSendFile.path)
                 throw e
             }
         }

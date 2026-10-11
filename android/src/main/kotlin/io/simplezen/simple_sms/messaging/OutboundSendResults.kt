@@ -27,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap
  * gone, is no longer tracked; its row is still recorded.
  */
 internal object OutboundSendResults {
+    private const val TAG = "OutboundSendResults"
+
     /** A send awaiting its SENT result, and the engine's sender that started it. */
     private class Tracked(
             val owner: OutboundSender,

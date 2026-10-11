@@ -12,7 +12,7 @@ void main() {
     test('declares the four read/write basics SMS/MMS supports', () {
       const c = androidSmsMmsCapabilities;
       expect(c.canSend, true,
-          reason: 'OutboundMessagingHandler exists on every supported Android');
+          reason: 'OutboundSender exists on every supported Android');
       expect(c.canReceive, true,
           reason: 'InboundMessaging broadcast receiver exists');
       expect(c.canDelete, true,
