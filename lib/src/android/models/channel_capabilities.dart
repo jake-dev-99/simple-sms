@@ -83,7 +83,7 @@ class ChannelCapabilities {
 /// but RCS support is a separate provider concern.
 ///
 /// * `canSend` / `canReceive` — the messaging method channels
-///   (`OutboundMessagingHandler`) and the inbound broadcast receiver
+///   (`OutboundSender`) and the inbound broadcast receiver
 ///   (`InboundMessaging`) both exist on every supported Android version.
 /// * `canDelete` — `AndroidDestructiveAction.deleteMessage`/`deleteThread`
 ///   write the native store (default-SMS-app role required at runtime;

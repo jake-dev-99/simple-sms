@@ -2,6 +2,7 @@ package io.simplezen.simple_sms.messaging
 
 import android.content.Context
 import android.util.Log
+import io.simplezen.simple_sms.mms.sending.deleteStaleMmsSendFiles
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -48,6 +49,13 @@ internal object OutboxSweeper {
             if (failed > 0) Log.w(TAG, "Marked $failed stale outbox message(s) failed (SENT result lost)")
         } catch (e: Exception) {
             Log.e(TAG, "Stale outbox sweep failed", e)
+        }
+        // The same lost results leave their MMS send files behind (UNFY-311).
+        try {
+            val deleted = deleteStaleMmsSendFiles(context, STALE_OUTBOX_AGE_MS)
+            if (deleted > 0) Log.w(TAG, "Deleted $deleted stale MMS send file(s) (SENT result lost)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Stale MMS send-file sweep failed", e)
         }
     }
 }

@@ -69,9 +69,9 @@ class OutboundMmsRecordTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val provider = MmsRecordProvider()
         ShadowContentResolver.registerProviderInternal("mms", provider)
-        val handler = OutboundMessagingHandler(context)
+        val handler = OutboundSender(context)
         val result = MmsRecordResult()
-        val request = OutboundMessagingHandler.MessageRequestDetails(
+        val request = OutboundSender.MessageRequestDetails(
             threadId = 7,
             addresses = listOf("+15551234567"),
             body = "MMS test",
@@ -81,7 +81,7 @@ class OutboundMmsRecordTest {
         requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
-            requests[Uri.parse("content://sms/9001")] = OutboundMessagingHandler.MessageRequestDetails(
+            requests[Uri.parse("content://sms/9001")] = OutboundSender.MessageRequestDetails(
                 threadId = 7,
                 addresses = listOf("+15551234567"),
                 body = "MMS test",

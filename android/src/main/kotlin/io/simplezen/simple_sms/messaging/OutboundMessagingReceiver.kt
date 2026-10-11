@@ -11,6 +11,8 @@ import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import android.util.Log
 import androidx.core.net.toUri
+import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
+import io.simplezen.simple_sms.mms.sending.deleteMmsSendFile
 import java.io.IOException
 
 /**
@@ -221,27 +223,39 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             Log.w(TAG_RECEIVER, "Received a broadcast with no action.")
             return
         }
-        val statusString = when (eventType) {
-            DELIVEREDSMS_ACTION -> {
-                onDeliveryReport(context, intent)
-                return
-            }
-            SENTSMS_ACTION -> smsSentStatusString(currentResultCode)
-            SENTMMS_ACTION -> getMmsSentStatusString(currentResultCode)
-            else -> {
-                Log.w(TAG_RECEIVER, "Received unknown action: $eventType")
-                return
-            }
+        when (eventType) {
+            DELIVEREDSMS_ACTION -> onDeliveryReport(context, intent)
+            SENTSMS_ACTION ->
+                onSentResult(context, intent, eventType, smsSentStatusString(currentResultCode), currentResultCode)
+            SENTMMS_ACTION ->
+                // The platform has finished reading the send file whatever the
+                // result, so it goes even if handling the result fails
+                // (UNFY-311).
+                try {
+                    onSentResult(context, intent, eventType, getMmsSentStatusString(currentResultCode), currentResultCode)
+                } finally {
+                    deleteMmsSendFile(context, intent.getStringExtra(MmsSentReceiver.EXTRA_FILE_PATH))
+                }
+            else -> Log.w(TAG_RECEIVER, "Received unknown action: $eventType")
         }
+    }
 
+    /** Hands a SENT result to [SendResultRouter]. */
+    private fun onSentResult(
+        context: Context,
+        intent: Intent,
+        eventType: String,
+        statusString: String,
+        resultCode: Int,
+    ) {
         val messageId = intent.getIntExtra("messageID", -1)
         if (messageId == -1) {
             Log.e(TAG_RECEIVER, "Received $eventType broadcast with no messageID.")
             return
         }
         val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
-        Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $currentResultCode, Status: $statusString")
-        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, currentResultCode, intent.smsPartRef())
+        Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
+        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef())
     }
 
     /**
