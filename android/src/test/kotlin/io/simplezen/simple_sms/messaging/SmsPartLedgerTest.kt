@@ -7,6 +7,7 @@ import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -137,6 +138,25 @@ class SmsPartLedgerTest {
         start(parts = 1, rowId = 99L) // any later send prunes
 
         assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
+    }
+
+    @Test
+    fun aRow_isTracked_whileItsSendsResultsMayStillCome() {
+        val parts = start(parts = 1, rowId = 41L)
+
+        assertTrue(ledger().tracks(41L))
+        assertFalse("another row", ledger().tracks(43L))
+        ledger().recordSent(parts[0], ok)
+        assertTrue("its delivery report may still come", ledger().tracks(41L))
+        ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP)
+        assertFalse("finished", ledger().tracks(41L))
+    }
+
+    @Test
+    fun aSendThatNeverStarted_leavesItsRowUntracked() {
+        val parts = start(parts = 2, rowId = 41L)
+        ledger().forget(parts[0])
+        assertFalse(ledger().tracks(41L))
     }
 
     @Test

@@ -247,7 +247,9 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
     /**
      * Records an SMS delivery report on its row. The row comes from the intent
      * data, which the platform's fill-in cannot replace (no `FILL_IN_DATA`).
-     * Failures are logged, never thrown: nothing is pending on a report.
+     * A report with no part token for a row a tracked send now holds is an
+     * earlier send's, and is ignored ([isStaleUntrackedSmsResult]). Failures
+     * are logged, never thrown: nothing is pending on a report.
      */
     private fun onDeliveryReport(context: Context, intent: Intent) {
         val messageUri = intent.data
@@ -262,6 +264,11 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             return
         }
         val part = intent.smsPartRef()
+        val rowId = messageUri.lastPathSegment?.toLongOrNull()
+        if (part == null && rowId != null && isStaleUntrackedSmsResult(context, rowId)) {
+            Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send made before parts were tracked; ignored")
+            return
+        }
         val status =
             if (part == null) partStatus
             else messageDeliveryStatus(context, messageUri, part, partStatus, format) ?: return

@@ -285,7 +285,8 @@ internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingI
  *   data, which a fill-in cannot replace.
  *
  * A reused row id never inherits an earlier send's results: they carry that
- * send's token, which [SmsPartLedger.start] forgets.
+ * send's token, which [SmsPartLedger.start] forgets, or, from a send made
+ * before parts were tracked, no token at all ([isStaleUntrackedSmsResult]).
  */
 internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
     fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")

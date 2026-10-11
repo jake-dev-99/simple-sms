@@ -145,6 +145,18 @@ internal class SmsPartLedger(
     }
 
     /**
+     * Purpose: whether a send to [rowId] is tracked: its record is kept, so
+     * its results may still come.
+     *
+     * @param rowId the message row's `_id`.
+     * @returns true while a send to the row is tracked.
+     * @throws nothing; an unreadable ledger tracks nothing.
+     */
+    fun tracks(rowId: Long): Boolean = synchronized(LOCK) {
+        rowDirectory(rowId).listFiles().orEmpty().any { it.name.endsWith(RECORD_SUFFIX) }
+    }
+
+    /**
      * Purpose: forgets a send that never started (the radio refused it).
      *
      * @param part any part of the send.
@@ -282,3 +294,13 @@ internal class SmsPartLedger(
         fun forApp(context: Context): SmsPartLedger = SmsPartLedger(File(context.filesDir, LEDGER_DIRECTORY))
     }
 }
+
+/**
+ * Whether an SMS result without a part token for the row [rowId] is stale: a
+ * tracked send to that row is under way, and its own results all carry its
+ * token (UNFY-180). Such a result comes from a send made before parts were
+ * tracked, whose status intents outlived an app update while the provider
+ * reused its row id.
+ */
+internal fun isStaleUntrackedSmsResult(context: Context, rowId: Long): Boolean =
+    SmsPartLedger.forApp(context).tracks(rowId)

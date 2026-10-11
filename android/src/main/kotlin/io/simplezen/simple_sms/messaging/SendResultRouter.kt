@@ -38,7 +38,9 @@ internal object SendResultRouter {
     /**
      * Purpose: settles one SENT result: an SMS part through its send's
      * ledger, an MMS (or an SMS part sent before parts were tracked, which
-     * carries no [part]) on its own.
+     * carries no [part]) on its own. A result with no [part] for a row a
+     * tracked send now holds is that earlier send's, and is ignored
+     * ([isStaleUntrackedSmsResult]).
      *
      * @param part the SMS part reporting, from its intent.
      * @returns nothing.
@@ -53,6 +55,10 @@ internal object SendResultRouter {
         resultCode: Int,
         part: SmsPartRef?,
     ) {
+        if (eventType == SENTSMS_ACTION && part == null && isStaleUntrackedSmsResult(context, messageId.toLong())) {
+            Log.i(TAG, "SENT result for $messageUri from a send made before parts were tracked; ignored")
+            return
+        }
         val settledCode = if (eventType == SENTSMS_ACTION && part != null) {
             settledSmsResult(context, messageUri, part, resultCode) ?: return
         } else {

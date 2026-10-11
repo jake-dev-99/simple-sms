@@ -377,6 +377,43 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun aSentResultWithoutAPartToken_forARowATrackedSendHolds_isIgnored() {
+        // A send made before parts were tracked, whose status intents outlived
+        // an app update, while the provider reused its row id (UNFY-180).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        assertEquals(0, result.calls)
+        assertEquals(0, smsProvider.updates)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+        assertEquals(1, result.calls)
+        assertTrue(result.successPayload is String)
+    }
+
+    @Test
+    fun aDeliveryReportWithoutAPartToken_forARowATrackedSendHolds_isIgnored() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        val part = trackedPart()
+
+        deliverUntrackedReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x41))
+        assertEquals(0, smsProvider.updates)
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part)
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun aDeliveryReportWithoutAPartToken_forAnUntrackedRow_isStillRecorded() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+
+        deliverUntrackedReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00))
+
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
     fun deliveryReport_neverSettlesTheSend() {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
         val result = pendingSend(smsUri)
@@ -726,6 +763,18 @@ class OutboundSendAckTest {
         val fillIn = Intent()
         if (pdu != null) fillIn.putExtra("pdu", pdu).putExtra("format", SmsMessage.FORMAT_3GPP)
         smsStatusIntents(context, 42, smsUri, part).delivered.send(context, Activity.RESULT_OK, fillIn)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** A delivery report on the intent a send made before parts were tracked. */
+    private fun deliverUntrackedReport(pdu: ByteArray) {
+        context.sendBroadcast(
+            Intent(DELIVEREDSMS_ACTION)
+                .setData(smsUri)
+                .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+                .putExtra("pdu", pdu)
+                .putExtra("format", SmsMessage.FORMAT_3GPP),
+        )
         shadowOf(Looper.getMainLooper()).idle()
     }
 
