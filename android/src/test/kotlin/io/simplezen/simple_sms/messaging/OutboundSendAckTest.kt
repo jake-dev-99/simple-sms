@@ -226,6 +226,24 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun multipart_failuresOutOfOrder_settleWithTheFirstFailureToArrive() {
+        smsProvider.row = null
+        val result = pendingSend(smsUri, parts = 3)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_NO_SERVICE, part(2, 3))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part(0, 3))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 3))
+
+        assertEquals(1, result.calls)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, details["resultCode"])
+        assertEquals("ERROR_NO_SERVICE", details["statusString"])
+        assertEquals(1, smsProvider.updates)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.ERROR_CODE))
+    }
+
+    @Test
     fun multipart_allPartsSent_settlesSuccessAfterLastPart() {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri, parts = 2)

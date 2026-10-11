@@ -251,6 +251,29 @@ class SmsPartLedgerTest {
     }
 
     @Test
+    fun aRecordThatDidNotKeepItsFirstFailure_stillSettlesAsFailed() {
+        // As a build from before the first failure was kept wrote it.
+        val parts = start(parts = 2)
+        File(File(directory, "41"), "${parts[0].token}.json").writeText(
+            """{"token":"${parts[0].token}","sentResultCodes":[$failure,null],"deliveryStatuses":[null,null]}"""
+        )
+
+        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(parts[1], ok))
+    }
+
+    @Test
+    fun aRecordWhoseFirstFailureIsNoFailedPart_isRemoved() {
+        val parts = start(parts = 2)
+        File(File(directory, "41"), "${parts[0].token}.json").writeText(
+            """{"token":"${parts[0].token}","sentResultCodes":[$failure,null],""" +
+                """"deliveryStatuses":[null,null],"firstFailedResultCode":$ok}"""
+        )
+
+        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[1], ok))
+        assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
     fun aLastPart3gpp2Report_standsForTheWholeMessage() {
         // A 3GPP2 multipart SMS asks for a report on its last part only.
         val parts = start(parts = 3)

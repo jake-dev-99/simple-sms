@@ -33,10 +33,10 @@ return typed results.
 ### Changed
 
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
-  answers only once every part has reported its carrier result, failed if any
-  part failed (with the first failure to arrive), rather than at the first
-  failed part. The row moves to sent or
-  failed at the same point, even when the parts report to different app
+  answers only once every part has reported its carrier result, no longer at
+  the first failed part's: failed if any part failed, with the result code of
+  the failure reported first, else sent. The row moves to sent or failed at
+  the same point, even when the parts report to different app
   processes: each part has its own status intents, and the parts' results are
   persisted until they add up. The row's delivery status likewise comes from
   every part's report: delivered only once every part is, failed if any part
