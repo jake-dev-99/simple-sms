@@ -33,13 +33,13 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283).
+ * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283, UNFY-180).
  *
  * Drives the real [OutboundMessagingReceiver] callback registered by
  * [OutboundSender] with status broadcasts, against fake `sms` /
  * `mms` providers, and pins how the pending Flutter result is settled:
- * exactly once — after every SENT part succeeded, or at the first failed
- * part; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
+ * exactly once — after every SENT part has reported, failed if any part
+ * failed; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
  * never a URI-only success — when it doesn't, and [ERR_SEND_ACK_FAILED] when
  * the ack can't be built.
  */
