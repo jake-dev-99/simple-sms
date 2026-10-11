@@ -130,7 +130,8 @@ internal class SmsPartLedger(
      *
      * Forgets any earlier send for the same row: the provider reuses a deleted
      * row's `_id`, and the earlier send's late results must not count toward
-     * this one. Also drops every record untouched for
+     * this one. An earlier send's mark ([markUntrackedSend]) is kept for the
+     * rest of its own window. Also drops every record or mark untouched for
      * [DELIVERY_REPORT_WAIT_MS]. Neither reads a record.
      *
      * @param rowId the message row's `_id`.
@@ -153,7 +154,12 @@ internal class SmsPartLedger(
             // still come, though this send's start found nothing to cancel.
             row.listFiles().orEmpty().filter { it.name != UNTRACKED_SEND_MARKER }.forEach { it.delete() }
             // Before the record, so a failed mark leaves no record behind.
-            if (markUntrackedSend) File(ensureRowDirectory(rowId), UNTRACKED_SEND_MARKER).writeBytes(ByteArray(0))
+            if (markUntrackedSend) {
+                val mark = File(ensureDirectory(row), UNTRACKED_SEND_MARKER)
+                mark.writeBytes(ByteArray(0))
+                // Its window runs on this ledger's clock.
+                mark.setLastModified(nowMillis())
+            }
             val token = UUID.randomUUID().toString()
             write(rowId, SmsPartsRecord(token, List(partCount) { null }, List(partCount) { null }))
             (0 until partCount).map { SmsPartRef(token, rowId, it, partCount) }
@@ -173,7 +179,7 @@ internal class SmsPartLedger(
     fun tracks(rowId: Long): Boolean = synchronized(LOCK) {
         val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
         rowDirectory(rowId).listFiles().orEmpty().any {
-            (it.name.endsWith(RECORD_SUFFIX) || it.name == UNTRACKED_SEND_MARKER) && it.lastModified() >= cutoff
+            (it.name.endsWith(RECORD_SUFFIX) || it.name == UNTRACKED_SEND_MARKER) && !it.isOlderThan(cutoff)
         }
     }
 
@@ -252,13 +258,13 @@ internal class SmsPartLedger(
 
     private fun pruneOlderThan(cutoffMillis: Long) {
         directory.listFiles().orEmpty().forEach { row ->
-            row.listFiles().orEmpty().filter { it.lastModified() < cutoffMillis }.forEach { it.delete() }
+            row.listFiles().orEmpty().filter { it.isOlderThan(cutoffMillis) }.forEach { it.delete() }
             if (row.isDirectory && row.list().isNullOrEmpty()) row.delete()
         }
     }
 
     private fun write(rowId: Long, record: SmsPartsRecord) {
-        val file = AtomicFile(File(ensureRowDirectory(rowId), record.token + RECORD_SUFFIX))
+        val file = AtomicFile(File(ensureDirectory(rowDirectory(rowId)), record.token + RECORD_SUFFIX))
         val stream = file.startWrite()
         try {
             stream.write(json.encodeToString(SmsPartsRecord.serializer(), record).toByteArray())
@@ -291,9 +297,12 @@ internal class SmsPartLedger(
 
     private fun rowDirectory(rowId: Long) = File(directory, rowId.toString())
 
-    private fun ensureRowDirectory(rowId: Long): File = rowDirectory(rowId).also { row ->
+    private fun ensureDirectory(row: File): File = row.also {
         if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
     }
+
+    // The one window rule: [tracks] counts what [pruneOlderThan] keeps.
+    private fun File.isOlderThan(cutoffMillis: Long) = lastModified() < cutoffMillis
 
     // Tokens are minted here (UUIDs); anything else could step outside the
     // ledger directory, so it names no record.

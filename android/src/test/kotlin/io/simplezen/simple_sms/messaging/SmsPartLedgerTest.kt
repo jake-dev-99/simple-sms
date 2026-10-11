@@ -177,6 +177,18 @@ class SmsPartLedgerTest {
     }
 
     @Test
+    fun aKeptMark_expiresOnTheEarlierSendsWindow() {
+        start(parts = 1, rowId = 41L, markUntrackedSend = true)
+        now += DELIVERY_REPORT_WAIT_MS / 2
+        val parts = start(parts = 1, rowId = 41L) // nothing left to cancel
+        ledger().recordSent(parts[0], ok)
+        ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP)
+
+        now += DELIVERY_REPORT_WAIT_MS / 2 + 60_000
+        assertFalse(ledger().tracks(41L))
+    }
+
+    @Test
     fun aRecordUntouchedForTheWindow_tracksNothing() {
         // As if the process died before the radio saw a part.
         start(parts = 1, rowId = 41L)
@@ -225,6 +237,7 @@ class SmsPartLedgerTest {
         File(File(directory, "41"), "${parts[0].token}.json").writeText("{ not json")
 
         assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
+        assertTrue(File(directory, "41").isDirectory)
         assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
     }
 
