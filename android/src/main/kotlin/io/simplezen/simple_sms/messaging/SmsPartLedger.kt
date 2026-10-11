@@ -3,6 +3,7 @@ package io.simplezen.simple_sms.messaging
 import android.app.Activity
 import android.content.Context
 import android.provider.Telephony
+import android.telephony.SmsMessage
 import android.util.AtomicFile
 import android.util.Log
 import kotlinx.serialization.Serializable
@@ -178,21 +179,23 @@ internal class SmsPartLedger(
      * Purpose: records one part's delivery report.
      *
      * A later report for the same part replaces the earlier one: the network
-     * sends a pending report first and the final one after it.
+     * sends a pending report first and the final one after it. The last
+     * part's 3GPP2 (CDMA) report stands for every part: CDMA asks for a
+     * report on a multipart SMS's last part only.
      *
      * @param part the reporting part, from its intent.
      * @param status the report's [Telephony.Sms] delivery status.
-     * @param wholeMessage whether the report stands for every part: the last
-     *   part's 3GPP2 (CDMA) report, the only part CDMA asks one for.
+     * @param format the report's PDU format (`3gpp` or `3gpp2`).
      * @returns the message's delivery status after this report, or `null`
      *   when no send has this token.
      * @throws IOException when the record cannot be read or written.
      * @throws IllegalArgumentException when the part does not fit its send.
      */
-    fun recordDelivery(part: SmsPartRef, status: Int, wholeMessage: Boolean): Int? {
+    fun recordDelivery(part: SmsPartRef, status: Int, format: String?): Int? {
         synchronized(LOCK) {
             val record = read(part) ?: return null
             requireFits(record, part)
+            val wholeMessage = format == SmsMessage.FORMAT_3GPP2 && part.index == record.partCount - 1
             val statuses =
                 if (wholeMessage) List(record.partCount) { status }
                 else record.deliveryStatuses.replaced(part.index, status)

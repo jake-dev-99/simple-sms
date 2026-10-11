@@ -255,18 +255,16 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             Log.e(TAG_RECEIVER, "Delivery report without a message URI.")
             return
         }
-        val partStatus = smsDeliveryStatus(intent.getByteArrayExtra("pdu"), intent.getStringExtra("format"))
+        val format = intent.getStringExtra("format")
+        val partStatus = smsDeliveryStatus(intent.getByteArrayExtra("pdu"), format)
         if (partStatus == null) {
             Log.w(TAG_RECEIVER, "No delivery status in the report for $messageUri; row left unchanged.")
             return
         }
         val part = intent.smsPartRef()
-        // CDMA asks for a report on a multipart SMS's last part only.
-        val wholeMessage = part != null && part.index == part.count - 1 &&
-            intent.getStringExtra("format") == SmsMessage.FORMAT_3GPP2
         val status =
             if (part == null) partStatus
-            else messageDeliveryStatus(context, messageUri, part, partStatus, wholeMessage) ?: return
+            else messageDeliveryStatus(context, messageUri, part, partStatus, format) ?: return
         try {
             val updated = persistSmsDeliveryStatus(context, messageUri, status)
             Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri (rows=$updated)")
@@ -277,9 +275,8 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
 
     /**
      * The message-level delivery status after [part]'s report, from every
-     * part's report so far (UNFY-180): one part's report never stands for the
-     * whole message, except a 3GPP2 report on the last part
-     * ([wholeMessage]). `null`, leaving the row unchanged, when the report is
+     * part's report so far (UNFY-180; see [SmsPartLedger.recordDelivery]).
+     * `null`, leaving the row unchanged, when the report is
      * for a send no longer tracked (superseded by a newer send to the same
      * row, or already finished) or names no part of its send. When the ledger
      * cannot be read or written, a one-part SMS's report is the message's; a
@@ -290,14 +287,14 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         messageUri: Uri,
         part: SmsPartRef,
         status: Int,
-        wholeMessage: Boolean,
+        format: String?,
     ): Int? = try {
-        SmsPartLedger.forApp(context).recordDelivery(part, status, wholeMessage).also {
+        SmsPartLedger.forApp(context).recordDelivery(part, status, format).also {
             if (it == null) Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send no longer tracked; ignored")
         }
     } catch (e: IOException) {
         Log.e(TAG_RECEIVER, "SMS part ledger unavailable for $messageUri part ${part.index + 1}/${part.count}'s report", e)
-        status.takeIf { part.count == 1 }
+        status.takeIf { part.standsForMessage }
     } catch (e: IllegalArgumentException) {
         Log.e(TAG_RECEIVER, "Delivery report for $messageUri names no part of its send", e)
         null

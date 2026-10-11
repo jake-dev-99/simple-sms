@@ -238,7 +238,13 @@ internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
  * @param index the part's zero-based index.
  * @param count how many parts the send has.
  */
-internal data class SmsPartRef(val token: String, val rowId: Long, val index: Int, val count: Int)
+internal data class SmsPartRef(val token: String, val rowId: Long, val index: Int, val count: Int) {
+    /**
+     * Whether this part's own result is the message's: a one-part SMS. Used
+     * when [SmsPartLedger] is unavailable and the parts cannot be added up.
+     */
+    val standsForMessage: Boolean get() = count == 1
+}
 
 private const val EXTRA_PART_TOKEN = "partToken"
 private const val EXTRA_PART_ROW_ID = "partRowId"

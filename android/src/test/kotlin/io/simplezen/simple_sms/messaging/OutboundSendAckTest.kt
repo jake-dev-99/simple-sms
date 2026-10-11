@@ -309,9 +309,36 @@ class OutboundSendAckTest {
         makeUnreadable(part(0, 2))
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
-
-        assertEquals("the outcome is unknown; the timeout settles it", 0, result.calls)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+        assertEquals("every part reported, but they cannot be added up", 0, result.calls)
         assertEquals(0, smsProvider.updates)
+
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SEND_RESULT_TIMEOUT_MS))
+
+        assertEquals(1, result.calls)
+        assertEquals(ERR_SEND_RESULT_TIMEOUT, result.errorCode)
+    }
+
+    @Test
+    fun anUnavailableLedger_leavesAMultipartSmsDeliveryStatusAsIs() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 2)
+        makeUnreadable(part(0, 2))
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part(0, 2))
+
+        assertEquals(0, smsProvider.updates)
+    }
+
+    @Test
+    fun anUnavailableLedger_stillRecordsAOnePartSmsReport() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 1)
+        makeUnreadable(part())
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
     }
 
     @Test

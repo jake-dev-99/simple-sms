@@ -77,7 +77,7 @@ internal object SendResultRouter {
             SmsPartLedger.forApp(context).recordSent(part, resultCode)
         } catch (e: IOException) {
             Log.e(TAG, "SMS part ledger unavailable for $messageUri part ${part.index + 1}/${part.count}", e)
-            return resultCode.takeIf { part.count == 1 }
+            return resultCode.takeIf { part.standsForMessage }
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "SENT result for $messageUri names no part of its send", e)
             return null

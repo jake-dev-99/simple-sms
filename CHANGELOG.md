@@ -29,8 +29,10 @@ Release as a minor bump: `Sms.status` changes type.
   failed, pending in between; a 3GPP2 (CDMA) report on the last part, the only
   part CDMA asks one for, stands for the whole message. Results for a send
   whose row was deleted and its id reused are ignored. If the app's files
-  cannot be read or written, a one-part SMS still settles from its result; a
-  multipart one's outcome is unknown and settles as `SEND_RESULT_TIMEOUT`.
+  cannot be read or written, a one-part SMS still settles from its result and
+  report; a multipart one is never settled from a single part: its delivery
+  status is left as is, and its send settles as `SEND_RESULT_TIMEOUT` (or, if
+  the app process died, is marked failed by the stale-outbox sweep).
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
   outbound SMS whose delivery report failed is `failed`; a sent SMS whose
   report says complete is `delivered`.

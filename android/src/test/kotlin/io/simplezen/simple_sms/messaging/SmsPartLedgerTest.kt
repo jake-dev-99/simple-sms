@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.provider.Telephony
 import android.telephony.SmsManager
+import android.telephony.SmsMessage
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -80,7 +81,7 @@ class SmsPartLedgerTest {
         ledger().recordSent(parts[0], failure)
 
         assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
-        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
     }
 
     @Test
@@ -89,8 +90,8 @@ class SmsPartLedgerTest {
         ledger().recordSent(parts[0], ok)
         ledger().recordSent(parts[1], ok)
 
-        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
         assertEquals("delivered: nothing more to wait for", SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
     }
 
@@ -100,7 +101,7 @@ class SmsPartLedgerTest {
         ledger().recordSent(parts[0], ok)
         ledger().recordSent(parts[1], ok)
 
-        assertEquals(Telephony.Sms.STATUS_FAILED, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_FAILED, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_FAILED, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_FAILED, SmsMessage.FORMAT_3GPP))
     }
 
     @Test
@@ -108,14 +109,14 @@ class SmsPartLedgerTest {
         val parts = start(parts = 1)
         ledger().recordSent(parts[0], ok)
 
-        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_PENDING, wholeMessage = false))
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_PENDING, SmsMessage.FORMAT_3GPP))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
     }
 
     @Test
     fun deliveryBeforeEverySentResult_stillSettlesTheSendAfterwards() {
         val parts = start(parts = 1)
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
         assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(parts[0], ok))
     }
 
@@ -135,7 +136,7 @@ class SmsPartLedgerTest {
         now += DELIVERY_REPORT_WAIT_MS + 60_000 // past the record's last write
         start(parts = 1, rowId = 99L) // any later send prunes
 
-        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP))
     }
 
     @Test
@@ -160,15 +161,36 @@ class SmsPartLedgerTest {
     }
 
     @Test
-    fun aWholeMessageReport_settlesEveryPartsDelivery() {
-        // A 3GPP2 multipart SMS asks for a report on its last part only; the
-        // receiver passes wholeMessage only for that report.
+    fun aLastPart3gpp2Report_standsForTheWholeMessage() {
+        // A 3GPP2 multipart SMS asks for a report on its last part only.
         val parts = start(parts = 3)
         parts.forEach { ledger().recordSent(it, ok) }
 
         assertEquals(
             Telephony.Sms.STATUS_COMPLETE,
-            ledger().recordDelivery(parts[2], Telephony.Sms.STATUS_COMPLETE, wholeMessage = true),
+            ledger().recordDelivery(parts[2], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP2),
+        )
+    }
+
+    @Test
+    fun anEarlierPart3gpp2Report_isThatPartsOnly() {
+        val parts = start(parts = 3)
+        parts.forEach { ledger().recordSent(it, ok) }
+
+        assertEquals(
+            Telephony.Sms.STATUS_PENDING,
+            ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP2),
+        )
+    }
+
+    @Test
+    fun aLastPart3gppReport_isThatPartsOnly() {
+        val parts = start(parts = 2)
+        parts.forEach { ledger().recordSent(it, ok) }
+
+        assertEquals(
+            Telephony.Sms.STATUS_PENDING,
+            ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_COMPLETE, SmsMessage.FORMAT_3GPP),
         )
     }
 
