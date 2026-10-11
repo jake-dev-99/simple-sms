@@ -234,12 +234,14 @@ internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
  * One part of an outbound SMS, as its status intents carry it (UNFY-180).
  *
  * @param token the send's [SmsPartLedger] token.
+ * @param rowId the message row's `_id`.
  * @param index the part's zero-based index.
  * @param count how many parts the send has.
  */
-internal data class SmsPartRef(val token: String, val index: Int, val count: Int)
+internal data class SmsPartRef(val token: String, val rowId: Long, val index: Int, val count: Int)
 
 private const val EXTRA_PART_TOKEN = "partToken"
+private const val EXTRA_PART_ROW_ID = "partRowId"
 private const val EXTRA_PART_INDEX = "partIndex"
 private const val EXTRA_PART_COUNT = "partCount"
 
@@ -249,7 +251,12 @@ private const val EXTRA_PART_COUNT = "partCount"
  */
 internal fun Intent.smsPartRef(): SmsPartRef? {
     val token = getStringExtra(EXTRA_PART_TOKEN) ?: return null
-    return SmsPartRef(token, getIntExtra(EXTRA_PART_INDEX, -1), getIntExtra(EXTRA_PART_COUNT, -1))
+    return SmsPartRef(
+        token,
+        getLongExtra(EXTRA_PART_ROW_ID, -1L),
+        getIntExtra(EXTRA_PART_INDEX, -1),
+        getIntExtra(EXTRA_PART_COUNT, -1),
+    )
 }
 
 /** The SENT and DELIVERED status broadcasts for one part of an outbound SMS. */
@@ -277,6 +284,7 @@ internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingI
 internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
     fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")
         .putExtra(EXTRA_PART_TOKEN, part.token)
+        .putExtra(EXTRA_PART_ROW_ID, part.rowId)
         .putExtra(EXTRA_PART_INDEX, part.index)
         .putExtra(EXTRA_PART_COUNT, part.count)
         .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
@@ -333,8 +341,10 @@ internal const val NO_SENT_RESULT_ERROR_CODE = -2
  * Rows a successful SMS SENT result moves to the sent box: those still on
  * their way out, and those failed only for lack of a result
  * ([NO_SENT_RESULT_ERROR_CODE]), since the message did go out after all. A
- * row a multipart part's carrier failure marked failed, or an inbound row that
- * reused a deleted message's id, is never overwritten (UNFY-299).
+ * row a carrier failure marked failed, or an inbound row that reused a
+ * deleted message's id, is never overwritten (UNFY-299). A tracked multipart
+ * SMS reaches here once, for the whole message ([SmsPartLedger]); a part
+ * sent before parts were tracked reaches here on its own.
  */
 internal val SENT_RESULT_SELECTION =
     "${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
@@ -381,8 +391,8 @@ internal fun recordSendResult(
             messageUri,
             failedBoxValues(isMms = eventType == SENTMMS_ACTION).apply {
                 // A carrier failure is final: its own (positive) error code
-                // replaces any no-result marker, so a later successful part
-                // can't move the row to sent.
+                // replaces any no-result marker, so a later success (an
+                // untracked part) can't move the row to sent.
                 if (eventType != SENTMMS_ACTION) put(Telephony.Sms.ERROR_CODE, resultCode)
             },
             null,
@@ -831,12 +841,10 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val parts = smsManager.divideMessage(requestDetails.body)
             val partCount = maxOf(parts.size, 1)
             val ledger = SmsPartLedger.forApp(context)
-            val token = ledger.start(newUri.toString(), msgId, partCount)
-            val statusIntents = (0 until partCount).map { index ->
-                smsStatusIntents(context, msgId, newUri, SmsPartRef(token, index, partCount))
-            }
-            awaitResult(newUri, requestDetails)
+            val partRefs = ledger.start(msgId.toLong(), partCount)
             try {
+                val statusIntents = partRefs.map { smsStatusIntents(context, msgId, newUri, it) }
+                awaitResult(newUri, requestDetails)
                 if (parts.size <= 1) {
                     smsManager.sendTextMessage(
                             destAddress,
@@ -858,7 +866,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 }
             } catch (e: Exception) {
                 // No part reached the radio; onMethodCall fails the row.
-                ledger.forget(token)
+                ledger.forget(partRefs.first())
                 throw e
             }
         } catch (e: SecurityException) {

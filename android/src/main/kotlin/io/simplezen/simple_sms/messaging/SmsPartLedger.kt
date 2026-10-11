@@ -27,21 +27,15 @@ internal const val DELIVERY_REPORT_WAIT_MS = 7 * 24 * 60 * 60 * 1000L
  * One outbound SMS's per-part results, as persisted between app processes.
  *
  * @param token the send's id, carried by each part's status intents.
- * @param messageUri the message's `content://sms/N` row.
- * @param messageId the row's `_id`.
  * @param sentResultCodes each part's SENT result code, `null` until reported.
  * @param deliveryStatuses each part's [Telephony.Sms] delivery status, `null`
  *   until its report arrives.
- * @param createdAtMillis when the send started (wall clock), for pruning.
  */
 @Serializable
 internal data class SmsPartsRecord(
     val token: String,
-    val messageUri: String,
-    val messageId: Int,
     val sentResultCodes: List<Int?>,
     val deliveryStatuses: List<Int?>,
-    val createdAtMillis: Long,
 ) {
     init {
         require(sentResultCodes.isNotEmpty()) { "An SMS has at least one part" }
@@ -50,15 +44,16 @@ internal data class SmsPartsRecord(
 
     val partCount: Int get() = sentResultCodes.size
 
-    /** Whether every part reported its SENT result. */
-    val sendSettled: Boolean get() = sentResultCodes.none { it == null }
-
     /**
      * The message's SENT outcome once every part reported: the first failed
      * part's result code, or [Activity.RESULT_OK] when every part was sent.
      */
     val sendResultCode: Int?
-        get() = if (!sendSettled) null else sentResultCodes.firstOrNull { it != Activity.RESULT_OK } ?: Activity.RESULT_OK
+        get() = if (sentResultCodes.any { it == null }) {
+            null
+        } else {
+            sentResultCodes.firstOrNull { it != Activity.RESULT_OK } ?: Activity.RESULT_OK
+        }
 
     /**
      * The message's delivery status from its parts' reports: failed if any
@@ -103,19 +98,20 @@ internal sealed interface SentPartProgress {
  * reports, persisted so the parts of one send add up across app processes
  * (UNFY-180).
  *
- * A multipart SMS fires one SENT broadcast and one delivery report per part,
- * possibly to different app processes: Android starts the app for each
- * result after the sending process died. The row is settled from the
- * message as a whole: sent only once every part was sent, failed if any part
- * failed, delivered only once every part was delivered.
+ * A multipart SMS fires one SENT broadcast per part and up to one delivery
+ * report per part, possibly to different app processes: Android starts the
+ * app for each result after the sending process died. The row is settled
+ * from the message as a whole: sent only once every part was sent, failed if
+ * any part failed, delivered only once every part was delivered.
  *
- * One small file per send, written atomically on the calling thread, like
- * the provider writes that follow it; every access is serialized
- * process-wide. A record is kept until no later
- * result can change its row, or for [DELIVERY_REPORT_WAIT_MS].
+ * One small file per send, under a directory per row (`<row id>/<token>`),
+ * written atomically on the calling thread, like the provider writes that
+ * follow it; every access is serialized process-wide. A record is kept until
+ * no later result can change its row, or for [DELIVERY_REPORT_WAIT_MS] after
+ * its last result.
  *
- * @param directory the directory holding one file per send.
- * @param nowMillis the wall clock, for pruning.
+ * @param directory the ledger's root directory.
+ * @param nowMillis the wall clock, compared with the records' modification times.
  */
 internal class SmsPartLedger(
     private val directory: File,
@@ -126,63 +122,54 @@ internal class SmsPartLedger(
     /**
      * Purpose: records a new send before its parts are handed to the radio.
      *
-     * Also drops every record older than [DELIVERY_REPORT_WAIT_MS], and any
-     * earlier send for the same row: the provider reuses a deleted row's
-     * `_id`, and the earlier send's late results must not count toward this
-     * one.
+     * Forgets any earlier send for the same row: the provider reuses a deleted
+     * row's `_id`, and the earlier send's late results must not count toward
+     * this one. Also drops every record untouched for
+     * [DELIVERY_REPORT_WAIT_MS]. Neither reads a record.
      *
-     * @param messageUri the message's row.
-     * @param messageId the row's `_id`.
+     * @param rowId the message row's `_id`.
      * @param partCount how many parts the body was divided into; ≥ 1.
-     * @returns the new send's token.
+     * @returns the new send's parts, each carrying its token.
      * @throws IOException when the record cannot be written; the send must
      *   then not start, since its results could not be aggregated.
      * @throws IllegalArgumentException when [partCount] is below 1.
      */
-    fun start(messageUri: String, messageId: Int, partCount: Int): String = synchronized(LOCK) {
+    fun start(rowId: Long, partCount: Int): List<SmsPartRef> = synchronized(LOCK) {
         require(partCount >= 1) { "An SMS has at least one part, got $partCount" }
-        val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
-        records().filter { it.messageUri == messageUri || it.createdAtMillis < cutoff }.forEach { forget(it.token) }
-        val record = SmsPartsRecord(
-            token = UUID.randomUUID().toString(),
-            messageUri = messageUri,
-            messageId = messageId,
-            sentResultCodes = List(partCount) { null },
-            deliveryStatuses = List(partCount) { null },
-            createdAtMillis = nowMillis(),
-        )
-        write(record)
-        record.token
+        pruneOlderThan(nowMillis() - DELIVERY_REPORT_WAIT_MS)
+        rowDirectory(rowId).listFiles().orEmpty().forEach { it.delete() }
+        val token = UUID.randomUUID().toString()
+        write(rowId, SmsPartsRecord(token, List(partCount) { null }, List(partCount) { null }))
+        (0 until partCount).map { SmsPartRef(token, rowId, it, partCount) }
     }
 
     /**
      * Purpose: forgets a send that never started (the radio refused it).
      *
-     * @param token the send's token.
+     * @param part any part of the send.
      * @returns nothing.
      * @throws nothing.
      */
-    fun forget(token: String) {
-        synchronized(LOCK) { recordFile(token)?.delete() }
+    fun forget(part: SmsPartRef) {
+        synchronized(LOCK) { recordFile(part)?.delete() }
     }
 
     /**
      * Purpose: records one part's SENT result.
      *
-     * @param token the send's token.
-     * @param partIndex the part's zero-based index.
-     * @param partCount the send's part count, as the part's intent carries it.
+     * @param part the reporting part, from its intent.
      * @param resultCode the broadcast's result code.
      * @returns how the send changed.
-     * @throws IllegalArgumentException when the part does not fit the send.
+     * @throws IOException when the record cannot be read or written.
+     * @throws IllegalArgumentException when the part does not fit its send.
      */
-    fun recordSent(token: String, partIndex: Int, partCount: Int, resultCode: Int): SentPartProgress {
+    fun recordSent(part: SmsPartRef, resultCode: Int): SentPartProgress {
         synchronized(LOCK) {
-            val record = read(token) ?: return SentPartProgress.UnknownSend
-            requirePart(record, partIndex, partCount)
-            if (record.sentResultCodes[partIndex] != null) return SentPartProgress.DuplicatePart
-            val updated = record.copy(sentResultCodes = record.sentResultCodes.replaced(partIndex, resultCode))
-            save(updated)
+            val record = read(part) ?: return SentPartProgress.UnknownSend
+            requireFits(record, part)
+            if (record.sentResultCodes[part.index] != null) return SentPartProgress.DuplicatePart
+            val updated = record.copy(sentResultCodes = record.sentResultCodes.replaced(part.index, resultCode))
+            save(part, updated)
             return updated.sendResultCode?.let(SentPartProgress::Settled) ?: SentPartProgress.AwaitingParts
         }
     }
@@ -193,40 +180,50 @@ internal class SmsPartLedger(
      * A later report for the same part replaces the earlier one: the network
      * sends a pending report first and the final one after it.
      *
-     * @param token the send's token.
-     * @param partIndex the part's zero-based index.
-     * @param partCount the send's part count, as the part's intent carries it.
+     * @param part the reporting part, from its intent.
      * @param status the report's [Telephony.Sms] delivery status.
+     * @param wholeMessage whether the report stands for every part: a 3GPP2
+     *   (CDMA) multipart SMS asks for a report on its last part only.
      * @returns the message's delivery status after this report, or `null`
      *   when no send has this token.
-     * @throws IllegalArgumentException when the part does not fit the send.
+     * @throws IOException when the record cannot be read or written.
+     * @throws IllegalArgumentException when the part does not fit its send.
      */
-    fun recordDelivery(token: String, partIndex: Int, partCount: Int, status: Int): Int? {
+    fun recordDelivery(part: SmsPartRef, status: Int, wholeMessage: Boolean): Int? {
         synchronized(LOCK) {
-            val record = read(token) ?: return null
-            requirePart(record, partIndex, partCount)
-            val updated = record.copy(deliveryStatuses = record.deliveryStatuses.replaced(partIndex, status))
-            save(updated)
+            val record = read(part) ?: return null
+            requireFits(record, part)
+            val statuses =
+                if (wholeMessage) List(record.partCount) { status }
+                else record.deliveryStatuses.replaced(part.index, status)
+            val updated = record.copy(deliveryStatuses = statuses)
+            save(part, updated)
             return updated.deliveryStatus
         }
     }
 
     // Writes [record], or forgets it once no later result can change its row.
-    private fun save(record: SmsPartsRecord) {
-        if (record.finished) forget(record.token) else write(record)
+    private fun save(part: SmsPartRef, record: SmsPartsRecord) {
+        if (record.finished) recordFile(part)?.delete() else write(part.rowId, record)
     }
 
-    private fun requirePart(record: SmsPartsRecord, partIndex: Int, partCount: Int) {
-        require(partCount == record.partCount && partIndex in 0 until partCount) {
-            "Part ${partIndex + 1}/$partCount does not fit send ${record.token} of ${record.partCount} parts"
+    private fun requireFits(record: SmsPartsRecord, part: SmsPartRef) {
+        require(part.count == record.partCount && part.index in 0 until part.count) {
+            "Part ${part.index + 1}/${part.count} does not fit send ${record.token} of ${record.partCount} parts"
         }
     }
 
-    private fun write(record: SmsPartsRecord) {
-        if (!directory.isDirectory && !directory.mkdirs()) {
-            throw IOException("Could not create the SMS part ledger at $directory")
+    private fun pruneOlderThan(cutoffMillis: Long) {
+        directory.listFiles().orEmpty().forEach { row ->
+            row.listFiles().orEmpty().filter { it.lastModified() < cutoffMillis }.forEach { it.delete() }
+            if (row.isDirectory && row.list().isNullOrEmpty()) row.delete()
         }
-        val file = checkNotNull(recordFile(record.token)) { "Invalid token ${record.token}" }
+    }
+
+    private fun write(rowId: Long, record: SmsPartsRecord) {
+        val row = rowDirectory(rowId)
+        if (!row.isDirectory && !row.mkdirs()) throw IOException("Could not create the SMS part ledger at $row")
+        val file = AtomicFile(File(row, record.token + RECORD_SUFFIX))
         val stream = file.startWrite()
         try {
             stream.write(json.encodeToString(SmsPartsRecord.serializer(), record).toByteArray())
@@ -237,49 +234,33 @@ internal class SmsPartLedger(
         }
     }
 
-    private fun read(token: String): SmsPartsRecord? {
-        val file = recordFile(token) ?: return null
+    // A record that cannot be decoded can never be aggregated; it is logged
+    // and removed. One that cannot be read is left for a later attempt.
+    private fun read(part: SmsPartRef): SmsPartsRecord? {
+        val file = recordFile(part) ?: return null
         if (!file.baseFile.exists()) return null
-        return decode(token, file)
+        val text = String(file.readFully())
+        return try {
+            json.decodeFromString(SmsPartsRecord.serializer(), text)
+                .also { require(it.token == part.token) { "Record names send ${it.token}" } }
+        } catch (e: SerializationException) {
+            Log.e(LEDGER_TAG, "Undecodable SMS part record ${part.token}; removing it", e)
+            file.delete()
+            null
+        } catch (e: IllegalArgumentException) {
+            Log.e(LEDGER_TAG, "Invalid SMS part record ${part.token}; removing it", e)
+            file.delete()
+            null
+        }
     }
 
-    private fun records(): List<SmsPartsRecord> =
-        directory.listFiles { file -> file.name.endsWith(RECORD_SUFFIX) }
-            .orEmpty()
-            .mapNotNull { file ->
-                val token = file.name.removeSuffix(RECORD_SUFFIX)
-                val atomic = recordFile(token) ?: run {
-                    Log.e(LEDGER_TAG, "Unexpected file ${file.name} in the SMS part ledger; removing it")
-                    file.delete()
-                    return@mapNotNull null
-                }
-                decode(token, atomic)
-            }
-
-    // A record that cannot be read or decoded can never be aggregated; it is
-    // logged and removed rather than failing every later result.
-    private fun decode(token: String, file: AtomicFile): SmsPartsRecord? = try {
-        json.decodeFromString(SmsPartsRecord.serializer(), String(file.readFully()))
-            .also { require(it.token == token) { "Record names send ${it.token}" } }
-    } catch (e: IOException) {
-        Log.e(LEDGER_TAG, "Unreadable SMS part record $token; removing it", e)
-        file.delete()
-        null
-    } catch (e: SerializationException) {
-        Log.e(LEDGER_TAG, "Undecodable SMS part record $token; removing it", e)
-        file.delete()
-        null
-    } catch (e: IllegalArgumentException) {
-        Log.e(LEDGER_TAG, "Invalid SMS part record $token; removing it", e)
-        file.delete()
-        null
-    }
+    private fun rowDirectory(rowId: Long) = File(directory, rowId.toString())
 
     // Tokens are minted here (UUIDs); anything else could step outside the
     // ledger directory, so it names no record.
-    private fun recordFile(token: String): AtomicFile? {
-        if (token.isEmpty() || !token.all { it.isLetterOrDigit() || it == '-' }) return null
-        return AtomicFile(File(directory, token + RECORD_SUFFIX))
+    private fun recordFile(part: SmsPartRef): AtomicFile? {
+        if (part.token.isEmpty() || !part.token.all { it.isLetterOrDigit() || it == '-' }) return null
+        return AtomicFile(File(rowDirectory(part.rowId), part.token + RECORD_SUFFIX))
     }
 
     private fun <T> List<T>.replaced(index: Int, value: T): List<T> = toMutableList().also { it[index] = value }

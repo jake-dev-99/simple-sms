@@ -26,8 +26,10 @@ Release as a minor bump: `Sms.status` changes type.
   processes: each part has its own status intents, and the parts' results are
   persisted until they add up. The row's delivery status likewise comes from
   every part's report: delivered only once every part is, failed if any part
-  failed, pending in between. Results for a send whose row was deleted and its
-  id reused are ignored.
+  failed, pending in between; a 3GPP2 (CDMA) report, which only the last part
+  asks for, stands for the whole message. Results for a send whose row was
+  deleted and its id reused are ignored. If the app's files cannot be read or
+  written, each part's result is recorded on its own, as before.
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
   outbound SMS whose delivery report failed is `failed`; a sent SMS whose
   report says complete is `delivered`.

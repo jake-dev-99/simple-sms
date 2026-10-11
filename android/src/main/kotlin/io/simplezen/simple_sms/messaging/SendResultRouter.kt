@@ -68,12 +68,14 @@ internal object SendResultRouter {
     }
 
     // The SMS's SENT outcome once [part] completes it, else null (logged).
+    // When the ledger cannot be read or written, the part is settled on its
+    // own, as before parts were tracked, rather than lost.
     private fun settledSmsResult(context: Context, messageUri: Uri, part: SmsPartRef, resultCode: Int): Int? {
         val progress = try {
-            SmsPartLedger.forApp(context).recordSent(part.token, part.index, part.count, resultCode)
+            SmsPartLedger.forApp(context).recordSent(part, resultCode)
         } catch (e: IOException) {
-            Log.e(TAG, "Could not record part ${part.index + 1}/${part.count}'s SENT result for $messageUri", e)
-            return null
+            Log.e(TAG, "SMS part ledger unavailable; recording $messageUri part ${part.index + 1}/${part.count} on its own", e)
+            return resultCode
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "SENT result for $messageUri names no part of its send", e)
             return null

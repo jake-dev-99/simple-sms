@@ -15,6 +15,7 @@ import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.time.Duration
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -50,7 +51,7 @@ class OutboundSendAckTest {
     private lateinit var smsProvider: FakeMessageProvider
     private lateinit var mmsProvider: FakeMessageProvider
     private lateinit var handler: OutboundMessagingHandler
-    private var sendToken: String? = null
+    private var sendParts: List<SmsPartRef>? = null
 
     @Before
     fun setUp() {
@@ -302,14 +303,33 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun anUnavailableLedger_recordsEachPartOnItsOwn_ratherThanLosingIt() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri, parts = 2)
+        val ledgerRoot = File(context.filesDir, "simple_sms_sms_parts")
+        ledgerRoot.deleteRecursively()
+        ledgerRoot.mkdirs()
+        File(ledgerRoot, "42").mkdirs()
+        // The record is now a directory: it cannot be read.
+        File(File(ledgerRoot, "42"), part(0, 2).token + ".json").mkdirs()
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
+
+        assertEquals(1, result.calls)
+        assertEquals(1, smsProvider.updates)
+        File(File(ledgerRoot, "42"), part(0, 2).token + ".json").delete()
+    }
+
+    @Test
     fun eachPart_getsItsOwnStatusIntents() {
-        val first = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 0, 2))
-        val second = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 1, 2))
+        val first = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 2))
+        val second = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 1, 2))
 
         assertFalse(first.sent == second.sent)
         assertFalse(first.delivered == second.delivered)
         val secondSent = shadowOf(second.sent).savedIntent
         assertEquals("t", secondSent.getStringExtra("partToken"))
+        assertEquals(42L, secondSent.getLongExtra("partRowId", -1L))
         assertEquals(1, secondSent.getIntExtra("partIndex", -1))
         assertEquals(2, secondSent.getIntExtra("partCount", -1))
         assertEquals(1, shadowOf(second.delivered).savedIntent.getIntExtra("partIndex", -1))
@@ -392,7 +412,7 @@ class OutboundSendAckTest {
 
     @Test
     fun smsStatusIntents_separateDeliveryReportsFromSendResults() {
-        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 0, 2))
+        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 2))
 
         val sent = shadowOf(intents.sent).savedIntent
         assertEquals(SENTSMS_ACTION, sent.action)
@@ -584,7 +604,7 @@ class OutboundSendAckTest {
 
     @Test
     fun deliveryIntent_isMutableForTheReport_sentIntentIsNot() {
-        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 0, 1))
+        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 1))
         assertFalse("the platform must be able to attach the report", intents.delivered.isImmutable)
         assertTrue(intents.sent.isImmutable)
     }
@@ -614,9 +634,7 @@ class OutboundSendAckTest {
     /** A send this test's handler owns; an SMS's [parts] are tracked in the ledger, as [sendSms] does. */
     private fun pendingSend(messageUri: Uri, parts: Int = 1): RecordingResult {
         val result = RecordingResult()
-        if (messageUri.authority == "sms") {
-            sendToken = SmsPartLedger.forApp(context).start(messageUri.toString(), 42, parts)
-        }
+        if (messageUri.authority == "sms") sendParts = SmsPartLedger.forApp(context).start(42L, parts)
         handler.awaitResult(
             messageUri,
             OutboundMessagingHandler.MessageRequestDetails(
@@ -631,7 +649,8 @@ class OutboundSendAckTest {
     }
 
     /** Part [index] of the [count]-part SMS [pendingSend] started. */
-    private fun part(index: Int = 0, count: Int = 1) = SmsPartRef(checkNotNull(sendToken), index, count)
+    private fun part(index: Int = 0, count: Int = 1): SmsPartRef =
+        checkNotNull(sendParts).single { it.index == index }.also { check(it.count == count) }
 
     /** The SENT broadcast of [part], or of an intent built before parts were tracked when null. */
     private fun deliverStatusBroadcast(
@@ -646,7 +665,10 @@ class OutboundSendAckTest {
             .putExtra("messageID", messageId)
             .putExtra("uri", messageUri.toString())
         if (part != null) {
-            intent.putExtra("partToken", part.token).putExtra("partIndex", part.index).putExtra("partCount", part.count)
+            intent.putExtra("partToken", part.token)
+                .putExtra("partRowId", part.rowId)
+                .putExtra("partIndex", part.index)
+                .putExtra("partCount", part.count)
         }
         context.sendOrderedBroadcast(intent, null, null, null, resultCode, null, null)
         shadowOf(Looper.getMainLooper()).idle()
@@ -668,7 +690,7 @@ class OutboundSendAckTest {
 
     /** Part 0 of the send [pendingSend] started, or of a new one-part send. */
     private fun trackedPart(): SmsPartRef {
-        if (sendToken == null) sendToken = SmsPartLedger.forApp(context).start(smsUri.toString(), 42, 1)
+        if (sendParts == null) sendParts = SmsPartLedger.forApp(context).start(42L, 1)
         return part()
     }
 

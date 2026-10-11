@@ -87,9 +87,9 @@ internal fun deliveryStatusFromReport(status: Int, format: String): Int? {
 
 /**
  * Which rows a delivery report may write (UNFY-293):
- * - not already `STATUS_FAILED`: a failed part is terminal for the whole
- *   message, so a multipart SMS whose later parts report delivered stays
- *   failed;
+ * - not already `STATUS_FAILED`: a failed delivery is terminal for the whole
+ *   message, so a late report (an untracked part's, or a stale one) never
+ *   turns it delivered;
  * - an outbound row whose send was not marked failed (sent, outbox or
  *   queued), so a late report for a deleted message never stamps an inbound
  *   row that reused its id.
@@ -261,7 +261,10 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             return
         }
         val part = intent.smsPartRef()
-        val status = if (part == null) partStatus else messageDeliveryStatus(context, messageUri, part, partStatus) ?: return
+        val wholeMessage = intent.getStringExtra("format") == SmsMessage.FORMAT_3GPP2
+        val status =
+            if (part == null) partStatus
+            else messageDeliveryStatus(context, messageUri, part, partStatus, wholeMessage) ?: return
         try {
             val updated = persistSmsDeliveryStatus(context, messageUri, status)
             Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri (rows=$updated)")
@@ -273,17 +276,26 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
     /**
      * The message-level delivery status after [part]'s report, from every
      * part's report so far (UNFY-180): one part's report never stands for the
-     * whole message. `null`, leaving the row unchanged, when the report is
-     * for a send no longer tracked (superseded by a newer send to the same
-     * row, or already finished) or cannot be recorded.
+     * whole message, except a 3GPP2 one ([wholeMessage]): CDMA asks for a
+     * report on a multipart SMS's last part only. `null`, leaving the row
+     * unchanged, when the report is for a send no longer tracked (superseded
+     * by a newer send to the same row, or already finished) or names no part
+     * of its send. When the ledger cannot be read or written, the part's own
+     * status is recorded, as before parts were tracked, rather than lost.
      */
-    private fun messageDeliveryStatus(context: Context, messageUri: Uri, part: SmsPartRef, status: Int): Int? = try {
-        SmsPartLedger.forApp(context).recordDelivery(part.token, part.index, part.count, status).also {
+    private fun messageDeliveryStatus(
+        context: Context,
+        messageUri: Uri,
+        part: SmsPartRef,
+        status: Int,
+        wholeMessage: Boolean,
+    ): Int? = try {
+        SmsPartLedger.forApp(context).recordDelivery(part, status, wholeMessage).also {
             if (it == null) Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send no longer tracked; ignored")
         }
     } catch (e: IOException) {
-        Log.e(TAG_RECEIVER, "Could not record part ${part.index + 1}/${part.count}'s delivery report for $messageUri", e)
-        null
+        Log.e(TAG_RECEIVER, "SMS part ledger unavailable; recording $messageUri part ${part.index + 1}/${part.count}'s report on its own", e)
+        status
     } catch (e: IllegalArgumentException) {
         Log.e(TAG_RECEIVER, "Delivery report for $messageUri names no part of its send", e)
         null

@@ -29,94 +29,94 @@ class SmsPartLedgerTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val directory = File(context.filesDir, "sms_part_ledger_test")
-    private var now = 1_000_000L
+    private var now = System.currentTimeMillis()
     private val ok = Activity.RESULT_OK
     private val failure = SmsManager.RESULT_ERROR_GENERIC_FAILURE
 
     /** A ledger over the same files, as a new app process would build it. */
     private fun ledger() = SmsPartLedger(directory) { now }
 
-    private fun start(parts: Int, uri: String = "content://sms/41") = ledger().start(uri, 41, parts)
+    private fun start(parts: Int, rowId: Long = 41L): List<SmsPartRef> = ledger().start(rowId, parts)
 
     @Test
     fun singlePart_settlesOnItsOnlyReport() {
-        val token = start(parts = 1)
-        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(token, 0, 1, ok))
+        val parts = start(parts = 1)
+        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(parts[0], ok))
     }
 
     @Test
     fun multipart_waitsForEveryPart() {
-        val token = start(parts = 3)
-        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(token, 0, 3, ok))
-        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(token, 2, 3, ok))
-        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(token, 1, 3, ok))
+        val parts = start(parts = 3)
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[0], ok))
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[2], ok))
+        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(parts[1], ok))
     }
 
     @Test
     fun multipart_successThenFailure_settlesAfterTheLastPart_asFailed() {
-        val token = start(parts = 2)
-        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(token, 0, 2, ok))
-        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(token, 1, 2, failure))
+        val parts = start(parts = 2)
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[0], ok))
+        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(parts[1], failure))
     }
 
     @Test
     fun multipart_failureThenSuccess_settlesAfterTheLastPart_asFailed() {
         // The bug: the first part's report used to decide the whole message.
-        val token = start(parts = 2)
-        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(token, 0, 2, failure))
-        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(token, 1, 2, ok))
+        val parts = start(parts = 2)
+        assertEquals(SentPartProgress.AwaitingParts, ledger().recordSent(parts[0], failure))
+        assertEquals(SentPartProgress.Settled(failure), ledger().recordSent(parts[1], ok))
     }
 
     @Test
     fun aRepeatedPart_isIgnored() {
-        val token = start(parts = 2)
-        ledger().recordSent(token, 0, 2, ok)
-        assertEquals(SentPartProgress.DuplicatePart, ledger().recordSent(token, 0, 2, failure))
+        val parts = start(parts = 2)
+        ledger().recordSent(parts[0], ok)
+        assertEquals(SentPartProgress.DuplicatePart, ledger().recordSent(parts[0], failure))
     }
 
     @Test
     fun aFailedSend_isForgotten_soLaterReportsAreIgnored() {
-        val token = start(parts = 1)
-        ledger().recordSent(token, 0, 1, failure)
+        val parts = start(parts = 1)
+        ledger().recordSent(parts[0], failure)
 
-        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(token, 0, 1, ok))
-        assertNull(ledger().recordDelivery(token, 0, 1, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
+        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
     }
 
     @Test
     fun deliveryStatus_isPendingUntilEveryPartIsComplete() {
-        val token = start(parts = 2)
-        ledger().recordSent(token, 0, 2, ok)
-        ledger().recordSent(token, 1, 2, ok)
+        val parts = start(parts = 2)
+        ledger().recordSent(parts[0], ok)
+        ledger().recordSent(parts[1], ok)
 
-        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(token, 0, 2, Telephony.Sms.STATUS_COMPLETE))
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(token, 1, 2, Telephony.Sms.STATUS_COMPLETE))
-        assertEquals("delivered: nothing more to wait for", SentPartProgress.UnknownSend, ledger().recordSent(token, 0, 2, ok))
+        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals("delivered: nothing more to wait for", SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
     }
 
     @Test
     fun deliveryStatus_anyFailedPart_failsTheMessage() {
-        val token = start(parts = 2)
-        ledger().recordSent(token, 0, 2, ok)
-        ledger().recordSent(token, 1, 2, ok)
+        val parts = start(parts = 2)
+        ledger().recordSent(parts[0], ok)
+        ledger().recordSent(parts[1], ok)
 
-        assertEquals(Telephony.Sms.STATUS_FAILED, ledger().recordDelivery(token, 1, 2, Telephony.Sms.STATUS_FAILED))
+        assertEquals(Telephony.Sms.STATUS_FAILED, ledger().recordDelivery(parts[1], Telephony.Sms.STATUS_FAILED, wholeMessage = false))
     }
 
     @Test
     fun aLaterReportForAPart_replacesItsEarlierOne() {
-        val token = start(parts = 1)
-        ledger().recordSent(token, 0, 1, ok)
+        val parts = start(parts = 1)
+        ledger().recordSent(parts[0], ok)
 
-        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(token, 0, 1, Telephony.Sms.STATUS_PENDING))
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(token, 0, 1, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(Telephony.Sms.STATUS_PENDING, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_PENDING, wholeMessage = false))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
     }
 
     @Test
     fun deliveryBeforeEverySentResult_stillSettlesTheSendAfterwards() {
-        val token = start(parts = 1)
-        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(token, 0, 1, Telephony.Sms.STATUS_COMPLETE))
-        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(token, 0, 1, ok))
+        val parts = start(parts = 1)
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
+        assertEquals(SentPartProgress.Settled(ok), ledger().recordSent(parts[0], ok))
     }
 
     @Test
@@ -124,38 +124,62 @@ class SmsPartLedgerTest {
         val earlier = start(parts = 2)
         start(parts = 1)
 
-        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(earlier, 0, 2, ok))
+        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(earlier[0], ok))
     }
 
     @Test
     fun aSendAwaitingDeliveryReports_isForgottenAfterTheWindow() {
-        val token = start(parts = 1)
-        ledger().recordSent(token, 0, 1, ok)
+        val parts = start(parts = 1)
+        ledger().recordSent(parts[0], ok)
 
-        now += DELIVERY_REPORT_WAIT_MS + 1
-        start(parts = 1, uri = "content://sms/99") // any later send prunes
+        now += DELIVERY_REPORT_WAIT_MS + 60_000 // past the record's last write
+        start(parts = 1, rowId = 99L) // any later send prunes
 
-        assertNull(ledger().recordDelivery(token, 0, 1, Telephony.Sms.STATUS_COMPLETE))
+        assertNull(ledger().recordDelivery(parts[0], Telephony.Sms.STATUS_COMPLETE, wholeMessage = false))
     }
 
     @Test
     fun aPartThatDoesNotFitTheSend_isRejected() {
-        val token = start(parts = 2)
-        assertThrows(IllegalArgumentException::class.java) { ledger().recordSent(token, 2, 2, ok) }
-        assertThrows(IllegalArgumentException::class.java) { ledger().recordSent(token, 0, 3, ok) }
+        val part = start(parts = 2)[0]
+        assertThrows(IllegalArgumentException::class.java) { ledger().recordSent(part.copy(index = 2), ok) }
+        assertThrows(IllegalArgumentException::class.java) { ledger().recordSent(part.copy(count = 3), ok) }
     }
 
     @Test
     fun aTokenThatCouldLeaveTheLedger_namesNoSend() {
-        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent("../escape", 0, 1, ok))
+        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(SmsPartRef("../escape", 41L, 0, 1), ok))
     }
 
     @Test
     fun anUndecodableRecord_isRemoved() {
-        val token = start(parts = 1)
-        File(directory, "$token.json").writeText("{ not json")
+        val parts = start(parts = 1)
+        File(File(directory, "41"), "${parts[0].token}.json").writeText("{ not json")
 
-        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(token, 0, 1, ok))
-        assertTrue(directory.listFiles().orEmpty().isEmpty())
+        assertEquals(SentPartProgress.UnknownSend, ledger().recordSent(parts[0], ok))
+        assertTrue(File(directory, "41").listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun aWholeMessageReport_settlesEveryPartsDelivery() {
+        // A 3GPP2 multipart SMS asks for a report on its last part only.
+        val parts = start(parts = 3)
+        parts.forEach { ledger().recordSent(it, ok) }
+
+        assertEquals(
+            Telephony.Sms.STATUS_COMPLETE,
+            ledger().recordDelivery(parts[2], Telephony.Sms.STATUS_COMPLETE, wholeMessage = true),
+        )
+    }
+
+    @Test
+    fun anUnreadableRecord_isKept_andFailsLoudly() {
+        val parts = start(parts = 1)
+        val record = File(File(directory, "41"), "${parts[0].token}.json")
+        record.delete()
+        record.mkdirs() // a directory cannot be read as a file
+
+        assertThrows(java.io.IOException::class.java) { ledger().recordSent(parts[0], ok) }
+        assertTrue(record.exists())
+        record.delete()
     }
 }
