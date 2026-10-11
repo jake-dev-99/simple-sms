@@ -73,15 +73,18 @@ class OutboundMmsRecordTest {
             threadId = 7,
             addresses = listOf("+15551234567"),
             body = "MMS test",
-            sentPendingIntent = null,
-            deliveredPendingIntent = null,
             flutterResult = result,
         )
         val requests = handler.channelResultMap
         requests[Uri.parse("content://mms/9001")] = request
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
-            requests[Uri.parse("content://sms/9001")] = request.copy(flutterResult = smsResult)
+            requests[Uri.parse("content://sms/9001")] = OutboundMessagingHandler.MessageRequestDetails(
+                threadId = 7,
+                addresses = listOf("+15551234567"),
+                body = "MMS test",
+                flutterResult = smsResult,
+            )
         }
 
         try {

@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.app.Activity
 import android.net.Uri
 import android.telephony.SmsManager
 import org.junit.Assert.assertEquals
@@ -70,10 +71,12 @@ class OutboundErrorMappingTest {
         val (code, message, details) = mapSendException(
             MessageRowMissingException(
                 messageUri = Uri.parse("content://mms/7"),
-                eventType = SENTMMS_ACTION,
-                resultCode = SmsManager.MMS_ERROR_IO_ERROR,
-                statusString = "ERROR_MMS_IO_ERROR",
-                sent = false,
+                outcome = CarrierOutcome(
+                    eventType = SENTMMS_ACTION,
+                    resultCode = SmsManager.MMS_ERROR_IO_ERROR,
+                    statusString = "ERROR_MMS_IO_ERROR",
+                    sent = false,
+                ),
             ),
         )
         assertEquals(ERR_MESSAGE_ROW_MISSING, code)
@@ -85,6 +88,37 @@ class OutboundErrorMappingTest {
                 "resultCode" to SmsManager.MMS_ERROR_IO_ERROR,
                 "statusString" to "ERROR_MMS_IO_ERROR",
                 "sent" to false,
+            ),
+            details,
+        )
+    }
+
+    @Test
+    fun sendAckFailed_mapsTo_ackFailedCode_withCarrierOutcomeAndCause() {
+        // UNFY-282: a provider failure after the carrier handled the send keeps
+        // the carrier outcome, never an initiation code like PERMISSION_DENIED.
+        val (code, message, details) = mapSendException(
+            SendAckFailedException(
+                messageUri = Uri.parse("content://sms/42"),
+                outcome = CarrierOutcome(
+                    eventType = SENTSMS_ACTION,
+                    resultCode = Activity.RESULT_OK,
+                    statusString = "SENT_SUCCESS",
+                    sent = true,
+                ),
+                failure = SecurityException("role revoked"),
+            ),
+        )
+        assertEquals(ERR_SEND_ACK_FAILED, code)
+        assertTrue("message names the URI", message.contains("content://sms/42"))
+        assertEquals(
+            mapOf(
+                "messageUri" to "content://sms/42",
+                "eventType" to SENTSMS_ACTION,
+                "resultCode" to Activity.RESULT_OK,
+                "statusString" to "SENT_SUCCESS",
+                "sent" to true,
+                "cause" to "role revoked",
             ),
             details,
         )
