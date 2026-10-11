@@ -14,7 +14,9 @@ import android.content.pm.PackageManager
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -59,6 +61,17 @@ const val ERR_MESSAGE_ROW_MISSING = "MESSAGE_ROW_MISSING"
 // The provider failed while writing the status or reading the row back
 // (UNFY-282).
 const val ERR_SEND_ACK_FAILED = "SEND_ACK_FAILED"
+// No SENT result arrived within [SEND_RESULT_TIMEOUT_MS] (e.g. the radio
+// process crashed mid-send): the outcome is unknown, so `sent` is null
+// (UNFY-299).
+const val ERR_SEND_RESULT_TIMEOUT = "SEND_RESULT_TIMEOUT"
+
+/**
+ * A pending send got no SENT result within [timeoutMs]. Whether the message
+ * went out is unknown; its row is marked failed (UNFY-299).
+ */
+internal class SendResultTimeoutException(val messageUri: Uri, val timeoutMs: Long) :
+    Exception("No SENT result for $messageUri within ${timeoutMs / 1000}s; whether it was sent is unknown")
 
 /**
  * Thrown when an outbound MMS attachment file cannot be read. Surfaces
@@ -197,6 +210,11 @@ internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when
         )
     )
     is SendAckException -> Triple(e.code, e.message, e.ackDetails())
+    is SendResultTimeoutException -> Triple(
+        ERR_SEND_RESULT_TIMEOUT,
+        e.message.orEmpty(),
+        mapOf("messageUri" to e.messageUri.toString(), "sent" to null, "timeoutMs" to e.timeoutMs),
+    )
     is SecurityException -> Triple(
         ERR_PERMISSION_DENIED,
         "Send blocked by missing permission: ${e.message}",
@@ -303,16 +321,41 @@ internal fun markPersistedSendFailed(context: Context, uri: Uri) {
     }
 }
 
+/** SMS types of a row still on its way out. */
+internal val SMS_OUTBOX_TYPES = listOf(Telephony.Sms.MESSAGE_TYPE_OUTBOX, Telephony.Sms.MESSAGE_TYPE_QUEUED)
+
+/** MMS boxes of a row still on its way out. */
+internal val MMS_OUTBOX_BOXES = listOf(Telephony.Mms.MESSAGE_BOX_OUTBOX)
+
+/**
+ * `ERROR_CODE` stamped on an SMS row failed because no SENT result came (the
+ * result timeout or the stale-outbox sweep), not because the carrier reported
+ * a failure. A late carrier success may still move such a row to sent.
+ */
+internal const val NO_SENT_RESULT_ERROR_CODE = -2
+
 /**
  * Rows a successful SMS SENT result moves to the sent box: those still on
- * their way out. A row an earlier multipart part marked failed, or an inbound
- * row that reused a deleted message's id, is never overwritten (UNFY-299).
+ * their way out, and those failed only for lack of a result
+ * ([NO_SENT_RESULT_ERROR_CODE]), since the message did go out after all. A
+ * row a multipart part's carrier failure marked failed, or an inbound row that
+ * reused a deleted message's id, is never overwritten (UNFY-299).
  */
-internal const val SENT_RESULT_SELECTION = "${Telephony.Sms.TYPE} IN (?, ?)"
-internal val SENT_RESULT_ARGS = arrayOf(
-    Telephony.Sms.MESSAGE_TYPE_OUTBOX.toString(),
-    Telephony.Sms.MESSAGE_TYPE_QUEUED.toString(),
-)
+internal val SENT_RESULT_SELECTION =
+    "${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
+        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?)"
+internal val SENT_RESULT_ARGS = (
+    SMS_OUTBOX_TYPES + listOf(Telephony.Sms.MESSAGE_TYPE_FAILED, NO_SENT_RESULT_ERROR_CODE)
+).map { it.toString() }.toTypedArray()
+
+/** The failed-box write for a row whose SENT result never came. */
+internal fun noResultFailedValues(isMms: Boolean): ContentValues = failedBoxValues(isMms).apply {
+    if (!isMms) put(Telephony.Sms.ERROR_CODE, NO_SENT_RESULT_ERROR_CODE)
+}
+
+/** `column IN (?, ...)` with its arguments. */
+private fun inSelection(column: String, values: List<Int>): Pair<String, Array<String>> =
+    "$column IN (${values.joinToString { "?" }})" to values.map { it.toString() }.toTypedArray()
 
 /**
  * Records a SENT result on its row (UNFY-178). SMS uses the TYPE column, MMS
@@ -353,7 +396,10 @@ internal fun recordSendResult(
         )
         else -> resolver.update(
             messageUri,
-            ContentValues().apply { put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT) },
+            ContentValues().apply {
+                put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                put(Telephony.Sms.ERROR_CODE, 0)
+            },
             SENT_RESULT_SELECTION,
             SENT_RESULT_ARGS,
         )
@@ -368,6 +414,22 @@ internal fun recordSendResult(
 }
 
 /**
+ * Marks the row at [uri] failed for lack of a SENT result
+ * ([noResultFailedValues]), only while it is still on its way out, so a row a
+ * result already settled is left alone. Returns the number of rows updated.
+ */
+internal fun markOutboxRowFailed(context: Context, uri: Uri): Int {
+    val isMms = uri.authority == Telephony.Mms.CONTENT_URI.authority
+    val (selection, args) =
+        if (isMms) inSelection(Telephony.Mms.MESSAGE_BOX, MMS_OUTBOX_BOXES)
+        else inSelection(Telephony.Sms.TYPE, SMS_OUTBOX_TYPES)
+    return context.contentResolver.update(uri, noResultFailedValues(isMms), selection, args)
+}
+
+/** How long a send may wait for its SENT result before it settles as [ERR_SEND_RESULT_TIMEOUT]. */
+internal const val SEND_RESULT_TIMEOUT_MS = 10 * 60 * 1000L
+
+/**
  * How long an outbox message may wait for its SENT result before it counts as
  * lost. A result normally arrives within seconds; a reboot or a radio-process
  * crash mid-send loses it for good.
@@ -375,7 +437,7 @@ internal fun recordSendResult(
 internal const val STALE_OUTBOX_AGE_MS = 10 * 60 * 1000L
 
 /**
- * Marks this app's outbox SMS and MMS rows failed once their SENT result is
+ * Marks this app's SMS (outbox or queued) and MMS outbox rows failed once their SENT result is
  * [STALE_OUTBOX_AGE_MS] overdue, so a send whose result was lost never shows
  * as sending forever (UNFY-299); [OutboxSweeper] decides when. Only rows this
  * app created are touched (an MMS whose provider doesn't stamp the creator is
@@ -392,18 +454,18 @@ internal fun markStaleOutboxFailed(
     return staleOutboxUpdate(
         context,
         Telephony.Sms.CONTENT_URI,
-        failedBoxValues(isMms = false),
+        noResultFailedValues(isMms = false),
         Telephony.Sms.TYPE,
-        Telephony.Sms.MESSAGE_TYPE_OUTBOX,
+        SMS_OUTBOX_TYPES,
         Telephony.Sms.CREATOR,
         cutoff = cutoffMs,
         owned = owned,
     ) + staleOutboxUpdate(
         context,
         Telephony.Mms.CONTENT_URI,
-        failedBoxValues(isMms = true),
+        noResultFailedValues(isMms = true),
         Telephony.Mms.MESSAGE_BOX,
-        Telephony.Mms.MESSAGE_BOX_OUTBOX,
+        MMS_OUTBOX_BOXES,
         Telephony.Mms.CREATOR,
         cutoff = cutoffMs / 1000L,
         owned = owned,
@@ -416,7 +478,7 @@ private fun staleOutboxUpdate(
     table: Uri,
     failed: ContentValues,
     boxColumn: String,
-    outbox: Int,
+    outboxBoxes: List<Int>,
     creatorColumn: String,
     cutoff: Long,
     owned: Collection<Uri>,
@@ -424,11 +486,12 @@ private fun staleOutboxUpdate(
     val ownedIds = owned
         .filter { it.authority == table.authority }
         .mapNotNull { it.lastPathSegment?.toLongOrNull()?.toString() }
+    val (boxSelection, boxArgs) = inSelection(boxColumn, outboxBoxes)
     val selection = buildString {
-        append("$boxColumn = ? AND $creatorColumn = ? AND date < ?")
+        append("$boxSelection AND $creatorColumn = ? AND date < ?")
         if (ownedIds.isNotEmpty()) append(" AND _id NOT IN (${ownedIds.joinToString { "?" }})")
     }
-    val args = arrayOf(outbox.toString(), context.packageName, cutoff.toString()) + ownedIds
+    val args = boxArgs + arrayOf(context.packageName, cutoff.toString()) + ownedIds
     return context.contentResolver.update(table, failed, selection, args)
 }
 
@@ -439,6 +502,46 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
 
     /** The rows of the sends this handler still awaits a result for. */
     internal val pendingSends: Set<Uri> get() = channelResultMap.keys.toSet()
+
+    /** Fires [onResultTimeout] for sends whose SENT result never comes. */
+    private val resultTimeouts = Handler(Looper.getMainLooper())
+
+    /**
+     * Registers [details] as the send pending on [uri] and starts its result
+     * timeout: with no SENT result within [SEND_RESULT_TIMEOUT_MS] of device
+     * uptime (a radio crash mid-send, while this handler lives on), the send
+     * settles as [ERR_SEND_RESULT_TIMEOUT] (UNFY-299).
+     */
+    @VisibleForTesting
+    internal fun awaitResult(uri: Uri, details: MessageRequestDetails) {
+        channelResultMap[uri] = details
+        resultTimeouts.postDelayed({ onResultTimeout(uri, details) }, details, SEND_RESULT_TIMEOUT_MS)
+    }
+
+    /** Stops awaiting [details] on [uri]; true when it was still pending. */
+    private fun forgetSend(uri: Uri, details: MessageRequestDetails): Boolean {
+        resultTimeouts.removeCallbacksAndMessages(details)
+        return channelResultMap.remove(uri, details)
+    }
+
+    /**
+     * Settles a send whose SENT result never came: marks its row failed while
+     * it is still on its way out, and replies once with
+     * [ERR_SEND_RESULT_TIMEOUT]. A result that arrives later is unowned and
+     * recorded by [SendResultRouter]: a failure keeps the row failed, a
+     * success moves it to sent (see [SENT_RESULT_SELECTION]).
+     */
+    private fun onResultTimeout(uri: Uri, details: MessageRequestDetails) {
+        if (!forgetSend(uri, details)) return
+        try {
+            markOutboxRowFailed(context, uri)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed marking timed-out send $uri failed", e)
+        }
+        val (code, message, errorDetails) = mapSendException(SendResultTimeoutException(uri, SEND_RESULT_TIMEOUT_MS))
+        Log.w(TAG, message)
+        details.flutterResult.error(code, message, errorDetails)
+    }
 
     /**
      * One pending outbound send. A plain class, not a data class: it carries
@@ -542,7 +645,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                     }
                 } catch (e: Exception) {
                     requestDetails.messageUri?.let { uri ->
-                        channelResultMap.remove(uri)
+                        forgetSend(uri, requestDetails)
                         try {
                             markPersistedSendFailed(context, uri)
                         } catch (stateError: Exception) {
@@ -579,6 +682,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
         super.onDestroy()
         SendResultRouter.unregister(this)
         // Clean up any pending results to avoid memory leaks if service is destroyed unexpectedly
+        resultTimeouts.removeCallbacksAndMessages(null)
         channelResultMap.clear()
     }
 
@@ -594,6 +698,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
      */
     fun release() {
         SendResultRouter.unregister(this)
+        resultTimeouts.removeCallbacksAndMessages(null)
         channelResultMap.clear()
     }
 
@@ -621,7 +726,8 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
         val part = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
         // Parts still outstanding: nothing is recorded until the send settles.
         val outcome = pending.sentParts.record(part) ?: return true
-        channelResultMap.remove(messageUri, pending)
+        // Recorded while still owned, so a concurrent stale-outbox sweep, which
+        // skips owned sends, can't fail the row between the two.
         val persistFailure: Exception? =
                 try {
                     recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)
@@ -630,6 +736,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                     Log.e(TAG, "Failed writing $eventType status for $messageUri", e)
                     e
                 }
+        forgetSend(messageUri, pending)
         val ack =
                 persistFailure?.let { Ack.Failed(SendAckFailedException(messageUri, outcome, it)) }
                         ?: try {
@@ -702,7 +809,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
-            channelResultMap[newUri] = requestDetails
+            awaitResult(newUri, requestDetails)
 
             val statusIntents = smsStatusIntents(context, msgId, newUri)
 
@@ -831,7 +938,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
-                channelResultMap[uri] = requestDetails
+                awaitResult(uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
         } catch (e: AttachmentUnreadableException) {

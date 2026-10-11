@@ -9,6 +9,14 @@ Release as a minor bump: `Sms.status` changes type.
   the delivery status recorded from delivery reports: `none`, `complete`,
   `pending` or `failed`. Raw TP-Status values in the provider map by range.
 
+### Added
+
+- **`SEND_RESULT_TIMEOUT` (UNFY-299).** `sendMessage` settles with this code
+  when no carrier result arrives within 10 minutes of device uptime (e.g. the
+  radio process crashed mid-send), instead of never completing.
+  `details['sent']` is `null` (unknown). The row is marked failed; a carrier
+  success that arrives later still moves it to sent.
+
 ### Changed
 
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
@@ -19,7 +27,9 @@ Release as a minor bump: `Sms.status` changes type.
   sends read as `sending`. Results are recorded even when the app process
   has died. An SMS or MMS this app sent whose result never came (a reboot
   mid-send) is marked failed once it is 10 minutes overdue: checked whenever
-  the plugin starts on an engine, and again 10 minutes later.
+  the plugin starts on an engine, and again 10 minutes later; a carrier
+  success that arrives later still moves it to sent. A send the app is still
+  awaiting times out instead (`SEND_RESULT_TIMEOUT`).
 - **A send without the default-SMS role fails with `PERMISSION_DENIED`
   (UNFY-299)**, not `SEND_INITIATION_ERROR`: the provider refuses the SMS
   row, and nothing is sent.

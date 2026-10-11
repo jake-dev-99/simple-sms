@@ -81,7 +81,7 @@ class DeliveryReportSelectionTest {
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
             execSQL(
                 "CREATE TABLE sms (_id INTEGER PRIMARY KEY, type INTEGER, status INTEGER DEFAULT -1, " +
-                    "creator TEXT, date INTEGER)",
+                    "creator TEXT, date INTEGER, error_code INTEGER DEFAULT 0)",
             )
         }
 
@@ -89,6 +89,9 @@ class DeliveryReportSelectionTest {
             .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
 
         fun type(id: Long): Int? = db.rawQuery("SELECT type FROM sms WHERE _id = ?", arrayOf(id.toString()))
+            .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
+
+        fun errorCode(id: Long): Int? = db.rawQuery("SELECT error_code FROM sms WHERE _id = ?", arrayOf(id.toString()))
             .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
 
         override fun onCreate(): Boolean = true
