@@ -3,6 +3,9 @@ analyzer:
   errors:
     no_leading_underscores_for_local_identifiers: ignore
     experimental_member_use: ignore  # HiveList is load-bearing; hive_ce keeps it stable.
+  exclude:
+    - build/**
+    - android/**
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
