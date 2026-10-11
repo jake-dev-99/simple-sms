@@ -26,6 +26,10 @@ dependencies:
   flutter:
     sdk: flutter
   simple_query: ^0.2.2
+  # Direct: the native verified deletes call simple_query_android's Kotlin
+  # ContentQuery.queryOrNull, first released in 0.3.0 (UNFY-244 / UNFY-284).
+  # Publish simple_query_android 0.3.0 before releasing this package.
+  simple_query_android: ^0.3.0
   # simple_permissions_native owns the vocabulary for SMS-related
   # runtime permissions (ReceiveSms, ReadSms, SendSms, etc.) and the
   # default-SMS-app role (`DefaultSmsApp`). Any call on this plugin
