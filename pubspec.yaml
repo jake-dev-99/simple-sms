@@ -25,7 +25,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  simple_query: ^0.2.2
+  # 0.3.0 reports a null cursor as SimpleQueryError(unavailable), which
+  # conversation enrichment tolerates per thread (UNFY-299).
+  simple_query: '>=0.2.2 <0.4.0'
   # simple_permissions_native owns the vocabulary for SMS-related
   # runtime permissions (ReceiveSms, ReadSms, SendSms, etc.) and the
   # default-SMS-app role (`DefaultSmsApp`). Any call on this plugin
