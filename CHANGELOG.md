@@ -19,6 +19,15 @@ Release as a minor bump: `Sms.status` changes type.
 
 ### Changed
 
+- **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
+  answers only once every part has reported its carrier result, failed if any
+  part failed, rather than at the first failed part. The row moves to sent or
+  failed at the same point, even when the parts report to different app
+  processes: each part has its own status intents, and the parts' results are
+  persisted until they add up. The row's delivery status likewise comes from
+  every part's report: delivered only once every part is, failed if any part
+  failed, pending in between. Results for a send whose row was deleted and its
+  id reused are ignored.
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
   outbound SMS whose delivery report failed is `failed`; a sent SMS whose
   report says complete is `delivered`.

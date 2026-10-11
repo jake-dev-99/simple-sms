@@ -162,35 +162,6 @@ internal class SendAckFailedException(
 }
 
 /**
- * Collects the per-part SENT results of one outbound send. A multipart SMS
- * fires one SENT broadcast per part (the documented
- * `SmsManager.sendMultipartTextMessage` contract). The send counts as sent
- * only once every part has reported success; the first failing part settles
- * it immediately as failed, since the outcome is then known (UNFY-283).
- */
-internal class SentPartsAggregator {
-    private var expected = 1
-    private var reported = 0
-
-    /** Sets how many SENT reports to wait for; call before the send starts. */
-    fun expectParts(count: Int) {
-        require(count >= 1) { "A send has at least one part, got $count" }
-        check(reported == 0) { "Part count changed after $reported report(s)" }
-        expected = count
-    }
-
-    /**
-     * Records one part's result; returns the settled outcome on the first
-     * failed part or once every part has succeeded, else null. The owner stops
-     * recording once a send settles, so extra reports never reach here.
-     */
-    fun record(part: CarrierOutcome): CarrierOutcome? {
-        reported++
-        return if (!part.sent || reported >= expected) part else null
-    }
-}
-
-/**
  * Maps an exception thrown from [sendSms] / [sendMms], or raised by the
  * send-status ack path, into the typed `(code, message, details)` triple
  * consumed by [MethodChannel.Result.error].
@@ -259,44 +230,68 @@ internal fun routeMessage(hasAttachments: Boolean, recipientCount: Int): Outboun
 internal fun selectSubscriptionId(explicit: Int?, default: () -> Int): Int =
     explicit ?: default()
 
-/** The SENT and DELIVERED status broadcasts for one outbound SMS row. */
+/**
+ * One part of an outbound SMS, as its status intents carry it (UNFY-180).
+ *
+ * @param token the send's [SmsPartLedger] token.
+ * @param index the part's zero-based index.
+ * @param count how many parts the send has.
+ */
+internal data class SmsPartRef(val token: String, val index: Int, val count: Int)
+
+private const val EXTRA_PART_TOKEN = "partToken"
+private const val EXTRA_PART_INDEX = "partIndex"
+private const val EXTRA_PART_COUNT = "partCount"
+
+/**
+ * The part a status intent reports on, or `null` for an intent built before
+ * parts were tracked (UNFY-180), which carries none.
+ */
+internal fun Intent.smsPartRef(): SmsPartRef? {
+    val token = getStringExtra(EXTRA_PART_TOKEN) ?: return null
+    return SmsPartRef(token, getIntExtra(EXTRA_PART_INDEX, -1), getIntExtra(EXTRA_PART_COUNT, -1))
+}
+
+/** The SENT and DELIVERED status broadcasts for one part of an outbound SMS. */
 internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingIntent)
 
 /**
- * Builds the status broadcasts for the SMS row at [messageUri]. Every part of
- * a multipart send shares both intents; the receiver counts the SENT reports
- * per part (UNFY-283).
+ * Builds the status broadcasts for one [part] of the SMS row at [messageUri].
+ * Each part gets its own pair, told apart by their identifier, so every
+ * part's result reaches [SmsPartLedger], which settles the row from all of
+ * them (UNFY-180).
  *
  * Both target the manifest-declared [OutboundMessagingReceiver], so they are
  * recorded even after the app process has gone (UNFY-293, UNFY-299).
  *
- * - SENT is routed to the handler that owns the send ([SendResultRouter]),
- *   or recorded on the row when none does. It needs no fill-in and stays
+ * - SENT is routed through [SendResultRouter]. It needs no fill-in and stays
  *   immutable.
  * - Delivery reports get their own [DELIVEREDSMS_ACTION] so they are never
  *   read as send results. That intent is mutable so the platform can
  *   attach the report (`pdu`, `format` extras); the row travels as the intent
  *   data, which a fill-in cannot replace.
  *
- * FLAG_CANCEL_CURRENT: a reused row id must not inherit an earlier send's
- * still-pending intents, whose late reports would land on the new row.
+ * A reused row id never inherits an earlier send's results: they carry that
+ * send's token, which [SmsPartLedger.start] forgets.
  */
-internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri): SmsStatusIntents {
+internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
+    fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")
+        .putExtra(EXTRA_PART_TOKEN, part.token)
+        .putExtra(EXTRA_PART_INDEX, part.index)
+        .putExtra(EXTRA_PART_COUNT, part.count)
+        .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
     val sent = Intent(SENTSMS_ACTION)
         .putExtra("messageID", messageId)
         .putExtra("uri", messageUri.toString())
-        .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+        .forPart()
     val delivered = Intent(DELIVEREDSMS_ACTION)
         .setData(messageUri)
-        .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+        .forPart()
+    // Mutable is the default before Android 12 (S), which has no flag for it.
     val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
     return SmsStatusIntents(
-        sent = PendingIntent.getBroadcast(
-            context, messageId, sent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
-        ),
-        delivered = PendingIntent.getBroadcast(
-            context, messageId, delivered, mutable or PendingIntent.FLAG_CANCEL_CURRENT,
-        ),
+        sent = PendingIntent.getBroadcast(context, messageId, sent, PendingIntent.FLAG_IMMUTABLE),
+        delivered = PendingIntent.getBroadcast(context, messageId, delivered, mutable),
     )
 }
 
@@ -565,10 +560,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val attachmentPaths: List<String>? = null,
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
-    ) {
-        /** Settles this send from its SENT part reports (UNFY-283). */
-        internal val sentParts = SentPartsAggregator()
-    }
+    )
 
     // Constructor used by Flutter plugin registration
     constructor(context: Context) : this() {
@@ -713,12 +705,11 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     }
 
     /**
-     * Takes one SENT result for a send this handler owns; returns false, doing
-     * nothing, when it owns none ([SendResultRouter] then records it). Once
-     * the send's SENT parts settle its outcome, records it on the row
-     * ([recordSendResult]) and sends the Flutter reply exactly once; until
-     * then a successful part changes nothing, so a multipart SMS leaves the
-     * outbox only when every part was sent.
+     * Takes the settled SENT outcome of a send this handler owns; returns
+     * false, doing nothing, when it owns none ([SendResultRouter] then records
+     * it). Records it on the row ([recordSendResult]) and sends the Flutter
+     * reply exactly once. A multipart SMS arrives here once every part has
+     * reported ([SmsPartLedger]), so `send()` reflects the whole message.
      *
      * Failures here happen after the carrier has handled the send, so they
      * settle the pending send as [ERR_SEND_ACK_FAILED] instead of escaping the
@@ -733,9 +724,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             resultCode: Int,
     ): Boolean {
         val pending = channelResultMap[messageUri] ?: return false
-        val part = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
-        // Parts still outstanding: nothing is recorded until the send settles.
-        val outcome = pending.sentParts.record(part) ?: return true
+        val outcome = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
         // Recorded while still owned, so a concurrent stale-outbox sweep, which
         // skips owned sends, can't fail the row between the two.
         val persistFailure: Exception? =
@@ -819,9 +808,6 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
-            awaitResult(newUri, requestDetails)
-
-            val statusIntents = smsStatusIntents(context, msgId, newUri)
 
             val rawDest = requestDetails.addresses.first()
             // formatNumber may return null for non-E.164-parseable
@@ -830,14 +816,10 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             // and other carrier-specific destinations directly.
             val destAddress = formatNumber(context, rawDest) ?: rawDest
 
-            // Use SmsManager's segmenter to decide whether the body
-            // fits in a single SMS or needs multipart concatenation.
-            // For bodies that fit (≤ 160 7-bit / 70 UCS-2 chars) we
-            // call the single-message API; for longer bodies we use
-            // sendMultipartTextMessage with one PendingIntent per
-            // part (all pointing at the same broadcast). The pending
-            // send settles once every part reports success, or on the
-            // first failed part (UNFY-283).
+            // Each part gets its own SENT and DELIVERED intent; the ledger
+            // settles the row, and this send, once every part has reported
+            // (UNFY-180). Its record is written before the radio sees a
+            // part, or the send does not start.
             //
             // Doing this in our own send path (instead of routing to
             // Klinker's Transaction.sendNewMessage for long bodies)
@@ -847,31 +829,37 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             // so going through Klinker for long bodies left the
             // message stuck at "Sending…" with no status callback.
             val parts = smsManager.divideMessage(requestDetails.body)
-            requestDetails.sentParts.expectParts(maxOf(parts.size, 1))
-            if (parts.size <= 1) {
-                smsManager.sendTextMessage(
-                        destAddress,
-                        null, // originating address
-                        requestDetails.body,
-                        statusIntents.sent,
-                        statusIntents.delivered,
-                        msgId.toLong()
-                )
-            } else {
-                val sentPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
-                    repeat(parts.size) { add(statusIntents.sent) }
+            val partCount = maxOf(parts.size, 1)
+            val ledger = SmsPartLedger.forApp(context)
+            val token = ledger.start(newUri.toString(), msgId, partCount)
+            val statusIntents = (0 until partCount).map { index ->
+                smsStatusIntents(context, msgId, newUri, SmsPartRef(token, index, partCount))
+            }
+            awaitResult(newUri, requestDetails)
+            try {
+                if (parts.size <= 1) {
+                    smsManager.sendTextMessage(
+                            destAddress,
+                            null, // originating address
+                            requestDetails.body,
+                            statusIntents.single().sent,
+                            statusIntents.single().delivered,
+                            msgId.toLong()
+                    )
+                } else {
+                    smsManager.sendMultipartTextMessage(
+                            destAddress,
+                            null, // originating address
+                            parts,
+                            ArrayList(statusIntents.map { it.sent }),
+                            ArrayList(statusIntents.map { it.delivered }),
+                            msgId.toLong()
+                    )
                 }
-                val deliveredPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
-                    repeat(parts.size) { add(statusIntents.delivered) }
-                }
-                smsManager.sendMultipartTextMessage(
-                        destAddress,
-                        null, // originating address
-                        parts,
-                        sentPendingIntents,
-                        deliveredPendingIntents,
-                        msgId.toLong()
-                )
+            } catch (e: Exception) {
+                // No part reached the radio; onMethodCall fails the row.
+                ledger.forget(token)
+                throw e
             }
         } catch (e: SecurityException) {
             // Permission revoked between request and send (rare race).
