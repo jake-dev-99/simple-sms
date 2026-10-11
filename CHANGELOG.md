@@ -12,10 +12,9 @@ return typed results.
   Every delete requires the default-SMS role and is read back natively; one
   that can't be verified throws `DeleteFailedException` carrying a
   `DeleteFailureReason` (`notDefaultSmsApp`, `deleteIncomplete`,
-  `deleteFailed`, `verifyFailed`, `absenceUnverified`, `invalidArgument`).
-  On Android 14+, the provider filters messages by the calling user's
-  subscriptions, so a `deleteMessage` that removes nothing throws
-  `absenceUnverified` instead of resolving to `alreadyAbsent`.
+  `deleteFailed`, `verifyFailed`, `invalidArgument`). A message the provider
+  doesn't return resolves to `alreadyAbsent`, as in AOSP Messaging, including
+  one the Android 14+ per-user subscription filter hides (UNFY-330).
 
 - **`Sms.status` is now `SmsDeliveryStatus?` (UNFY-299).** It was typed as the
   MMS `AndroidMessageStatus` enum, so it was null for every SMS. It now carries

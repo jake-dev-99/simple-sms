@@ -24,7 +24,7 @@ class DeleteVerificationTest {
     fun rowsDeleted_nothingLeft_isDeleted() {
         assertEquals(
             DeleteOutcome.DELETED,
-            classifyDelete(3, DeleteReadBack(survivingRows = 0, absenceProvable = true)),
+            classifyDelete(3, DeleteReadBack(survivingRows = 0)),
         )
     }
 
@@ -32,7 +32,7 @@ class DeleteVerificationTest {
     fun nothingDeleted_nothingLeft_isAlreadyAbsent() {
         assertEquals(
             DeleteOutcome.ALREADY_ABSENT,
-            classifyDelete(0, DeleteReadBack(survivingRows = 0, absenceProvable = true)),
+            classifyDelete(0, DeleteReadBack(survivingRows = 0)),
         )
     }
 
@@ -41,7 +41,7 @@ class DeleteVerificationTest {
         // The silently ignored write: 0 rows reported while the target survives.
         assertEquals(
             DeleteOutcome.INCOMPLETE,
-            classifyDelete(0, DeleteReadBack(survivingRows = 2, absenceProvable = true)),
+            classifyDelete(0, DeleteReadBack(survivingRows = 2)),
         )
     }
 
@@ -50,7 +50,7 @@ class DeleteVerificationTest {
         // A partly applied delete.
         assertEquals(
             DeleteOutcome.INCOMPLETE,
-            classifyDelete(4, DeleteReadBack(survivingRows = 1, absenceProvable = true)),
+            classifyDelete(4, DeleteReadBack(survivingRows = 1)),
         )
     }
 
@@ -65,7 +65,6 @@ class DeleteVerificationTest {
                     survivingRows = 0,
                     arrivedRows = 1,
                     threadRowListed = true,
-                    absenceProvable = true,
                 ),
             ),
         )
@@ -82,7 +81,6 @@ class DeleteVerificationTest {
                     survivingRows = 0,
                     arrivedRows = 1,
                     threadRowListed = false,
-                    absenceProvable = true,
                 ),
             ),
         )
@@ -99,7 +97,6 @@ class DeleteVerificationTest {
                     survivingRows = 1,
                     arrivedRows = 2,
                     threadRowListed = true,
-                    absenceProvable = true,
                 ),
             ),
         )
@@ -115,36 +112,8 @@ class DeleteVerificationTest {
                 DeleteReadBack(
                     survivingRows = 0,
                     threadRowListed = true,
-                    absenceProvable = true,
                 ),
             ),
-        )
-    }
-
-    @Test
-    fun nothingDeleted_nothingLeft_absenceUnprovable_isAbsenceUnverified() {
-        // A message invisible before the delete: gone, or hidden by the
-        // provider's per-user subscription filter — the read-back can't tell.
-        assertEquals(
-            DeleteOutcome.ABSENCE_UNVERIFIED,
-            classifyDelete(0, DeleteReadBack(survivingRows = 0, absenceProvable = false)),
-        )
-    }
-
-    @Test
-    fun rowsDeleted_nothingLeft_absenceUnprovable_isDeleted() {
-        // Rows the delete removed were visible to it, so the delete proves itself.
-        assertEquals(
-            DeleteOutcome.DELETED,
-            classifyDelete(1, DeleteReadBack(survivingRows = 0, absenceProvable = false)),
-        )
-    }
-
-    @Test
-    fun survivorsWinOverUnprovableAbsence_isIncomplete() {
-        assertEquals(
-            DeleteOutcome.INCOMPLETE,
-            classifyDelete(0, DeleteReadBack(survivingRows = 1, absenceProvable = false)),
         )
     }
 
