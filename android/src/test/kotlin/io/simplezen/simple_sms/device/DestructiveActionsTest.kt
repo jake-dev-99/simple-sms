@@ -293,23 +293,23 @@ class DestructiveActionsTest {
     }
 
     /**
-     * Purpose: from Android 14 the per-user subscription filter hides a message
-     * from the delete and the read-back alike (Codex P2), so a delete that
-     * removes nothing and finds nothing is never reported as already absent.
+     * Purpose: a message the provider doesn't return is deleted as far as this
+     * app is concerned (UNFY-330) — from Android 14 that includes one the
+     * per-user subscription filter hides from the delete and the read alike.
      */
     @Test
-    fun deleteMessage_nothingDeletedNothingLeft_fromAndroid14_isAbsenceUnverified() {
+    fun deleteMessage_nothingDeletedNothingLeft_isAlreadyAbsent() {
         for (channel in listOf("sms", "mms")) {
             listOf(sms, mms).forEach { it.reset() }
 
             val result = invoke(MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to channel)))
 
-            assertEquals(listOf("ABSENCE_UNVERIFIED"), result.errors)
-            assertTrue(result.successes.isEmpty())
+            assertEquals(listOf<Any?>("alreadyAbsent"), result.successes)
+            assertTrue(result.errors.isEmpty())
         }
     }
 
-    /** Purpose: before Android 14 there is no per-user filter, so an empty read-back proves absence. */
+    /** Purpose: below Android 14, with no per-user filter, the same result. */
     @Test
     @Config(sdk = [33])
     fun deleteMessage_nothingDeletedNothingLeft_belowAndroid14_isAlreadyAbsent() {

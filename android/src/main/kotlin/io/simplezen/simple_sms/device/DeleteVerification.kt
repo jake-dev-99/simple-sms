@@ -14,10 +14,11 @@ enum class DeleteOutcome {
     DELETED,
 
     /**
-     * No messages were deleted, nothing remains, and the target's absence is
-     * proven ([DeleteReadBack.absenceProvable]) — it had nothing to delete (a
-     * thread with no messages may still have had its empty thread row pruned
-     * by the provider).
+     * No messages were deleted and nothing remains — it had nothing to delete
+     * (a thread with no messages may still have had its empty thread row
+     * pruned by the provider). A target the provider doesn't return is
+     * deleted as far as this app is concerned, as in AOSP Messaging, whose
+     * `DeleteMessageAction` treats a 0-row telephony delete as done.
      */
     ALREADY_ABSENT,
 
@@ -38,17 +39,6 @@ enum class DeleteOutcome {
      * cause was transient; hidden messages stay out of this app's reach.
      */
     INCOMPLETE,
-
-    /**
-     * A message delete removed nothing and nothing remains, but the provider
-     * filters this app's view by the calling user's subscriptions (Android
-     * 14+, AOSP `ProviderUtil.getSelectionBySubIds`), and the filter applies to
-     * the delete and every read alike — so an empty result can't prove the
-     * message gone. Usually it already is; it may instead be hidden (e.g. on a
-     * SIM associated with a work profile). Message deletes only — a thread's
-     * absence is proven by its unfiltered `threads` row (see [DeleteReadBack]).
-     */
-    ABSENCE_UNVERIFIED,
 }
 
 /**
@@ -65,12 +55,10 @@ enum class DeleteOutcome {
  *
  * From Android 14 every SMS/MMS read and delete is filtered to the
  * subscriptions associated with the calling user (AOSP
- * `ProviderUtil.getSelectionBySubIds`), so "no rows remain" alone can't tell a
- * deleted target from a hidden one.
- * [absenceProvable] says whether it can: the `threads` table behind the
- * conversation list is read unfiltered and is pruned only once no messages
- * remain in the raw tables, so a thread's hidden messages always keep its row
- * listed. A single message has no such unfiltered witness.
+ * `ProviderUtil.getSelectionBySubIds`). A message that filter hides is out of
+ * this app's reach for reads and writes alike, so it reads back as gone. The
+ * `threads` table behind the conversation list is read unfiltered, so a
+ * thread kept by hidden messages stays listed ([threadRowListed]).
  */
 data class DeleteReadBack(
     /** Rows that existed before the delete: they survived it. */
@@ -79,12 +67,6 @@ data class DeleteReadBack(
     val arrivedRows: Int = 0,
     /** The thread row the conversation list reads is still listed. */
     val threadRowListed: Boolean = false,
-    /**
-     * Whether "nothing remains" proves the target is gone: always for a
-     * thread; for a message, only where the provider applies no per-user
-     * subscription filter (before Android 14).
-     */
-    val absenceProvable: Boolean,
 )
 
 /**
@@ -98,8 +80,7 @@ fun classifyDelete(deletedRows: Int, readBack: DeleteReadBack): DeleteOutcome = 
     // the conversation list and the messages disagree, so nothing is verified.
     readBack.arrivedRows > 0 || readBack.threadRowListed -> DeleteOutcome.INCOMPLETE
     deletedRows > 0 -> DeleteOutcome.DELETED
-    readBack.absenceProvable -> DeleteOutcome.ALREADY_ABSENT
-    else -> DeleteOutcome.ABSENCE_UNVERIFIED
+    else -> DeleteOutcome.ALREADY_ABSENT
 }
 
 /**

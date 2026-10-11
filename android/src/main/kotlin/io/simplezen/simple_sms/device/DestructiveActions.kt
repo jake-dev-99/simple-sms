@@ -4,7 +4,6 @@ import android.app.role.RoleManager
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.provider.BaseColumns
 import android.provider.Telephony
 import android.util.Log
@@ -85,13 +84,7 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     mark = {},
                     delete = { context.contentResolver.delete(messageUri, null, null) },
                     readBack = {
-                        DeleteReadBack(
-                            survivingRows = queryRows(messageUri, arrayOf(BaseColumns._ID)).size,
-                            // The filter hides a message from the delete and the
-                            // read alike, so an empty result proves it gone only
-                            // where no such filter exists.
-                            absenceProvable = !subscriptionFilterApplies(),
-                        )
+                        DeleteReadBack(survivingRows = queryRows(messageUri, arrayOf(BaseColumns._ID)).size)
                     },
                 )
             }
@@ -156,13 +149,6 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 "$target was not fully deleted: $found",
                 null,
             )
-            DeleteOutcome.ABSENCE_UNVERIFIED -> result.error(
-                "ABSENCE_UNVERIFIED",
-                "$target is not visible to this app, so it can't be confirmed gone: " +
-                    "it may already be deleted, or be hidden by the provider's " +
-                    "per-user subscription filter",
-                null,
-            )
         }
     }
 
@@ -213,20 +199,8 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
             survivingRows = surviving,
             arrivedRows = sms.size + mms.size - surviving,
             threadRowListed = rowKeys(SIMPLE_CONVERSATIONS_URI, "${BaseColumns._ID} = ?", args).isNotEmpty(),
-            // The `threads` row is read unfiltered and outlives every hidden
-            // message, so an unlisted row proves the thread gone.
-            absenceProvable = true,
         )
     }
-
-    /**
-     * Whether the provider filters SMS/MMS reads and deletes to the calling
-     * user's subscriptions. Android 14 (API 34) added that filter (AOSP
-     * `ProviderUtil.getSelectionBySubIds`); before it every row is visible to
-     * the default SMS app, so an empty read-back always proves absence.
-     */
-    private fun subscriptionFilterApplies(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 
     /**
      * The `(_id, date)` of rows at [uri] matching [selection]. A non-numeric

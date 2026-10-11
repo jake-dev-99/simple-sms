@@ -4,17 +4,16 @@
 /// [newMessagesArrived] means everything it held is gone but new messages
 /// re-populated the thread mid-delete. A delete that could not be verified
 /// (the app is not the default SMS app, the provider ignored or only partly
-/// applied the delete, the read-back failed, the provider threw, or a missing
-/// message may be hidden rather than gone) is never one of these values — it
-/// throws [DeleteFailedException] instead.
+/// applied the delete, the read-back failed, or the provider threw) is never
+/// one of these values — it throws [DeleteFailedException] instead.
 enum DeleteResult {
   /// The target had rows and they were all deleted.
   deleted('deleted'),
 
-  /// No messages needed deleting, nothing remains, and the target is provably
-  /// gone (a thread with no messages may still have had its empty thread row
-  /// pruned). Not reported for a message on Android 14+, where its absence
-  /// can't be proven ([DeleteFailureReason.absenceUnverified]).
+  /// No messages needed deleting and nothing remains (a thread with no
+  /// messages may still have had its empty thread row pruned). A target the
+  /// provider doesn't return counts as deleted, including a message its
+  /// Android 14+ per-user subscription filter hides from this app.
   alreadyAbsent('alreadyAbsent'),
 
   /// Thread deletes only: every message the thread held before the delete is
@@ -61,13 +60,6 @@ enum DeleteFailureReason {
 
   /// The delete ran but the target couldn't be read back.
   verifyFailed('VERIFY_FAILED'),
-
-  /// Message deletes on Android 14+ only: the delete removed nothing and the
-  /// message isn't there, but the provider filters this app's view by the
-  /// calling user's subscriptions — for the delete and every read alike — so
-  /// its absence can't be proven. Usually the message was already deleted; it
-  /// may instead be hidden (e.g. on a SIM associated with a work profile).
-  absenceUnverified('ABSENCE_UNVERIFIED'),
 
   /// The id is not a positive numeric provider id, or the channel is missing.
   invalidArgument('INVALID_ARGUMENT');
