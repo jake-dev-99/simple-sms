@@ -14,6 +14,7 @@ import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
 import io.simplezen.simple_sms.messaging.OutboundMessagingHandler
+import io.simplezen.simple_sms.messaging.OutboundSendResults
 
 /** SimpleSmsPlugin */
 class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener,
@@ -32,6 +33,10 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
 
   // Method Channels
   private lateinit var destructiveActionsChannel: MethodChannel
+
+  // This engine's send handler. Its sends still awaiting a result are
+  // forgotten when the engine detaches: no Dart caller is left to answer.
+  private var outboundHandler: OutboundMessagingHandler? = null
 
   companion object {
     private const val TAG = "SimpleSmsPlugin"
@@ -125,9 +130,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
    *   or caches. Its `launchAddContact` starts an Activity, which Android may
    *   block from a headless engine; read-state writes have no such limit.
    * - The messaging channel lets an inline "Reply" send (UNFY-306). Its
-   *   handler is stateless: the manifest-declared status receiver records
-   *   every send's result and settles it (see `OutboundSendResults`), even
-   *   when the sending engine's process is cached or has gone.
+   *   handler registers no receiver: the manifest-declared status receiver
+   *   records every send's result and settles it (see `OutboundSendResults`),
+   *   even when the sending engine's process is cached or has gone.
    *
    * The destructive channel stays on the Activity engine and
    * BackgroundEngineManager engines only.
@@ -137,8 +142,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     val appContext = context.applicationContext
     MethodChannel(binaryMessenger, ACTIONS_CHANNEL)
       .setMethodCallHandler(DeviceActions(appContext))
-    MethodChannel(binaryMessenger, MESSAGING_CHANNEL)
-      .setMethodCallHandler(OutboundMessagingHandler(appContext))
+    val handler = OutboundMessagingHandler(appContext)
+    outboundHandler = handler
+    MethodChannel(binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler(handler)
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -147,6 +153,8 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     // onAttachedToEngine.
     MethodChannel(binding.binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)
     MethodChannel(binding.binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler(null)
+    outboundHandler?.let(OutboundSendResults::forget)
+    outboundHandler = null
     // The destructive channel `lateinit var` is only populated in
     // onAttachedToActivity (via initializeMethodChannels). A background
     // FlutterEngine — e.g. the one Workmanager spins up for a headless sync

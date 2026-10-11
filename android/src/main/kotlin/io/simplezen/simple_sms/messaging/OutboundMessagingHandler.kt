@@ -163,8 +163,8 @@ internal class SentPartsAggregator {
 
     /**
      * Records one part's result; returns the settled outcome on the first
-     * failed part or once every part has succeeded, else null. The owner stops
-     * recording once a send settles, so extra reports never reach here.
+     * failed part or once every part has succeeded, else null. A settled send
+     * is no longer tracked, so extra reports never reach here.
      */
     fun record(part: CarrierOutcome): CarrierOutcome? {
         reported++
@@ -259,13 +259,10 @@ internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingI
  * still-pending intents, whose late reports would land on the new row.
  */
 internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri): SmsStatusIntents {
-    val sent = Intent(SENTSMS_ACTION)
+    val sent = statusReceiverIntent(context, SENTSMS_ACTION)
         .putExtra("messageID", messageId)
         .putExtra("uri", messageUri.toString())
-        .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
-    val delivered = Intent(DELIVEREDSMS_ACTION)
-        .setData(messageUri)
-        .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+    val delivered = statusReceiverIntent(context, DELIVEREDSMS_ACTION).setData(messageUri)
     val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
     return SmsStatusIntents(
         sent = PendingIntent.getBroadcast(
@@ -276,6 +273,15 @@ internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri)
         ),
     )
 }
+
+/**
+ * A status broadcast for [action], aimed at the manifest-declared
+ * [OutboundMessagingReceiver]. It declares no intent-filter, so every status
+ * intent must name it explicitly; Android then delivers the broadcast even
+ * when the app process is cached or has gone (UNFY-293, UNFY-306).
+ */
+internal fun statusReceiverIntent(context: Context, action: String): Intent =
+    Intent(action).setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
 
 /** A synchronous initiation error must settle any row already persisted. */
 internal fun markPersistedSendFailed(context: Context, uri: Uri) {
@@ -294,9 +300,10 @@ internal fun markPersistedSendFailed(context: Context, uri: Uri) {
 }
 
 /**
- * Starts outbound sends for the messaging channel. Stateless: the sends it
- * starts wait in [OutboundSendResults.pending], which the manifest-declared
- * [OutboundMessagingReceiver] settles, so any engine can hold its own handler.
+ * Starts outbound sends for the messaging channel. It registers no receiver:
+ * the sends it starts are tracked in [OutboundSendResults], which the
+ * manifest-declared [OutboundMessagingReceiver] settles, so each engine holds
+ * its own handler.
  */
 class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
     private lateinit var context: Context // Application context
@@ -343,36 +350,6 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                     return
                 }
 
-                // Store details with the Flutter result callback
-                val message = call.arguments as Map<String, Any?>
-                val threadId =
-                        Telephony.Threads.getOrCreateThreadId(
-                                context,
-                                (message["recipients"] as List<String>).toSet()
-                        )
-                val requestDetails =
-                        MessageRequestDetails(
-                                threadId = threadId,
-                                addresses = message["recipients"] as List<String>,
-                                body = message["body"] as String,
-                                subscriptionId = message["subscriptionId"] as Int?,
-                                attachmentPaths = message["attachmentPaths"] as List<String>?,
-                                flutterResult = result
-                        )
-
-                val smsManager: SmsManager =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val subIdToUse =
-                                    selectSubscriptionId(
-                                            requestDetails.subscriptionId,
-                                            SmsManager::getDefaultSmsSubscriptionId,
-                                    )
-                            context.getSystemService(SmsManager::class.java)
-                                    .createForSubscriptionId(subIdToUse)
-                        } else {
-                            @Suppress("DEPRECATION") SmsManager.getDefault()
-                        }
-
                 // SMS-vs-MMS routing lives in [routeMessage] (the long-body
                 // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
                 // hang + orphan-MMS-rows bug — is documented there).
@@ -384,25 +361,61 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 // codes by extending mapSendException, NOT by adding catch arms
                 // here.
                 //
+                // Building the request is inside the catch too: a bad argument,
+                // an unresolvable recipient set or a revoked permission there
+                // also maps to its ERR_* code.
+                //
                 // Successful sends are ACKed asynchronously by the
-                // OutboundMessagingReceiver broadcast handler, which reads
-                // OutboundSendResults.pending[messageUri].flutterResult.
+                // OutboundMessagingReceiver broadcast handler, which settles
+                // the send this handler tracked in OutboundSendResults.
+                var requestDetails: MessageRequestDetails? = null
                 try {
+                    val message = call.arguments as Map<String, Any?>
+                    val recipients = message["recipients"] as List<String>
+                    val details =
+                            MessageRequestDetails(
+                                    threadId =
+                                            Telephony.Threads.getOrCreateThreadId(
+                                                    context,
+                                                    recipients.toSet(),
+                                            ),
+                                    addresses = recipients,
+                                    body = message["body"] as String,
+                                    subscriptionId = message["subscriptionId"] as Int?,
+                                    attachmentPaths = message["attachmentPaths"] as List<String>?,
+                                    flutterResult = result,
+                            )
+                    requestDetails = details
+
+                    val smsManager: SmsManager =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                val subIdToUse =
+                                        selectSubscriptionId(
+                                                details.subscriptionId,
+                                                SmsManager::getDefaultSmsSubscriptionId,
+                                        )
+                                context.getSystemService(SmsManager::class.java)
+                                        .createForSubscriptionId(subIdToUse)
+                            } else {
+                                @Suppress("DEPRECATION") SmsManager.getDefault()
+                            }
+
                     val route =
                             routeMessage(
                                     hasAttachments =
-                                            !requestDetails.attachmentPaths.isNullOrEmpty(),
-                                    recipientCount = requestDetails.addresses.size,
+                                            !details.attachmentPaths.isNullOrEmpty(),
+                                    recipientCount = details.addresses.size,
                             )
                     when (route) {
                         OutboundRoute.MMS ->
-                                sendMms(smsManager = smsManager, requestDetails = requestDetails)
+                                sendMms(smsManager = smsManager, requestDetails = details)
                         OutboundRoute.SMS ->
-                                sendSms(smsManager = smsManager, requestDetails = requestDetails)
+                                sendSms(smsManager = smsManager, requestDetails = details)
                     }
                 } catch (e: Exception) {
-                    requestDetails.messageUri?.let { uri ->
-                        OutboundSendResults.pending.remove(uri)
+                    val persistedUri = requestDetails?.messageUri
+                    persistedUri?.let { uri ->
+                        OutboundSendResults.untrack(uri)
                         try {
                             markPersistedSendFailed(context, uri)
                         } catch (stateError: Exception) {
@@ -413,7 +426,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                     val (code, message, details) = mapSendException(e)
                     val errorDetails = if (e.suppressed.isEmpty()) details else mapOf(
                         "sendDetails" to details,
-                        "messageUri" to requestDetails.messageUri?.toString(),
+                        "messageUri" to persistedUri?.toString(),
                         "providerStateErrors" to e.suppressed.map { it.message },
                     )
                     result.error(code, message, errorDetails)
@@ -452,7 +465,7 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
             val newUri = newSms["uri"] as Uri
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
-            OutboundSendResults.pending[newUri] = requestDetails
+            OutboundSendResults.track(this, newUri, requestDetails)
 
             val statusIntents = smsStatusIntents(context, msgId, newUri)
 
@@ -575,15 +588,12 @@ class OutboundMessagingHandler() : Service(), MethodChannel.MethodCallHandler {
                 }
             }
 
-            // The manifest receiver records the result even if this process
-            // is cached or gone by then (UNFY-306).
-            val outboundIntent = Intent(SENTMMS_ACTION)
-                    .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+            val outboundIntent = statusReceiverIntent(context, SENTMMS_ACTION)
             val sendTransaction = Transaction(context, sendSettings)
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
-                OutboundSendResults.pending[uri] = requestDetails
+                OutboundSendResults.track(this, uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
         } catch (e: AttachmentUnreadableException) {

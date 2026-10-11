@@ -76,15 +76,19 @@ class OutboundMmsRecordTest {
             body = "MMS test",
             flutterResult = result,
         )
-        val requests = OutboundSendResults.pending
-        requests[Uri.parse("content://mms/9001")] = request
+        val owner = OutboundMessagingHandler(context)
+        OutboundSendResults.track(owner, Uri.parse("content://mms/9001"), request)
         val smsResult = MmsRecordResult()
         if (concurrentSms) {
-            requests[Uri.parse("content://sms/9001")] = OutboundMessagingHandler.MessageRequestDetails(
-                threadId = 7,
-                addresses = listOf("+15551234567"),
-                body = "MMS test",
-                flutterResult = smsResult,
+            OutboundSendResults.track(
+                owner,
+                Uri.parse("content://sms/9001"),
+                OutboundMessagingHandler.MessageRequestDetails(
+                    threadId = 7,
+                    addresses = listOf("+15551234567"),
+                    body = "MMS test",
+                    flutterResult = smsResult,
+                ),
             )
         }
 
@@ -108,13 +112,13 @@ class OutboundMmsRecordTest {
             assertEquals(128, returned.getInt("m_type"))
             assertEquals(3, returned.getInt("sub_id"))
             if (concurrentSms) {
-                assertEquals(setOf(Uri.parse("content://sms/9001")), requests.keys)
+                assertEquals(setOf(Uri.parse("content://sms/9001")), OutboundSendResults.trackedUris())
                 assertTrue(smsResult.successes.isEmpty())
             } else {
-                assertTrue(requests.isEmpty())
+                assertTrue(OutboundSendResults.trackedUris().isEmpty())
             }
         } finally {
-            requests.clear()
+            OutboundSendResults.clear()
         }
     }
 }

@@ -123,17 +123,14 @@ class EngineChannelRegistrationTest {
     }
 
     @Test
-    fun engineSetupRegistersNoRuntimeStatusReceiver() {
-        // Robolectric lists the manifest-declared receiver too.
+    fun engineSetupRegistersNoStatusReceiver() {
+        // Robolectric lists the manifest-declared receiver too. Which receiver
+        // a send's status intents name is pinned in OutboundSendAckTest.
         val manifestOnly = statusReceiverCount()
         val messenger = RecordingMessenger()
+
         SimpleSmsPlugin().attachEngineChannels(context, messenger)
         SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
-
-        messenger.invokeExpectingError(
-            SimpleSmsPlugin.MESSAGING_CHANNEL,
-            MethodCall("sendMessage", null),
-        )
 
         assertEquals(manifestOnly, statusReceiverCount())
     }

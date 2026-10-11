@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_sms.queries.Query
 import io.simplezen.simple_sms.queries.QueryObj
@@ -19,23 +20,62 @@ import java.util.concurrent.ConcurrentHashMap
  * so Android delivers them even when the process is cached or has been
  * killed since the send started — as when an inline notification reply sends
  * from a headless engine and nothing keeps the process alive. That receiver
- * is the one writer of a send's result: it records the result on the message
- * row through [onSentBroadcast], and settles the send's Flutter reply when the
- * send is still [pending] in this process. A send whose process died leaves
- * nothing pending; its row is still recorded.
+ * records every carrier result on the message row through [onSentBroadcast]
+ * (a send that fails to start is settled by `markPersistedSendFailed`
+ * instead), and settles the send's Flutter reply when the send is still
+ * tracked in this process. A send whose process died, or whose engine has
+ * gone, is no longer tracked; its row is still recorded.
  */
 internal object OutboundSendResults {
+    /** A send awaiting its SENT result, and the engine's handler that started it. */
+    private class Tracked(
+            val owner: OutboundMessagingHandler,
+            val request: OutboundMessagingHandler.MessageRequestDetails,
+    )
+
     /** Sends awaiting their SENT result, by message row, across every engine in this process. */
-    val pending = ConcurrentHashMap<Uri, OutboundMessagingHandler.MessageRequestDetails>()
+    private val tracked = ConcurrentHashMap<Uri, Tracked>()
+
+    /** Waits for [messageUri]'s SENT result to settle [request], started by [owner]. */
+    fun track(
+            owner: OutboundMessagingHandler,
+            messageUri: Uri,
+            request: OutboundMessagingHandler.MessageRequestDetails,
+    ) {
+        tracked[messageUri] = Tracked(owner, request)
+    }
+
+    /** Stops waiting for [messageUri]: its send failed to start and has been answered. */
+    fun untrack(messageUri: Uri) {
+        tracked.remove(messageUri)
+    }
+
+    /**
+     * Stops waiting for every send [owner] started: its engine has detached,
+     * so no Dart caller awaits their replies. Their results are still recorded
+     * on their rows when they arrive.
+     */
+    fun forget(owner: OutboundMessagingHandler) {
+        tracked.values.removeIf { it.owner === owner }
+    }
+
+    /** The message rows whose sends are tracked. */
+    @VisibleForTesting
+    fun trackedUris(): Set<Uri> = tracked.keys.toSet()
+
+    @VisibleForTesting
+    fun clear() {
+        tracked.clear()
+    }
 
     /**
      * Handles one SENT result: records a failure (or an MMS's move to the sent
      * box) on the message row, then — once the SENT parts of a send still
-     * pending in this process settle its outcome — sends that send's Flutter
+     * tracked in this process settle its outcome — sends that send's Flutter
      * reply exactly once.
      *
      * Failures here happen after the carrier has handled the send, so they
-     * settle the pending send as [ERR_SEND_ACK_FAILED] instead of escaping the
+     * settle the tracked send as [ERR_SEND_ACK_FAILED] instead of escaping the
      * receiver, which would crash the process and leave the Dart future
      * unsettled (UNFY-282). The reply itself is sent once, outside any catch.
      */
@@ -48,7 +88,7 @@ internal object OutboundSendResults {
             resultCode: Int,
     ) {
         val sendFailed = resultCode != Activity.RESULT_OK
-        // Results for sends this handler doesn't own are only recorded on the row.
+        // A result for a send no longer tracked here is only recorded on the row.
         val settled =
                 claimSettledSend(
                         messageUri,
@@ -92,15 +132,15 @@ internal object OutboundSendResults {
     }
 
     /**
-     * Records [part] against the send pending on [messageUri], if this process
-     * still has one, and claims it once its outcome is settled. Returns null
-     * while parts are outstanding or when nothing is pending here.
+     * Records [part] against the send tracked on [messageUri], if this process
+     * still tracks one, and claims it once its outcome is settled. Returns null
+     * while parts are outstanding or when nothing is tracked here.
      */
     private fun claimSettledSend(messageUri: Uri, part: CarrierOutcome): SettledSend? {
-        val request = pending[messageUri] ?: return null
-        val outcome = request.sentParts.record(part) ?: return null
-        pending.remove(messageUri, request)
-        return SettledSend(request.flutterResult, outcome)
+        val entry = tracked[messageUri] ?: return null
+        val outcome = entry.request.sentParts.record(part) ?: return null
+        tracked.remove(messageUri, entry)
+        return SettledSend(entry.request.flutterResult, outcome)
     }
 
     /**

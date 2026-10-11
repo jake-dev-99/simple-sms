@@ -32,8 +32,8 @@ import org.robolectric.annotation.Config
  * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283).
  *
  * Drives the manifest-declared [OutboundMessagingReceiver] with status
- * broadcasts, against fake `sms` / `mms` providers, and pins how the pending
- * Flutter result in [OutboundSendResults] is settled:
+ * broadcasts, against fake `sms` / `mms` providers, and pins how the Flutter
+ * result tracked in [OutboundSendResults] is settled:
  * exactly once — after every SENT part succeeded, or at the first failed
  * part; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
  * never a URI-only success — when it doesn't, and [ERR_SEND_ACK_FAILED] when
@@ -48,7 +48,7 @@ class OutboundSendAckTest {
     private val mmsUri: Uri = Uri.parse("content://mms/7")
     private lateinit var smsProvider: FakeMessageProvider
     private lateinit var mmsProvider: FakeMessageProvider
-    private val pending = OutboundSendResults.pending
+    private val owner = OutboundMessagingHandler(context)
 
     @Before
     fun setUp() {
@@ -58,7 +58,7 @@ class OutboundSendAckTest {
 
     @After
     fun tearDown() {
-        pending.clear()
+        OutboundSendResults.clear()
     }
 
     @Test
@@ -73,7 +73,7 @@ class OutboundSendAckTest {
         val payload = result.successPayload as String
         assertTrue("ack carries the row", payload.contains("\"body\":\"hi\""))
         assertTrue("ack carries the uri", payload.contains("content://sms/42"))
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -93,7 +93,7 @@ class OutboundSendAckTest {
         assertEquals(Activity.RESULT_OK, details["resultCode"])
         assertEquals("SENT_SUCCESS", details["statusString"])
         assertEquals(true, details["sent"])
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -110,7 +110,7 @@ class OutboundSendAckTest {
         assertEquals(SmsManager.RESULT_ERROR_GENERIC_FAILURE, details["resultCode"])
         assertEquals("ERROR_GENERIC_FAILURE", details["statusString"])
         assertEquals(false, details["sent"])
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -130,7 +130,7 @@ class OutboundSendAckTest {
         assertEquals(SmsManager.MMS_ERROR_IO_ERROR, details["resultCode"])
         assertEquals("ERROR_MMS_IO_ERROR", details["statusString"])
         assertEquals(false, details["sent"])
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -162,25 +162,39 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun aResultIsRecordedOnce_howeverManyEnginesHaveAHandler() {
-        // Every engine has its own handler (UNFY-306); none registers a
-        // receiver, so the manifest receiver alone writes and settles.
-        OutboundMessagingHandler(context)
-        OutboundMessagingHandler(context)
+    fun aDetachedEnginesSends_areNotAnswered_butStillRecorded() {
+        // The engine that started the send detached: nobody awaits its reply,
+        // and other engines' sends stay tracked (UNFY-306).
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
-        val result = pendingSend(smsUri)
+        val otherOwner = OutboundMessagingHandler(context)
+        val forgotten = pendingSend(smsUri)
+        val kept = RecordingResult()
+        OutboundSendResults.track(
+            otherOwner,
+            mmsUri,
+            OutboundMessagingHandler.MessageRequestDetails(
+                threadId = 1L,
+                addresses = listOf("5551234"),
+                body = "hi",
+                flutterResult = kept,
+                messageUri = mmsUri,
+            ),
+        )
 
+        OutboundSendResults.forget(owner)
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
 
-        assertEquals(1, result.calls)
-        assertTrue(result.successPayload is String)
-        assertEquals(1, smsProvider.updates)
-        assertEquals(1, smsProvider.queries)
+        assertEquals(0, forgotten.calls)
+        assertEquals(
+            Telephony.Sms.MESSAGE_TYPE_FAILED,
+            smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE),
+        )
+        assertEquals(setOf(mmsUri), OutboundSendResults.trackedUris())
     }
 
     @Test
     fun aFailedSendIsRecorded_afterItsProcessForgotIt() {
-        // The process that sent was killed or recreated: nothing is pending,
+        // The process that sent was killed or recreated: nothing is tracked,
         // but the manifest receiver still marks the row failed (UNFY-306).
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
 
@@ -214,7 +228,7 @@ class OutboundSendAckTest {
         assertEquals("ERROR_GENERIC_FAILURE", details["statusString"])
         assertEquals("only the failed part writes (TYPE=FAILED)", 1, smsProvider.updates)
         assertEquals("the row is re-read once, at settlement", 1, smsProvider.queries)
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -228,7 +242,7 @@ class OutboundSendAckTest {
 
         assertEquals(1, result.calls)
         assertTrue(result.successPayload is String)
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -240,7 +254,7 @@ class OutboundSendAckTest {
 
         assertEquals(0, result.calls)
         assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
-        assertTrue(pending.containsKey(smsUri))
+        assertTrue(smsUri in OutboundSendResults.trackedUris())
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
         assertEquals(1, result.calls)
@@ -262,7 +276,7 @@ class OutboundSendAckTest {
         assertEquals(true, details["sent"])
         assertEquals(Activity.RESULT_OK, details["resultCode"])
         assertEquals("role revoked", details["cause"])
-        assertTrue(pending.isEmpty())
+        assertTrue(OutboundSendResults.trackedUris().isEmpty())
     }
 
     @Test
@@ -323,6 +337,16 @@ class OutboundSendAckTest {
         assertEquals(DELIVEREDSMS_ACTION, delivered.action)
         assertEquals(smsUri, delivered.data)
         assertEquals(ComponentName(context, OutboundMessagingReceiver::class.java), delivered.component)
+    }
+
+    @Test
+    fun statusReceiverIntent_namesTheManifestReceiver() {
+        // The MMS SENT intent is built from this too; the receiver declares
+        // no intent-filter, so an intent that doesn't name it goes nowhere.
+        val intent = statusReceiverIntent(context, SENTMMS_ACTION)
+
+        assertEquals(SENTMMS_ACTION, intent.action)
+        assertEquals(ComponentName(context, OutboundMessagingReceiver::class.java), intent.component)
     }
 
     @Test
@@ -431,19 +455,22 @@ class OutboundSendAckTest {
 
     private fun pendingSend(messageUri: Uri, parts: Int = 1): RecordingResult {
         val result = RecordingResult()
-        pending[messageUri] = OutboundMessagingHandler.MessageRequestDetails(
-            threadId = 1L,
-            addresses = listOf("5551234"),
-            body = "hi",
-            flutterResult = result,
-            messageUri = messageUri,
-        ).apply { sentParts.expectParts(parts) }
+        OutboundSendResults.track(
+            owner,
+            messageUri,
+            OutboundMessagingHandler.MessageRequestDetails(
+                threadId = 1L,
+                addresses = listOf("5551234"),
+                body = "hi",
+                flutterResult = result,
+                messageUri = messageUri,
+            ).apply { sentParts.expectParts(parts) },
+        )
         return result
     }
 
     private fun deliverStatusBroadcast(action: String, messageId: Int, messageUri: Uri, resultCode: Int) {
-        val intent = Intent(action)
-            .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+        val intent = statusReceiverIntent(context, action)
             .putExtra("messageID", messageId)
             .putExtra("uri", messageUri.toString())
         context.sendOrderedBroadcast(intent, null, null, null, resultCode, null, null)
