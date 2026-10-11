@@ -24,6 +24,8 @@ return typed results.
 
 ### Added
 
+- **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart and identifies the latest row when the same logical send is explicitly retried. Metadata contains no message content or recipient addresses. Consumers must exclude `outbound_send_correlations.xml` from cloud backup/device transfer alongside their local outbox: its row IDs belong to this device.
+
 - **`SEND_RESULT_TIMEOUT` (UNFY-299).** `sendMessage` settles with this code
   when no carrier result arrives within 10 minutes of device uptime (e.g. the
   radio process crashed mid-send), instead of never completing.

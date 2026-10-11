@@ -67,6 +67,15 @@ class AndroidMessaging {
     );
   }
 
+  /// Exact persisted queue identities for SMS/MMS provider URIs.
+  /// Available without initializing inbound callbacks. No message content.
+  static Future<Map<String, dynamic>> getSendCorrelations(List<String> uris) async {
+    final result = await OutboundMessagingInterop.methodChannel
+        .invokeMapMethod<String, dynamic>('getSendCorrelations', uris);
+    if (result == null) throw const FormatException('Missing correlation reply');
+    return result;
+  }
+
   /// Sends an SMS or MMS message.
   ///
   /// Returns the message record as stored in the Android SMS/MMS database

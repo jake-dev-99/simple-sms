@@ -587,6 +587,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val attachmentPaths: List<String>? = null,
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
+            val clientCorrelationId: String? = null,
     ) {
         /** Settles this send from its SENT part reports (UNFY-283). */
         internal val sentParts = SentPartsAggregator()
@@ -599,6 +600,16 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
     @Suppress("UNCHECKED_CAST")
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "getSendCorrelations" -> {
+                try {
+                    val uris = stringList(call.arguments, "messageUris")
+                        ?: throw IllegalArgumentException("messageUris must be a list")
+                    result.success(OutboundSendCorrelations(context).lookup(uris))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not read outbound correlations", e)
+                    result.error("CORRELATION_READ_FAILED", e.message, null)
+                }
+            }
             "sendMessage" -> {
                 if (!context.packageManager.hasSystemFeature(
                                 PackageManager.FEATURE_TELEPHONY_MESSAGING
@@ -656,6 +667,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                                                 ?: throw IllegalArgumentException("subscriptionId must be an int")
                                     },
                                     attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
+                                    clientCorrelationId = message["clientCorrelationId"]?.let {
+                                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
+                                    },
                                     flutterResult = result,
                             )
                     requestDetails = details
@@ -829,6 +843,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
+            OutboundSendCorrelations(context).record(newUri, requestDetails.clientCorrelationId)
             awaitResult(newUri, requestDetails)
 
             val statusIntents = smsStatusIntents(context, msgId, newUri)
@@ -957,6 +972,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
+                OutboundSendCorrelations(context).record(uri, requestDetails.clientCorrelationId)
                 awaitResult(uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
