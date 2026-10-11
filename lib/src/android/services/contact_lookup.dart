@@ -66,9 +66,10 @@ class ContactLookup {
   ///
   /// The address is percent-encoded as a single path segment, as AOSP does
   /// with `Uri.encode`, so `+`, `#`, `/`, `%`, or spaces cannot split or
-  /// truncate the URI; the provider reads it back decoded. A blank address
-  /// matches no contact and is answered without a query — its URI would
-  /// lose the filter segment and match unrelated rows.
+  /// truncate the URI; the provider reads it back decoded. A blank
+  /// (empty or whitespace-only) address identifies no contact, so it is
+  /// answered with null without a query; an empty one would also drop the
+  /// filter segment from the URI.
   Future<Contactable?> lookupContactableByAddress(String address) async {
     if (address.trim().isEmpty) return null;
     final isEmail = address.contains('@');

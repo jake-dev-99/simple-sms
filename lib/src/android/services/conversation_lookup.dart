@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
@@ -192,19 +191,20 @@ class ConversationLookup {
     }
   }
 
-  /// Attaches each conversation's latest-MMS parts, fetched in a single batched
-  /// query ([AttachmentExtractor.listMmsPartsForMessages]). The bare
+  /// Attaches each conversation's latest-MMS parts, fetched in batched
+  /// `mid IN (…)` queries ([AttachmentExtractor.listMmsPartsForMessages]). The
+  /// bare
   /// `content://mms` list query doesn't join the part table, so without this
   /// the MMS body is empty for the conversation-list preview. A latest MMS
   /// with no part rows gets an empty list, the same as its bare row.
   ///
-  /// Best-effort for provider failures only, logged with their stack: a
-  /// [SimpleQueryError] (raised Dart-side, e.g. `permissionDenied`) or a
-  /// [PlatformException] (a native provider or SQLite failure, which
-  /// `simple_query_android` delivers unmapped). Either leaves each latest MMS
-  /// with the empty parts list its bare row carries (empty preview) rather
-  /// than failing the whole list (UNFY-250). Any other error is a defect and
-  /// propagates.
+  /// Best-effort for provider failures only: a [SimpleQueryError] whose code
+  /// is in [_toleratedPartsFailures] is logged with its stack and leaves each
+  /// latest MMS with the empty parts list its bare row carries (empty preview)
+  /// rather than failing the whole list (UNFY-250). `invalidQuery` (e.g. an
+  /// OEM schema without `mid`), `notSupported`, and every other error are
+  /// defects and propagate. Relies on `simple_query` mapping native failures
+  /// to [SimpleQueryError] per its `ERROR_MAPPING.md` (UNFY-284).
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
   ) async {
@@ -223,20 +223,22 @@ class ConversationLookup {
         }
       }
     } on SimpleQueryError catch (e, s) {
-      _logPartsHydrationFailure(latestMmsIds.length, e, s);
-    } on PlatformException catch (e, s) {
-      _logPartsHydrationFailure(latestMmsIds.length, e, s);
+      if (!_toleratedPartsFailures.contains(e.code)) rethrow;
+      debugPrint(
+        '[diag][simple-sms] batch latest-MMS parts hydration failed '
+        '(${latestMmsIds.length} ids): $e\n$s',
+      );
     }
   }
 
-  /// Logs a tolerated provider failure of the latest-MMS parts batch with
-  /// enough context to diagnose a recurring one.
-  void _logPartsHydrationFailure(int idCount, Object error, StackTrace stack) {
-    debugPrint(
-      '[diag][simple-sms] batch latest-MMS parts hydration failed '
-      '($idCount ids): $error\n$stack',
-    );
-  }
+  /// Provider-failure codes the latest-MMS parts hydration tolerates: the
+  /// provider is busy, missing, or not readable — conditions the empty
+  /// preview honestly reflects, unlike a malformed query.
+  static const Set<SimpleQueryErrorCode> _toleratedPartsFailures = {
+    SimpleQueryErrorCode.transientFailure,
+    SimpleQueryErrorCode.unavailable,
+    SimpleQueryErrorCode.permissionDenied,
+  };
 
   /// Fetches a single conversation by thread id. Returns null if not found.
   ///

@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_sms_native/android.dart';
@@ -202,29 +201,25 @@ void main() {
       },
     );
 
-    // On a device a native provider/SQLite failure arrives as an unmapped
-    // PlatformException; a Dart-side one (e.g. permissionDenied) as a
-    // SimpleQueryError. Both are tolerated provider failures.
-    final providerFailures = <String, Object>{
-      'native PlatformException': PlatformException(
-        code: 'SQLiteException',
-        message: 'android.database.sqlite.SQLiteException: disk I/O error',
-      ),
-      'Dart-side SimpleQueryError': const SimpleQueryError(
-        code: SimpleQueryErrorCode.permissionDenied,
-        message: 'READ_SMS not granted',
-      ),
-    };
-    providerFailures.forEach((kind, failure) {
-      test('a failed parts batch ($kind) still returns the list, with the '
-          'latest MMS unhydrated', () async {
+    // Provider failures the contract (simple_query ERROR_MAPPING.md) maps to
+    // these codes leave an empty preview rather than failing the list.
+    for (final code in [
+      SimpleQueryErrorCode.transientFailure,
+      SimpleQueryErrorCode.unavailable,
+      SimpleQueryErrorCode.permissionDenied,
+    ]) {
+      test('a failed parts batch (${code.name}) still returns the list, with '
+          'the latest MMS unhydrated', () async {
         _seedTables(
           provider,
           threads: [_thread(7)],
           mms: [_mms(11, threadId: 7, seconds: 2)],
         );
         _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
-        provider.failQueriesTo(ProviderUris.mmsParts, failure);
+        provider.failQueriesTo(
+          ProviderUris.mmsParts,
+          SimpleQueryError(code: code, message: 'provider failure'),
+        );
 
         final [conversation] = await LookupService().listConversations();
 
@@ -232,7 +227,61 @@ void main() {
         expect(conversation.latestMms?.id, 11);
         expect(conversation.latestMms?.parts, isEmpty);
       });
+    }
+
+    test('a malformed parts query (invalidQuery) propagates', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [_mms(11, threadId: 7, seconds: 2)],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+      const schemaBug = SimpleQueryError(
+        code: SimpleQueryErrorCode.invalidQuery,
+        message: 'no such column: mid',
+      );
+      provider.failQueriesTo(ProviderUris.mmsParts, schemaBug);
+
+      await expectLater(
+        LookupService().listConversations(),
+        throwsA(same(schemaBug)),
+      );
     });
+
+    test(
+      'hydrates an inbox past the SQLite bind limit in bounded chunks',
+      () async {
+        const threadCount = 1001;
+        _seedTables(
+          provider,
+          threads: [for (var t = 1; t <= threadCount; t++) _thread(t)],
+          mms: [
+            for (var t = 1; t <= threadCount; t++)
+              _mms(t, threadId: t, seconds: t),
+          ],
+          parts: [
+            for (var t = 1; t <= threadCount; t++)
+              _part(10000 + t, mid: t, contentType: 'text/plain', text: '$t'),
+          ],
+        );
+        _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+        final conversations = await LookupService().listConversations();
+
+        final chunkSizes = [
+          for (final request in provider.requestsTo(ProviderUris.mmsParts))
+            switch (request.filters.single.value) {
+              final List<Object?> mids => mids.length,
+              final other => throw StateError('expected mid IN list: $other'),
+            },
+        ];
+        expect(chunkSizes, unorderedEquals([500, 500, 1]));
+        expect(
+          conversations.map((c) => c.latestMms?.parts?.single.messageId),
+          unorderedEquals([for (var t = 1; t <= threadCount; t++) t]),
+        );
+      },
+    );
 
     test('a non-provider error in the parts batch propagates', () async {
       _seedTables(

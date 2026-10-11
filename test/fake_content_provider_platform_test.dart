@@ -1,4 +1,5 @@
-import 'package:flutter/services.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 
@@ -103,7 +104,7 @@ void main() {
   });
 
   test(
-    'a missing column fails as the device does instead of matching nothing',
+    'a missing column fails as invalidQuery instead of matching nothing',
     () async {
       provider.seed(uri, [
         {'_id': 1},
@@ -111,8 +112,8 @@ void main() {
       await expectLater(
         ids([where('thread_id', QueryFilterOperator.equals, '1')]),
         throwsA(
-          isA<PlatformException>()
-              .having((e) => e.code, 'code', 'SQLiteException')
+          isA<SimpleQueryError>()
+              .having((e) => e.code, 'code', SimpleQueryErrorCode.invalidQuery)
               .having((e) => e.message, 'message', contains('thread_id')),
         ),
       );
@@ -225,19 +226,22 @@ void main() {
     ]);
   });
 
-  test('no sort keys means _id ASC; ties fall back to rowid order', () async {
-    provider.seed(uri, [
-      {'_id': 3, 'mid': 1},
-      {'_id': 1, 'mid': 2},
-      {'_id': 2, 'mid': 1},
-    ]);
-    expect(await ids(const []), [1, 2, 3]);
-    expect(await ids(const [], sort: const [QuerySort(field: 'mid')]), [
-      2,
-      3,
-      1,
-    ]);
-  });
+  test(
+    'no sort keys means _id ASC; ties break by _id deterministically',
+    () async {
+      provider.seed(uri, [
+        {'_id': 3, 'mid': 1},
+        {'_id': 1, 'mid': 2},
+        {'_id': 2, 'mid': 1},
+      ]);
+      expect(await ids(const []), [1, 2, 3]);
+      expect(await ids(const [], sort: const [QuerySort(field: 'mid')]), [
+        2,
+        3,
+        1,
+      ]);
+    },
+  );
 
   test('seed rejects a value no cursor can hold', () {
     expect(
@@ -270,11 +274,11 @@ void main() {
     expect(await read(), [1, 2]);
   });
 
-  test('the default _id sort needs an _id column, as on the device', () async {
+  test('the default _id sort needs an _id column', () async {
     provider.seed(uri, [
       {'address': '+15550001111'},
     ]);
-    await expectLater(ids(const []), throwsA(isA<PlatformException>()));
+    await expectLater(ids(const []), throwsA(isA<SimpleQueryError>()));
   });
 
   test('an empty inList is rejected even when no row would be read', () async {
@@ -315,6 +319,61 @@ void main() {
     await expectLater(
       ids([where('data15', QueryFilterOperator.contains, '1')]),
       throwsUnsupportedError,
+    );
+  });
+
+  test(
+    'offset applies only alongside a limit, as the backend sends it',
+    () async {
+      provider.seed(uri, [
+        {'_id': 1},
+        {'_id': 2},
+      ]);
+      expect(await ids(const [], page: QueryPage(offset: 1)), [1, 2]);
+      expect(await ids(const [], page: QueryPage(limit: 5, offset: 1)), [2]);
+    },
+  );
+
+  test('more than 999 bind arguments fail like SQLite', () async {
+    provider.seed(uri, const [], columns: const ['_id']);
+    final mids = [for (var id = 0; id < 1000; id++) '$id'];
+    await expectLater(
+      ids([where('_id', QueryFilterOperator.inList, mids)]),
+      throwsA(
+        isA<SimpleQueryError>().having(
+          (e) => e.message,
+          'message',
+          contains('too many SQL variables'),
+        ),
+      ),
+    );
+    expect(
+      await ids([where('_id', QueryFilterOperator.inList, mids.sublist(1))]),
+      isEmpty,
+    );
+  });
+
+  test('Dart-side checks precede SQLite checks', () async {
+    provider.seed(uri, const [], columns: const ['_id']);
+    await expectLater(
+      ids([where('absent', QueryFilterOperator.inList, const <String>[])]),
+      throwsA(
+        isA<SimpleQueryError>().having(
+          (e) => e.message,
+          'message',
+          contains('inList'),
+        ),
+      ),
+    );
+    await expectLater(
+      ids([where('bad name', QueryFilterOperator.equals, '1')]),
+      throwsA(
+        isA<SimpleQueryError>().having(
+          (e) => e.message,
+          'message',
+          contains('invalid field name'),
+        ),
+      ),
     );
   });
 }

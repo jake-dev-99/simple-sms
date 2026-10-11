@@ -7,7 +7,8 @@
 /// `ContactLookup`, `AttachmentExtractor`) unit-testable without injection.
 library;
 
-import 'package:flutter/services.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_query_platform_interface/testing.dart';
@@ -75,16 +76,21 @@ abstract final class ProviderUris {
 /// storage class: an int or double cell compares a numeric-looking argument as
 /// a number, while a String cell compares it as text (so `'+1555…'` never
 /// equals `'1555…'`). `NULL` never matches, `contains` is SQLite's
-/// `LIKE '%value%'` (`%`/`_` wildcards, ASCII case-insensitive), and an empty
-/// `inList` is rejected as `invalidQuery`, as the Dart backend does. Sorting
-/// defaults to `_id ASC` as the backend's does, ties fall back to rowid
-/// (`_id`) order, then `limit`/`offset` paging applies. A filter or sort on a
-/// column the table lacks fails as the device does — a [PlatformException]
-/// carrying SQLite's `no such column` — the OEM-schema bug class (e.g.
-/// `thread_id` on the conversations view). Inject other provider failures
-/// with [failQueriesTo] the same way: native failures reach Dart as
-/// [PlatformException], Dart-side ones (e.g. `permissionDenied`) as
-/// [SimpleQueryError].
+/// `LIKE '%value%'` (`%`/`_` wildcards, ASCII case-insensitive). Sorting
+/// defaults to `_id ASC` as the backend's does; `limit` pages, and `offset`
+/// applies only alongside a `limit`, as the backend sends it.
+///
+/// Errors follow `simple_query`'s `ERROR_MAPPING.md` contract: every failure
+/// is a [SimpleQueryError]. The backend's Dart-side checks run first (field
+/// name shape, empty `inList`), then the statement's SQLite checks — a column
+/// the table lacks (the OEM-schema bug class, e.g. `thread_id` on the
+/// conversations view) or more than 999 bind arguments — all
+/// `invalidQuery`. Inject other provider failures with [failQueriesTo] as the
+/// contract's codes (`transientFailure`, `unavailable`, `permissionDenied`).
+///
+/// SQLite leaves the order of rows tying on every sort key unspecified; the
+/// fake breaks such ties by `_id`, then insertion, only to stay deterministic.
+/// Tests must not rely on tie order.
 ///
 /// Reading a URI nothing was seeded for throws [StateError], so every table a
 /// code path reads must be declared; seed `const []` for an empty table.
@@ -152,10 +158,11 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   /// @param request the platform-specific query production code issued.
   /// @returns the matching rows, sorted and paged per [request].
   /// @throws the error registered by [failQueriesTo] for the URI;
-  /// [StateError] when no table was seeded for the URI; [PlatformException]
-  /// for a missing column; [SimpleQueryError] for an empty `inList`;
-  /// [UnsupportedError] for a projection, a cursor page, or `LIKE` on a blob,
-  /// which no plugin read uses.
+  /// [StateError] when no table was seeded for the URI; [SimpleQueryError]
+  /// (`invalidQuery`) for a malformed field name, an empty `inList`, a
+  /// missing column, or too many bind arguments; [UnsupportedError] for a
+  /// projection, a cursor page, or `LIKE` on a blob, which no plugin read
+  /// uses.
   @override
   Future<QueryResult> query(QueryRequest request) async {
     await super.query(request);
@@ -218,8 +225,8 @@ final class _ProviderTable {
   /// Purpose: evaluates [request] as `SELECT * … WHERE … ORDER BY … LIMIT`.
   ///
   /// With no sort keys the order is `_id ASC`, the Android backend's default.
-  /// Rows that tie on every key fall back to rowid (`_id`) order, then
-  /// insertion order.
+  /// Rows that tie on every key are ordered by `_id`, then insertion — a
+  /// deterministic stand-in for SQLite's unspecified tie order.
   ///
   /// @param request the incoming query.
   /// @returns copies of the selected rows.
@@ -227,8 +234,10 @@ final class _ProviderTable {
   /// unmodelled request.
   List<QueryRecord> select(QueryRequest request) {
     final sort = request.sort.isEmpty ? _defaultSort : request.sort;
-    _validate(request, sort);
+    _rejectUnmodelled(request);
+    // Dart-side backend checks precede the statement's SQLite checks.
     final predicates = request.filters.map(_predicateFor).toList();
+    _validateStatement(request, sort);
     final matches = <(int, QueryRecord)>[
       for (final (index, row) in _rows.indexed)
         if (predicates.every((matches) => matches(row))) (index, row),
@@ -245,33 +254,66 @@ final class _ProviderTable {
     ).map(_copyRow).toList(growable: false);
   }
 
-  /// Purpose: rejects what the real backend rejects, and what this fake does
-  /// not model, before any row is read.
+  /// Purpose: rejects request features this fake does not model.
   ///
   /// @param request the incoming query.
-  /// @param sort the effective sort keys, including the backend default.
   /// @returns nothing.
-  /// @throws [PlatformException] for a column the table lacks;
-  /// [UnsupportedError] for a projection or cursor page.
-  void _validate(QueryRequest request, List<QuerySort> sort) {
+  /// @throws [UnsupportedError] for a projection or cursor page.
+  void _rejectUnmodelled(QueryRequest request) {
     if (request.projection != null) {
       throw UnsupportedError('Fake provider tables do not model projection');
     }
     if (request.page?.cursor != null) {
       throw UnsupportedError('Fake provider tables do not model cursors');
     }
-    final fields = <String>[
-      for (final filter in request.filters) filter.field,
-      for (final key in sort) key.field,
-    ];
-    for (final field in fields) {
-      if (!_columns.contains(field)) throw _noSuchColumn(field);
+  }
+
+  /// Purpose: applies the checks SQLite makes when compiling the statement.
+  ///
+  /// @param request the incoming query.
+  /// @param sort the effective sort keys, including the backend default.
+  /// @returns nothing.
+  /// @throws [SimpleQueryError] (`invalidQuery`) for a column the table lacks
+  /// or more than [_maxSqlBindArguments] bind arguments.
+  void _validateStatement(QueryRequest request, List<QuerySort> sort) {
+    for (final key in sort) {
+      _requireColumn(key.field);
+    }
+    var bindArguments = 0;
+    for (final filter in request.filters) {
+      _requireColumn(filter.field);
+      bindArguments += switch (filter.value) {
+        final List<Object?> values
+            when filter.operator == QueryFilterOperator.inList =>
+          values.length,
+        _ => 1,
+      };
+    }
+    if (bindArguments > _maxSqlBindArguments) {
+      throw _invalidQuery('too many SQL variables ($bindArguments)');
+    }
+  }
+
+  /// Purpose: fails like SQLite for a column the table lacks.
+  ///
+  /// @param field the referenced column.
+  /// @returns nothing.
+  /// @throws [SimpleQueryError] (`invalidQuery`) for a missing column.
+  void _requireColumn(String field) {
+    if (!_columns.contains(field)) {
+      throw _invalidQuery('no such column: $field');
     }
   }
 }
 
-/// The Android backend's `ORDER BY` when a request names no sort keys; also
-/// rowid order, since provider tables key on `_id INTEGER PRIMARY KEY`.
+/// SQLite before 3.32 (older Android releases) rejects a statement with more
+/// bind arguments than this; the fake enforces the strictest supported limit.
+const int _maxSqlBindArguments = 999;
+
+/// The Android backend's accepted field-name shape (`_validFieldName`).
+final RegExp _validFieldName = RegExp(r'^[a-zA-Z_][a-zA-Z0-9_.]*$');
+
+/// The Android backend's `ORDER BY` when a request names no sort keys.
 const List<QuerySort> _defaultSort = <QuerySort>[QuerySort(field: '_id')];
 
 /// SQLite's test for TEXT that converts losslessly to a number when compared
@@ -308,35 +350,41 @@ QueryRecord _copyRow(QueryRecord row) => row.map(
 /// Purpose: compiles one SQL condition into a row predicate, binding its
 /// value as a string the way the Android backend binds `selectionArgs`.
 ///
-/// Compiled once per request, so an empty `inList` is rejected even when no
-/// row would be read, as the backend rejects it before querying.
+/// Compiled once per request, so the backend's Dart-side checks (field name,
+/// empty `inList`) fire even when no row would be read.
 ///
 /// @param filter the condition.
 /// @returns a predicate that is always false for a `NULL` cell.
-/// @throws [SimpleQueryError] for an empty `inList`.
+/// @throws [SimpleQueryError] (`invalidQuery`) for a malformed field name or
+/// an empty `inList`.
 bool Function(QueryRecord) _predicateFor(QueryFilterCondition filter) {
+  if (!_validFieldName.hasMatch(filter.field)) {
+    throw _invalidQuery('invalid field name: ${filter.field}');
+  }
   final argument = filter.value?.toString() ?? '';
+  final comparisonHolds = _comparisonTests[filter.operator];
   final test = switch (filter.operator) {
-    QueryFilterOperator.equals =>
-      (Object cell) => _compareToArgument(cell, argument) == 0,
-    QueryFilterOperator.notEquals =>
-      (Object cell) => _compareToArgument(cell, argument) != 0,
-    QueryFilterOperator.greaterThan =>
-      (Object cell) => _compareToArgument(cell, argument) > 0,
-    QueryFilterOperator.greaterThanOrEqual =>
-      (Object cell) => _compareToArgument(cell, argument) >= 0,
-    QueryFilterOperator.lessThan =>
-      (Object cell) => _compareToArgument(cell, argument) < 0,
-    QueryFilterOperator.lessThanOrEqual =>
-      (Object cell) => _compareToArgument(cell, argument) <= 0,
     QueryFilterOperator.contains => _likePredicate('%$argument%'),
     QueryFilterOperator.inList => _inListPredicate(filter),
+    _ when comparisonHolds != null =>
+      (Object cell) => comparisonHolds(_compareToArgument(cell, argument)),
+    _ => throw StateError('Unmodelled operator ${filter.operator}'),
   };
   return (row) => switch (row[filter.field]) {
     null => false,
     final Object cell => test(cell),
   };
 }
+
+/// Each comparison operator as a test on `cell <=> argument`.
+final Map<QueryFilterOperator, bool Function(int)> _comparisonTests = {
+  QueryFilterOperator.equals: (order) => order == 0,
+  QueryFilterOperator.notEquals: (order) => order != 0,
+  QueryFilterOperator.greaterThan: (order) => order > 0,
+  QueryFilterOperator.greaterThanOrEqual: (order) => order >= 0,
+  QueryFilterOperator.lessThan: (order) => order < 0,
+  QueryFilterOperator.lessThanOrEqual: (order) => order <= 0,
+};
 
 /// Purpose: compiles an `inList` condition's bound arguments.
 ///
@@ -471,17 +519,17 @@ String _asciiLower(String text) => String.fromCharCodes(
   ),
 );
 
-/// Purpose: applies `LIMIT`/`OFFSET` to already-ordered rows.
+/// Purpose: applies `LIMIT`/`OFFSET` to already-ordered rows the way the
+/// backend appends them: `OFFSET` only alongside `LIMIT`.
 ///
 /// @param rows the ordered matches.
 /// @param page the requested page, or null for every row.
 /// @returns the paged slice.
 /// @throws nothing.
 Iterable<QueryRecord> _paginate(Iterable<QueryRecord> rows, QueryPage? page) {
-  final offset = page?.offset ?? 0;
   final limit = page?.limit;
-  final skipped = rows.skip(offset);
-  return limit == null ? skipped : skipped.take(limit);
+  if (limit == null) return rows;
+  return rows.skip(page?.offset ?? 0).take(limit);
 }
 
 /// Purpose: orders two rows by each sort key in turn, `NULL` lowest, as
@@ -509,21 +557,8 @@ int _compareBySort(QueryRecord a, QueryRecord b, List<QuerySort> sort) {
   return 0;
 }
 
-/// Purpose: builds the error a device raises for a column the provider lacks:
-/// the native `SQLiteException`, which Pigeon delivers as a
-/// [PlatformException] named after the exception class.
-///
-/// @param column the missing column.
-/// @returns the device-shaped [PlatformException].
-/// @throws nothing.
-PlatformException _noSuchColumn(String column) => PlatformException(
-  code: 'SQLiteException',
-  message:
-      'android.database.sqlite.SQLiteException: no such column: $column '
-      '(code 1 SQLITE_ERROR)',
-);
-
-/// Purpose: builds the error the Dart backend raises for a malformed query.
+/// Purpose: builds the `invalidQuery` error the contract requires for a
+/// malformed query, whether caught Dart-side or by SQLite.
 ///
 /// @param message what was malformed.
 /// @returns an `invalidQuery` [SimpleQueryError].
