@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 
@@ -104,7 +103,7 @@ void main() {
   });
 
   test(
-    'a missing column fails like SQLite instead of matching nothing',
+    'a missing column fails as the device does instead of matching nothing',
     () async {
       provider.seed(uri, [
         {'_id': 1},
@@ -112,8 +111,8 @@ void main() {
       await expectLater(
         ids([where('thread_id', QueryFilterOperator.equals, '1')]),
         throwsA(
-          isA<SimpleQueryError>()
-              .having((e) => e.code, 'code', SimpleQueryErrorCode.invalidQuery)
+          isA<PlatformException>()
+              .having((e) => e.code, 'code', 'SQLiteException')
               .having((e) => e.message, 'message', contains('thread_id')),
         ),
       );
@@ -121,7 +120,7 @@ void main() {
   );
 
   test('declared columns let an empty table be filtered', () async {
-    provider.seed(uri, const [], columns: const ['mid']);
+    provider.seed(uri, const [], columns: const ['_id', 'mid']);
     expect(await ids([where('mid', QueryFilterOperator.equals, '1')]), isEmpty);
   });
 
@@ -144,7 +143,7 @@ void main() {
     () async {
       final failure = Exception('provider down');
       provider
-        ..seed(uri, const [])
+        ..seed(uri, const [], columns: const ['_id'])
         ..failQueriesTo(uri, failure);
       await expectLater(ids(const []), throwsA(same(failure)));
       expect(provider.requestsTo(uri), hasLength(1));
@@ -153,8 +152,8 @@ void main() {
 
   test('requestsTo filters the recorded requests by URI', () async {
     provider
-      ..seed(uri, const [])
-      ..seed('content://fake/other', const []);
+      ..seed(uri, const [], columns: const ['_id'])
+      ..seed('content://fake/other', const [], columns: const ['_id']);
     await ids(const []);
     await provider.query(
       const QueryRequest(
@@ -167,7 +166,7 @@ void main() {
   });
 
   test('projection and cursor paging are rejected, not ignored', () async {
-    provider.seed(uri, const []);
+    provider.seed(uri, const [], columns: const ['_id']);
     await expectLater(
       provider.query(
         const QueryRequest(
@@ -226,7 +225,7 @@ void main() {
     ]);
   });
 
-  test('no sort keys means _id ASC; full ties keep insertion order', () async {
+  test('no sort keys means _id ASC; ties fall back to rowid order', () async {
     provider.seed(uri, [
       {'_id': 3, 'mid': 1},
       {'_id': 1, 'mid': 2},
@@ -234,8 +233,8 @@ void main() {
     ]);
     expect(await ids(const []), [1, 2, 3]);
     expect(await ids(const [], sort: const [QuerySort(field: 'mid')]), [
-      3,
       2,
+      3,
       1,
     ]);
   });
@@ -269,5 +268,53 @@ void main() {
     if (first is! Uint8List) fail('expected a blob cell');
     first[1] = 9;
     expect(await read(), [1, 2]);
+  });
+
+  test('the default _id sort needs an _id column, as on the device', () async {
+    provider.seed(uri, [
+      {'address': '+15550001111'},
+    ]);
+    await expectLater(ids(const []), throwsA(isA<PlatformException>()));
+  });
+
+  test('an empty inList is rejected even when no row would be read', () async {
+    provider.seed(uri, const [], columns: const ['_id']);
+    await expectLater(
+      ids([where('_id', QueryFilterOperator.inList, const <String>[])]),
+      throwsA(isA<SimpleQueryError>()),
+    );
+  });
+
+  test('a rejected seed stores nothing', () async {
+    expect(
+      () => provider.seed(uri, [
+        {'_id': 1},
+        {'_id': 2, 'nested': <Object>[]},
+      ]),
+      throwsArgumentError,
+    );
+    await expectLater(ids(const []), throwsStateError);
+  });
+
+  test('LIKE _ matches one code point, including non-BMP ones', () async {
+    provider.seed(uri, [
+      {'_id': 1, 'body': 'a\u{1F600}b'},
+    ]);
+    expect(await ids([where('body', QueryFilterOperator.contains, 'a_b')]), [
+      1,
+    ]);
+  });
+
+  test('LIKE on a blob cell is rejected, not matched as text', () async {
+    provider.seed(uri, [
+      {
+        '_id': 1,
+        'data15': Uint8List.fromList([1, 2]),
+      },
+    ]);
+    await expectLater(
+      ids([where('data15', QueryFilterOperator.contains, '1')]),
+      throwsUnsupportedError,
+    );
   });
 }

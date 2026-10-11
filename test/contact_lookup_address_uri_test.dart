@@ -32,7 +32,7 @@ void main() {
   test('email lookup percent-encodes the address as one path segment', () async {
     const uri =
         'content://com.android.contacts/data/emails/filter/a%2Bb%40example.com';
-    provider.seed(uri, const []);
+    provider.seed(uri, const [], columns: const ['_id']);
 
     final contactable = await LookupService().lookupContactableByAddress(
       'a+b@example.com',
@@ -40,5 +40,10 @@ void main() {
 
     expect(contactable, isNull);
     expect(provider.requestsTo(uri), hasLength(1));
+  });
+
+  test('a blank address matches nothing without querying', () async {
+    expect(await LookupService().lookupContactableByAddress('  '), isNull);
+    expect(provider.queryRequests, isEmpty);
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_sms_native/android.dart';
@@ -19,7 +20,11 @@ void main() {
         _seedTables(provider, threads: [_thread(7, recipientIds: '11 12 13')]);
         _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
         _seedRecipient(provider, '12', '+15550002222');
-        provider.seed(ProviderUris.canonicalAddress('13'), const []);
+        provider.seed(
+          ProviderUris.canonicalAddress('13'),
+          const [],
+          columns: const ['_id'],
+        );
 
         final [conversation] = await LookupService().listConversations();
 
@@ -197,27 +202,36 @@ void main() {
       },
     );
 
-    test('a failed parts batch still returns the list, with the latest MMS '
-        'unhydrated', () async {
-      _seedTables(
-        provider,
-        threads: [_thread(7)],
-        mms: [_mms(11, threadId: 7, seconds: 2)],
-      );
-      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
-      provider.failQueriesTo(
-        ProviderUris.mmsParts,
-        const SimpleQueryError(
-          code: SimpleQueryErrorCode.transientFailure,
-          message: 'provider busy',
-        ),
-      );
+    // On a device a native provider/SQLite failure arrives as an unmapped
+    // PlatformException; a Dart-side one (e.g. permissionDenied) as a
+    // SimpleQueryError. Both are tolerated provider failures.
+    final providerFailures = <String, Object>{
+      'native PlatformException': PlatformException(
+        code: 'SQLiteException',
+        message: 'android.database.sqlite.SQLiteException: disk I/O error',
+      ),
+      'Dart-side SimpleQueryError': const SimpleQueryError(
+        code: SimpleQueryErrorCode.permissionDenied,
+        message: 'READ_SMS not granted',
+      ),
+    };
+    providerFailures.forEach((kind, failure) {
+      test('a failed parts batch ($kind) still returns the list, with the '
+          'latest MMS unhydrated', () async {
+        _seedTables(
+          provider,
+          threads: [_thread(7)],
+          mms: [_mms(11, threadId: 7, seconds: 2)],
+        );
+        _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+        provider.failQueriesTo(ProviderUris.mmsParts, failure);
 
-      final [conversation] = await LookupService().listConversations();
+        final [conversation] = await LookupService().listConversations();
 
-      expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
-      expect(conversation.latestMms?.id, 11);
-      expect(conversation.latestMms?.parts, isEmpty);
+        expect(provider.requestsTo(ProviderUris.mmsParts), hasLength(1));
+        expect(conversation.latestMms?.id, 11);
+        expect(conversation.latestMms?.parts, isEmpty);
+      });
     });
 
     test('a non-provider error in the parts batch propagates', () async {
@@ -437,7 +451,7 @@ void _seedTables(
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: messageColumns)
     ..seed(ProviderUris.mms, mms, columns: messageColumns)
-    ..seed(ProviderUris.mmsParts, parts, columns: const ['mid']);
+    ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 
 /// Purpose: seeds a recipient id's canonical address and its contacts lookup
@@ -463,7 +477,7 @@ void _seedRecipient(
     ..seed(ProviderUris.canonicalAddress(recipientId), [
       {'_id': int.parse(recipientId), 'address': address},
     ])
-    ..seed(lookupUri, [if (contact != null) contact]);
+    ..seed(lookupUri, [if (contact != null) contact], columns: const ['_id']);
 }
 
 /// Purpose: lists enriched conversations keyed by thread id.

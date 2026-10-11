@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
@@ -197,10 +198,13 @@ class ConversationLookup {
   /// the MMS body is empty for the conversation-list preview. A latest MMS
   /// with no part rows gets an empty list, the same as its bare row.
   ///
-  /// Best-effort for provider failures only: a [SimpleQueryError] from the
-  /// batch is logged with its stack and leaves each latest MMS with the empty
-  /// parts list its bare row carries (empty preview) rather than failing the
-  /// whole list (UNFY-250). Any other error is a defect and propagates.
+  /// Best-effort for provider failures only, logged with their stack: a
+  /// [SimpleQueryError] (raised Dart-side, e.g. `permissionDenied`) or a
+  /// [PlatformException] (a native provider or SQLite failure, which
+  /// `simple_query_android` delivers unmapped). Either leaves each latest MMS
+  /// with the empty parts list its bare row carries (empty preview) rather
+  /// than failing the whole list (UNFY-250). Any other error is a defect and
+  /// propagates.
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
   ) async {
@@ -219,11 +223,19 @@ class ConversationLookup {
         }
       }
     } on SimpleQueryError catch (e, s) {
-      debugPrint(
-        '[diag][simple-sms] batch latest-MMS parts hydration failed '
-        '(${latestMmsIds.length} ids): $e\n$s',
-      );
+      _logPartsHydrationFailure(latestMmsIds.length, e, s);
+    } on PlatformException catch (e, s) {
+      _logPartsHydrationFailure(latestMmsIds.length, e, s);
     }
+  }
+
+  /// Logs a tolerated provider failure of the latest-MMS parts batch with
+  /// enough context to diagnose a recurring one.
+  void _logPartsHydrationFailure(int idCount, Object error, StackTrace stack) {
+    debugPrint(
+      '[diag][simple-sms] batch latest-MMS parts hydration failed '
+      '($idCount ids): $error\n$stack',
+    );
   }
 
   /// Fetches a single conversation by thread id. Returns null if not found.

@@ -7,8 +7,7 @@
 /// `ContactLookup`, `AttachmentExtractor`) unit-testable without injection.
 library;
 
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query_platform_interface/simple_query_platform_interface.dart';
 import 'package:simple_query_platform_interface/testing.dart';
@@ -77,10 +76,15 @@ abstract final class ProviderUris {
 /// a number, while a String cell compares it as text (so `'+1555…'` never
 /// equals `'1555…'`). `NULL` never matches, `contains` is SQLite's
 /// `LIKE '%value%'` (`%`/`_` wildcards, ASCII case-insensitive), and an empty
-/// `inList` is rejected as `invalidQuery`. Sorting defaults to `_id ASC` as the
-/// backend's does, then `limit`/`offset` paging applies. A filter or sort on a
-/// column the table lacks fails like SQLite's `no such column` — the
-/// OEM-schema bug class (e.g. `thread_id` on the conversations view).
+/// `inList` is rejected as `invalidQuery`, as the Dart backend does. Sorting
+/// defaults to `_id ASC` as the backend's does, ties fall back to rowid
+/// (`_id`) order, then `limit`/`offset` paging applies. A filter or sort on a
+/// column the table lacks fails as the device does — a [PlatformException]
+/// carrying SQLite's `no such column` — the OEM-schema bug class (e.g.
+/// `thread_id` on the conversations view). Inject other provider failures
+/// with [failQueriesTo] the same way: native failures reach Dart as
+/// [PlatformException], Dart-side ones (e.g. `permissionDenied`) as
+/// [SimpleQueryError].
 ///
 /// Reading a URI nothing was seeded for throws [StateError], so every table a
 /// code path reads must be declared; seed `const []` for an empty table.
@@ -112,15 +116,15 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   /// [rows] — needed to filter an empty table without `no such column`.
   /// @returns nothing.
   /// @throws [ArgumentError] for a cell a cursor cannot hold (anything but
-  /// null, int, double, String, or Uint8List).
+  /// null, int, double, String, or Uint8List); nothing is seeded then.
   void seed(
     String contentUri,
     Iterable<QueryRecord> rows, {
     Iterable<String> columns = const <String>[],
   }) {
-    _tables
-        .putIfAbsent(contentUri, _ProviderTable.new)
-        .insertAll(rows: rows, columns: columns);
+    final table = _tables[contentUri] ?? _ProviderTable();
+    table.insertAll(rows: rows, columns: columns);
+    _tables[contentUri] = table;
   }
 
   /// Purpose: makes every later query to [contentUri] throw [error], to
@@ -148,9 +152,10 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   /// @param request the platform-specific query production code issued.
   /// @returns the matching rows, sorted and paged per [request].
   /// @throws the error registered by [failQueriesTo] for the URI;
-  /// [StateError] when no table was seeded for the URI; [SimpleQueryError]
-  /// for a missing column or an empty `inList`; [UnsupportedError] for a
-  /// projection or cursor page, which no plugin read uses.
+  /// [StateError] when no table was seeded for the URI; [PlatformException]
+  /// for a missing column; [SimpleQueryError] for an empty `inList`;
+  /// [UnsupportedError] for a projection, a cursor page, or `LIKE` on a blob,
+  /// which no plugin read uses.
   @override
   Future<QueryResult> query(QueryRequest request) async {
     await super.query(request);
@@ -187,19 +192,23 @@ final class _ProviderTable {
   final List<QueryRecord> _rows = <QueryRecord>[];
   final Set<String> _columns = <String>{};
 
-  /// Purpose: appends copies of [rows] and widens the column set.
+  /// Purpose: appends copies of [rows] and widens the column set, all or
+  /// nothing.
   ///
   /// @param rows provider rows to store.
   /// @param columns column names beyond the keys of [rows].
   /// @returns nothing.
   /// @throws [ArgumentError] for a cell a cursor cannot hold (anything but
-  /// null, int, double, String, or Uint8List).
+  /// null, int, double, String, or Uint8List), before any row is stored.
   void insertAll({
     required Iterable<QueryRecord> rows,
     required Iterable<String> columns,
   }) {
-    for (final row in rows) {
+    final incoming = rows.toList(growable: false);
+    for (final row in incoming) {
       row.forEach(_requireCursorValue);
+    }
+    for (final row in incoming) {
       _rows.add(_copyRow(row));
       _columns.addAll(row.keys);
     }
@@ -209,23 +218,26 @@ final class _ProviderTable {
   /// Purpose: evaluates [request] as `SELECT * … WHERE … ORDER BY … LIMIT`.
   ///
   /// With no sort keys the order is `_id ASC`, the Android backend's default.
-  /// Rows that tie on every key keep insertion order, standing in for
-  /// SQLite's rowid order.
+  /// Rows that tie on every key fall back to rowid (`_id`) order, then
+  /// insertion order.
   ///
   /// @param request the incoming query.
   /// @returns copies of the selected rows.
-  /// @throws [SimpleQueryError] for a missing column or an empty `inList`;
-  /// [UnsupportedError] for a projection or cursor page.
+  /// @throws as [FakeContentProviderPlatform.query] does for a malformed or
+  /// unmodelled request.
   List<QueryRecord> select(QueryRequest request) {
-    _validate(request);
     final sort = request.sort.isEmpty ? _defaultSort : request.sort;
+    _validate(request, sort);
+    final predicates = request.filters.map(_predicateFor).toList();
     final matches = <(int, QueryRecord)>[
       for (final (index, row) in _rows.indexed)
-        if (request.filters.every((f) => _matches(row, f))) (index, row),
+        if (predicates.every((matches) => matches(row))) (index, row),
     ];
     matches.sort((a, b) {
       final byKeys = _compareBySort(a.$2, b.$2, sort);
-      return byKeys != 0 ? byKeys : a.$1.compareTo(b.$1);
+      if (byKeys != 0) return byKeys;
+      final byRowid = _compareBySort(a.$2, b.$2, _defaultSort);
+      return byRowid != 0 ? byRowid : a.$1.compareTo(b.$1);
     });
     return _paginate(
       matches.map((match) => match.$2),
@@ -237,9 +249,11 @@ final class _ProviderTable {
   /// not model, before any row is read.
   ///
   /// @param request the incoming query.
+  /// @param sort the effective sort keys, including the backend default.
   /// @returns nothing.
-  /// @throws [SimpleQueryError] or [UnsupportedError], as for [select].
-  void _validate(QueryRequest request) {
+  /// @throws [PlatformException] for a column the table lacks;
+  /// [UnsupportedError] for a projection or cursor page.
+  void _validate(QueryRequest request, List<QuerySort> sort) {
     if (request.projection != null) {
       throw UnsupportedError('Fake provider tables do not model projection');
     }
@@ -248,17 +262,16 @@ final class _ProviderTable {
     }
     final fields = <String>[
       for (final filter in request.filters) filter.field,
-      for (final sort in request.sort) sort.field,
+      for (final key in sort) key.field,
     ];
     for (final field in fields) {
-      if (!_columns.contains(field)) {
-        throw _invalidQuery('no such column: $field');
-      }
+      if (!_columns.contains(field)) throw _noSuchColumn(field);
     }
   }
 }
 
-/// The Android backend's `ORDER BY` when a request names no sort keys.
+/// The Android backend's `ORDER BY` when a request names no sort keys; also
+/// rowid order, since provider tables key on `_id INTEGER PRIMARY KEY`.
 const List<QuerySort> _defaultSort = <QuerySort>[QuerySort(field: '_id')];
 
 /// SQLite's test for TEXT that converts losslessly to a number when compared
@@ -292,44 +305,52 @@ QueryRecord _copyRow(QueryRecord row) => row.map(
       MapEntry(column, value is Uint8List ? Uint8List.fromList(value) : value),
 );
 
-/// Purpose: decides whether [row] satisfies one SQL condition.
+/// Purpose: compiles one SQL condition into a row predicate, binding its
+/// value as a string the way the Android backend binds `selectionArgs`.
 ///
-/// @param row the candidate provider row.
-/// @param filter the condition, whose value is bound as a string the way the
-/// Android backend binds `selectionArgs`.
-/// @returns whether the row matches; always false when the cell is `NULL`.
+/// Compiled once per request, so an empty `inList` is rejected even when no
+/// row would be read, as the backend rejects it before querying.
+///
+/// @param filter the condition.
+/// @returns a predicate that is always false for a `NULL` cell.
 /// @throws [SimpleQueryError] for an empty `inList`.
-bool _matches(QueryRecord row, QueryFilterCondition filter) {
-  final cell = row[filter.field];
-  if (cell == null) return false;
+bool Function(QueryRecord) _predicateFor(QueryFilterCondition filter) {
   final argument = filter.value?.toString() ?? '';
-  return switch (filter.operator) {
-    QueryFilterOperator.equals => _compareToArgument(cell, argument) == 0,
-    QueryFilterOperator.notEquals => _compareToArgument(cell, argument) != 0,
-    QueryFilterOperator.greaterThan => _compareToArgument(cell, argument) > 0,
+  final test = switch (filter.operator) {
+    QueryFilterOperator.equals =>
+      (Object cell) => _compareToArgument(cell, argument) == 0,
+    QueryFilterOperator.notEquals =>
+      (Object cell) => _compareToArgument(cell, argument) != 0,
+    QueryFilterOperator.greaterThan =>
+      (Object cell) => _compareToArgument(cell, argument) > 0,
     QueryFilterOperator.greaterThanOrEqual =>
-      _compareToArgument(cell, argument) >= 0,
-    QueryFilterOperator.lessThan => _compareToArgument(cell, argument) < 0,
+      (Object cell) => _compareToArgument(cell, argument) >= 0,
+    QueryFilterOperator.lessThan =>
+      (Object cell) => _compareToArgument(cell, argument) < 0,
     QueryFilterOperator.lessThanOrEqual =>
-      _compareToArgument(cell, argument) <= 0,
-    QueryFilterOperator.contains => _like(cell, '%$argument%'),
-    QueryFilterOperator.inList => _inListArguments(
-      filter,
-    ).any((item) => _compareToArgument(cell, item) == 0),
+      (Object cell) => _compareToArgument(cell, argument) <= 0,
+    QueryFilterOperator.contains => _likePredicate('%$argument%'),
+    QueryFilterOperator.inList => _inListPredicate(filter),
+  };
+  return (row) => switch (row[filter.field]) {
+    null => false,
+    final Object cell => test(cell),
   };
 }
 
-/// Purpose: reads an `inList` condition's bound arguments.
+/// Purpose: compiles an `inList` condition's bound arguments.
 ///
 /// @param filter an `inList` condition.
-/// @returns each list item as its bound string.
+/// @returns a cell predicate matching any listed argument.
 /// @throws [SimpleQueryError] when the list is empty, as the backend does.
-List<String> _inListArguments(QueryFilterCondition filter) {
+bool Function(Object) _inListPredicate(QueryFilterCondition filter) {
   final values = filter.value;
   if (values is! List<Object?> || values.isEmpty) {
     throw _invalidQuery('inList filter requires a non-empty List value');
   }
-  return values.map((item) => item.toString()).toList(growable: false);
+  final arguments = values.map((item) => item.toString()).toList();
+  return (cell) =>
+      arguments.any((argument) => _compareToArgument(cell, argument) == 0);
 }
 
 /// Purpose: compares a cell with a bound TEXT argument under column affinity.
@@ -378,29 +399,62 @@ int _storageClassRank(Object value) => switch (value) {
   _ => 2,
 };
 
-/// Purpose: evaluates SQLite `LIKE` — `%` matches any run, `_` one
-/// character, ASCII letters match case-insensitively, and the cell is read as
+const int _likeAnyRun = 0x25; // '%'
+const int _likeAnyOne = 0x5F; // '_'
+const int _asciiUpperA = 0x41;
+const int _asciiUpperZ = 0x5A;
+const int _asciiCaseOffset = 0x20;
+
+/// Purpose: compiles a SQLite `LIKE` pattern — `%` matches any run, `_` one
+/// character (code point), ASCII letters case-insensitively, the cell read as
 /// text.
 ///
-/// @param cell a non-null cell value.
 /// @param pattern the bound `LIKE` pattern.
-/// @returns whether the whole cell text matches.
+/// @returns a cell predicate; it throws [UnsupportedError] for a blob cell,
+/// whose byte-level `LIKE` this fake does not model.
 /// @throws nothing.
-bool _like(Object cell, String pattern) {
-  final expression = StringBuffer('^');
-  for (final rune in _asciiLower(pattern).runes) {
-    final character = String.fromCharCode(rune);
-    expression.write(switch (character) {
-      '%' => '.*',
-      '_' => '.',
-      _ => RegExp.escape(character),
-    });
+bool Function(Object) _likePredicate(String pattern) {
+  final compiled = _asciiLower(pattern).runes.toList(growable: false);
+  return (cell) {
+    if (cell is Uint8List) {
+      throw UnsupportedError('Fake provider tables do not model LIKE on blobs');
+    }
+    final text = _asciiLower(cell.toString()).runes.toList(growable: false);
+    return _likeMatches(text, compiled);
+  };
+}
+
+/// Purpose: matches code points against a `LIKE` pattern with single-star
+/// backtracking — linear in practice, never exponential.
+///
+/// @param text the cell's code points.
+/// @param pattern the pattern's code points.
+/// @returns whether the whole text matches.
+/// @throws nothing.
+bool _likeMatches(List<int> text, List<int> pattern) {
+  var t = 0;
+  var p = 0;
+  var lastRun = -1;
+  var resumeAt = 0;
+  while (t < text.length) {
+    final symbol = p < pattern.length ? pattern[p] : null;
+    if (symbol == _likeAnyRun) {
+      lastRun = p++;
+      resumeAt = t;
+    } else if (symbol == _likeAnyOne || symbol == text[t]) {
+      t++;
+      p++;
+    } else if (lastRun >= 0) {
+      p = lastRun + 1;
+      t = ++resumeAt;
+    } else {
+      return false;
+    }
   }
-  expression.write(r'$');
-  return RegExp(
-    expression.toString(),
-    dotAll: true,
-  ).hasMatch(_asciiLower(cell.toString()));
+  while (p < pattern.length && pattern[p] == _likeAnyRun) {
+    p++;
+  }
+  return p == pattern.length;
 }
 
 /// Purpose: lower-cases only ASCII letters, as SQLite's default `LIKE` does.
@@ -408,9 +462,13 @@ bool _like(Object cell, String pattern) {
 /// @param text any text.
 /// @returns [text] with `A`–`Z` lowered.
 /// @throws nothing.
-String _asciiLower(String text) => text.replaceAllMapped(
-  RegExp('[A-Z]'),
-  (match) => match.group(0)?.toLowerCase() ?? '',
+String _asciiLower(String text) => String.fromCharCodes(
+  text.codeUnits.map(
+    (unit) =>
+        unit >= _asciiUpperA && unit <= _asciiUpperZ
+            ? unit + _asciiCaseOffset
+            : unit,
+  ),
 );
 
 /// Purpose: applies `LIMIT`/`OFFSET` to already-ordered rows.
@@ -451,8 +509,21 @@ int _compareBySort(QueryRecord a, QueryRecord b, List<QuerySort> sort) {
   return 0;
 }
 
-/// Purpose: builds the error the Android backend raises for a malformed
-/// query.
+/// Purpose: builds the error a device raises for a column the provider lacks:
+/// the native `SQLiteException`, which Pigeon delivers as a
+/// [PlatformException] named after the exception class.
+///
+/// @param column the missing column.
+/// @returns the device-shaped [PlatformException].
+/// @throws nothing.
+PlatformException _noSuchColumn(String column) => PlatformException(
+  code: 'SQLiteException',
+  message:
+      'android.database.sqlite.SQLiteException: no such column: $column '
+      '(code 1 SQLITE_ERROR)',
+);
+
+/// Purpose: builds the error the Dart backend raises for a malformed query.
 ///
 /// @param message what was malformed.
 /// @returns an `invalidQuery` [SimpleQueryError].

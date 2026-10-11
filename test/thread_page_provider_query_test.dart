@@ -152,11 +152,15 @@ void _seedThread(
   provider
     ..seed(ProviderUris.sms, sms)
     ..seed(ProviderUris.mms, mms)
-    ..seed(ProviderUris.mmsParts, const [], columns: const ['mid']);
+    ..seed(ProviderUris.mmsParts, const [], columns: const ['_id', 'mid']);
   for (final row in mms) {
     final id = row['_id'];
     if (id is! int) throw ArgumentError.value(row, 'mms', 'row has no int _id');
-    provider.seed(ProviderUris.mmsAddresses(id), const []);
+    provider.seed(
+      ProviderUris.mmsAddresses(id),
+      const [],
+      columns: const ['_id'],
+    );
   }
 }
 
