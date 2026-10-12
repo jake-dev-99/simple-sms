@@ -727,7 +727,10 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val attachmentPaths: List<String>? = null,
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
-    )
+            val clientCorrelationId: String? = null,
+    ) {
+        internal var correlationAttempt = OutboundSendCorrelations.Attempt(clientCorrelationId)
+    }
 
     init {
         SendResultRouter.register(this)
@@ -736,6 +739,16 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
     @Suppress("UNCHECKED_CAST")
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "getSendCorrelations" -> {
+                try {
+                    val uris = stringList(call.arguments, "messageUris")
+                        ?: throw IllegalArgumentException("messageUris must be a list")
+                    result.success(OutboundSendCorrelations(context).lookup(uris))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not read outbound correlations", e)
+                    result.error("CORRELATION_READ_FAILED", e.message, null)
+                }
+            }
             "sendMessage" -> {
                 if (!context.packageManager.hasSystemFeature(
                                 PackageManager.FEATURE_TELEPHONY_MESSAGING
@@ -777,49 +790,58 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                             ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
                     val recipients = stringList(message["recipients"], "recipients")
                             ?: throw IllegalArgumentException("sendMessage has no recipients")
-                    val details =
-                            MessageRequestDetails(
-                                    threadId =
-                                            Telephony.Threads.getOrCreateThreadId(
-                                                    context,
-                                                    recipients.toSet(),
-                                            ),
-                                    addresses = recipients,
-                                    body = message["body"] as? String
-                                            ?: throw IllegalArgumentException("sendMessage has no body"),
-                                    subscriptionId = message["subscriptionId"]?.let {
-                                        it as? Int
-                                                ?: throw IllegalArgumentException("subscriptionId must be an int")
-                                    },
-                                    attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
-                                    flutterResult = result,
-                            )
-                    requestDetails = details
+                    val correlationId = message["clientCorrelationId"]?.let {
+                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
+                    }
+                    OutboundSendCorrelations(context).withAttempt(
+                        correlationId to maxOf(1, recipients.size),
+                    ) { correlationAttempt ->
+                        val details =
+                                MessageRequestDetails(
+                                        threadId =
+                                                Telephony.Threads.getOrCreateThreadId(
+                                                        context,
+                                                        recipients.toSet(),
+                                                ),
+                                        addresses = recipients,
+                                        body = message["body"] as? String
+                                                ?: throw IllegalArgumentException("sendMessage has no body"),
+                                        subscriptionId = message["subscriptionId"]?.let {
+                                            it as? Int
+                                                    ?: throw IllegalArgumentException("subscriptionId must be an int")
+                                        },
+                                        attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
+                                        clientCorrelationId = correlationId,
+                                        flutterResult = result,
+                                )
+                        details.correlationAttempt = correlationAttempt
+                        requestDetails = details
 
-                    val smsManager: SmsManager =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                val subIdToUse =
-                                        selectSubscriptionId(
-                                                details.subscriptionId,
-                                                SmsManager::getDefaultSmsSubscriptionId,
-                                        )
-                                context.getSystemService(SmsManager::class.java)
-                                        .createForSubscriptionId(subIdToUse)
-                            } else {
-                                @Suppress("DEPRECATION") SmsManager.getDefault()
-                            }
+                        val smsManager: SmsManager =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    val subIdToUse =
+                                            selectSubscriptionId(
+                                                    details.subscriptionId,
+                                                    SmsManager::getDefaultSmsSubscriptionId,
+                                            )
+                                    context.getSystemService(SmsManager::class.java)
+                                            .createForSubscriptionId(subIdToUse)
+                                } else {
+                                    @Suppress("DEPRECATION") SmsManager.getDefault()
+                                }
 
-                    val route =
-                            routeMessage(
-                                    hasAttachments =
-                                            !details.attachmentPaths.isNullOrEmpty(),
-                                    recipientCount = details.addresses.size,
-                            )
-                    when (route) {
-                        OutboundRoute.MMS ->
-                                sendMms(smsManager = smsManager, requestDetails = details)
-                        OutboundRoute.SMS ->
-                                sendSms(smsManager = smsManager, requestDetails = details)
+                        val route =
+                                routeMessage(
+                                        hasAttachments =
+                                                !details.attachmentPaths.isNullOrEmpty(),
+                                        recipientCount = details.addresses.size,
+                                )
+                        when (route) {
+                            OutboundRoute.MMS ->
+                                    sendMms(smsManager = smsManager, requestDetails = details)
+                            OutboundRoute.SMS ->
+                                    sendSms(smsManager = smsManager, requestDetails = details)
+                        }
                     }
                 } catch (e: Exception) {
                     val pending = requestDetails
@@ -975,6 +997,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
+            OutboundSendCorrelations(context).recordAttemptRow(newUri, requestDetails.correlationAttempt)
 
             val rawDest = requestDetails.addresses.first()
             // formatNumber may return null for non-E.164-parseable
@@ -1100,6 +1123,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
+                OutboundSendCorrelations(context).recordAttemptRow(uri, requestDetails.correlationAttempt)
                 awaitResult(uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)

@@ -23,6 +23,11 @@ return typed results.
 
 ### Added
 
+- **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart. An indexed SQLite registry in Android's no-backup directory avoids whole-registry XML rewrites and prevents cloud backup/device transfer from restoring device-specific row IDs. Metadata contains no message content or recipient addresses; the exact provider `date` is retained only to verify row generation, never to discover or match a logical send. Unreleased XML metadata is not imported because it lacks a verified generation and device-local provenance.
+  Correlated sends and recovery require `ReadSms` for provider-generation verification. Recording an uncorrelated send clears prior identity at its URI. Recovery prunes absent or generation-changed rows, preserving a job's surviving attempts in recorded order; provider unavailability fails without pruning identities.
+  All recipient rows from one native MMS request share an attempt identity. Each surviving row of the latest attempt returns itself as `latestMessageUri`; rows from earlier retries return a surviving row of the latest attempt. Consumers comparing `latestMessageUri` with the requested URI therefore retain every current recipient row.
+  Each logical send retains at most 64 live provider rows. The sender holds one shared engine lock across the recipient-row budget check and synchronous native persistence/radio initialization; competing sends cannot consume the same free capacity before provider creation; absent or generation-changed rows can free space, and live identities are never silently evicted. Lookups accept at most 1000 URIs per batch.
+
 - **`SEND_RESULT_TIMEOUT` (UNFY-299).** `sendMessage` settles with this code
   when no carrier result arrives within 10 minutes of device uptime (e.g. the
   radio process crashed mid-send), instead of never completing.
