@@ -1,94 +1,104 @@
 # Release flow
 
-`main`-only with manual cut + tag-driven pub.dev publishing, per the
-Simple Zen Toolchain Architecture SOP.
+A merge to `main` does not publish. A manual **Cut Release** dispatch authorizes
+one frozen batch; package tag pushes run **Deploy**, which publishes with OIDC.
 
-```text
-feature branch
-     │  PR  ▼  (CI runs)
-    main
-     │  release.yml workflow_dispatch ▼  (bumps pubspec + CHANGELOG, tags)
-     │  tag push ▼                       (deploy.yml runs OIDC pub.dev release)
-    pub.dev
-```
+## Cutting a batch (UNFY-345)
 
-## Branch intent
+1. Merge the reviewed PRs into `main` and complete any cross-repository prerequisites.
+2. Dispatch [Cut Release](../.github/workflows/release.yml) on `main` with
+   `operation=cut`, `package=all`, and the appropriate `patch`, `minor`, or `major` bump.
+   Use `dry_run=true` first to inspect selection reasons, versions, floors, notes,
+   and dependency order, and to validate the candidate source graph.
+3. `all` selects packages with owned release changes since their last tag whose
+   version is also present on pub.dev, plus dependents needing raised floors.
+   Unchanged unrelated packages are skipped. Root facade ownership excludes nested
+   platforms and release tooling. Individual package cuts remain available.
+4. The chosen increment applies to every selected package's current source version;
+   versions already edited in a PR also receive that increment. The planner raises
+   internal dependency floors, preserves authored `Unreleased` notes, and refuses
+   constraint downgrades or cyclic dependencies. Review breaking APIs and select
+   `major` when the platform-interface contract requires it.
+5. Source preflight runs in a disposable snapshot with only intentional batch links;
+   external dependencies still resolve from pub.dev. The workflow freezes the source
+   SHA, files, versions, tags, and prepared commit in an internal draft GitHub Release.
+   It pushes that commit once, then processes packages in dependency order.
+6. Before each package tag, clean hosted resolution (including its bundled example),
+   analysis, tests when present, and `flutter pub publish --dry-run` must pass.
+   Only then is that tag pushed. The coordinator observes its original tag-push
+   Deploy run and verifies the exact hosted version, archive checksum, and frozen
+   source contents before advancing to a dependent package. Deploy remains the
+   uploader; the coordinator never uploads directly.
 
-| Branch | Role |
-|---|---|
-| `main` | Production. Feature branches PR directly here. The "Cut Release" workflow is dispatched manually on `main`; the resulting tag push triggers the pub.dev publish. |
+A dependency within the same batch may start unpublished: its package is published
+and confirmed first. A repository's `all` cannot release another repository. Missing
+external versions stop validation and require completing that prerequisite first.
 
-`develop` / `staging` branches were retired — solo-dev ops doesn't justify
-a multi-branch promotion pipeline. CI runs on every PR; CD (pub.dev
-publishing) runs on **tag push**, not on the merge.
+## Pauses and automatic recovery
 
-## Cutting a release
+HTTP requests honor server cache lifetimes and `Retry-After` deadlines. Known
+publication timestamps apply conservative rolling quotas: per package 3 in two
+minutes, 6 in an hour, and 12 in a day; known prior batch uploads also account for
+200 per publishing agent in each window. These are upstream production configuration
+values, not a promise about remaining deployed quota; other repositories and manual
+uploads are not visible locally. Server rate-limit responses remain authoritative.
 
-1. Land your work on `main` via a PR. CI runs; merge.
-2. Dispatch the **Cut Release** workflow
-   ([`release.yml`](../.github/workflows/release.yml)) on `main` via
-   the GitHub Actions UI (`workflow_dispatch`). Pick the bump
-   (`patch` / `minor` / `major`). The workflow:
-   - Resolves root and example dependencies against pub.dev, without local
-     sibling overrides. An unpublished or incompatible dependency stops the
-     workflow before it creates a release commit or tag.
-   - Bumps `pubspec.yaml` per the selected semver level.
-   - Generates a `CHANGELOG.md` entry from git log since the last tag.
-   - Commits the bump + entry, tags the commit, pushes both.
-3. The tag push fires
-   [`deploy.yml`](../.github/workflows/deploy.yml), which verifies the
-   tag version matches `pubspec.yaml`, resolves published dependencies again,
-   and runs `flutter pub publish --force` with validation enabled.
-   `dart-lang/setup-dart` configures pub.dev's temporary OIDC credential;
-   Flutter supplies the SDK used by the package.
+An upload quota saves `status=deferred`, the retry deadline, exact original Deploy
+run, and progress. When Flutter exposes only the quota message, the coordinator waits
+the full reported two-minute, one-hour, or one-day window. No retry occurs before that
+deadline. The hourly scheduled workflow automatically resumes the authorized batch
+on its first eligible run, rerunning failed jobs of the original tag-push Deploy run.
+Long cooldowns use the durable journal instead of keeping a runner alive for a day.
+Completed packages are never uploaded again. Short transient upload failures use
+bounded backoff and jitter; authentication/validation failures require attention.
+An unrecognized quota window pauses for attention without speculative uploads.
 
-For the first-party MMS migration (UNFY-123), the public Dart API and channel
-contracts remain stable: select **minor** (`0.5.1` → `0.6.0`). Complete the
-Samsung/Verizon send-and-receive regression before cutting the release, then
-bump Unify's dependency only after the version is available on pub.dev.
+The Actions summary and internal draft release show progress and the reason for a
+pause. The immutable `sz-release-batch-<run-id>` tag records manual intent and survives
+an interrupted journal creation; it matches no package Deploy trigger. Scheduled
+runs select no new changes. Completed, cancelled, and blocked batches do no uploads.
 
-The old `auto-tag.yml` flow was retired — tags only exist now when a
-human deliberately invokes this workflow.
+To continue a blocked batch after fixing its external prerequisite, dispatch
+`operation=resume` on `main`. It keeps the frozen versions and source; it does not
+adopt new source fixes. A new cut is rejected while another batch is incomplete.
+`operation=cancel` stops remaining work; it cannot stop an already running Deploy
+or undo a published package. A cancelled batch requires inspecting any in-flight
+Deploy before authorizing another cut. Dry runs never change the journal.
 
-## Tag pattern
+Never delete, move, or recreate package tags to recover. Prefer batch resume or
+GitHub's **Re-run failed jobs** on the original tag-push Deploy run. A new manual
+Deploy dispatch does not preserve pub.dev's required `push` OIDC event claim.
 
-simple-sms is a single-package repo (not federated):
+## Publication setup
 
-| Package | Tag prefix | Working dir |
-|---|---|---|
-| `simple_sms_native` | `simple_sms_native-v` | `.` (repo root) |
+`RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` identify the app with contents write
+and the existing `main` ruleset bypass. Its pushes trigger downstream Deploy;
+`GITHUB_TOKEN` supplies contents write for the draft journal and actions write for
+original-run retries. All Cut Release and scheduled resume runs share one repository
+concurrency group. Initial release dispatches and merges remain human operations.
 
-## One-time pub.dev setup
+Each package must already exist on pub.dev and have automated publishing configured
+for this repository with tag pattern `<package>-v{{version}}`. Pub.dev cannot create
+a new package through automated publishing; an authorized uploader must publish its
+first version interactively from the reviewed source without development overrides.
 
-Before the first tag-triggered release, configure pub.dev:
+See [Dart automated publishing](https://dart.dev/tools/pub/automated-publishing),
+[pub.dev hosted API](https://pub.dev/help/api), and the verified upstream
+[quota configuration](https://github.com/dart-lang/pub-dev/blob/95314cb7355cc4f57a6ab55b1929a40693ee7716/app/config/dartlang-pub.yaml).
 
-1. If the package does not exist yet, an authorized uploader must publish its
-   first version interactively with `flutter pub publish` from the reviewed
-   release commit, without local sibling overrides. Pub.dev cannot automate
-   the creation of a new package.
-2. Visit `https://pub.dev/packages/simple_sms_native/admin`.
-3. Enable **Automated publishing** → *Publishing from GitHub Actions*.
-4. Fill in:
-   - **Repository**: `<owner>/simple-sms`
-   - **Tag pattern**: `simple_sms_native-v{{version}}`
-5. Save.
+## Package tags
 
-See [Dart's automated publishing instructions](https://dart.dev/tools/pub/automated-publishing).
+| Package | Tag prefix | Directory |
+| --- | --- | --- |
+| `simple_sms_native` | `simple_sms_native-v` | `.` |
 
-Without this, `dart pub publish` from the workflow errors with
-`missing OIDC authorization` and the release fails cleanly — the
-package is never half-published.
+## Current dependency rollout
 
-## Why this shape
-
-- **CI on PR opened.** Catches breakage before merge. `push`-triggered
-  CI was dropped because every landed change already passed the PR
-  check; running again on merge is redundant spend.
-- **Manual release dispatch.** Every release is a deliberate human
-  act, not a side effect of a merge. Doc-fix merges, reverts, and
-  regression hotfixes don't accidentally publish.
-- **CD on tag.** The tag push is the only path to pub.dev — deploy
-  cannot run from a merge or a dispatch directly.
-- **OIDC (no stored tokens).** Long-lived `PUB_DEV_CREDENTIALS` in a
-  GitHub secret is the old pattern; OIDC is the current pub.dev
-  recommendation and leaves no credential to steal.
+Complete Query `0.3.0`, Permissions `1.6.4`, and Telephony `1.0.0` first, then
+resolve root and example without sibling overrides. Complete the real-device
+Samsung/Verizon MMS send/receive regression before publication. The MMS migration
+keeps public contracts, so its increment is **minor**, but Cut Release increments
+the current source version: source `0.6.0` becomes `0.7.0` with `minor`. Do not assume
+it publishes the already edited `0.6.0`. If this package still has no hosted version,
+its first publication is the interactive prerequisite described above; automation
+then handles subsequent cuts.

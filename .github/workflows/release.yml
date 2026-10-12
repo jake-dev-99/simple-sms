@@ -1,51 +1,53 @@
 name: Cut Release
 
-# Manual workflow that bumps the package's pubspec version, generates
-# a CHANGELOG entry from git log since the last tag, commits the bump
-# + entry, tags the commit, and pushes both. The tag push triggers
-# the "Deploy" workflow which runs the canonical pub.dev OIDC
-# publish flow.
-#
-# Replaces the old `auto-tag.yml`. Tags only exist now when a human
-# deliberately invokes this workflow.
-#
-# Single-package repo, so the `package` input is fixed. The shape
-# matches the multi-package siblings' release.yml for consistency.
-
+# A manual cut authorizes one immutable batch. Scheduled runs only resume it.
+# Publication remains in the original tag-push Deploy workflow for pub.dev OIDC.
 on:
+  schedule:
+    - cron: '19 * * * *'
   workflow_dispatch:
     inputs:
+      operation:
+        description: 'Cut a new batch, resume an existing batch, or cancel remaining work'
+        required: true
+        default: cut
+        type: choice
+        options: [cut, resume, cancel]
+      package:
+        description: 'all selects changed packages and affected dependents'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - simple_sms_native
       bump:
-        description: 'Semver bump'
+        description: 'Apply this increment to each selected package'
         required: true
         default: patch
         type: choice
-        options:
-          - patch
-          - minor
-          - major
+        options: [patch, minor, major]
       dry_run:
-        description: 'Compute next version + CHANGELOG without pushing'
-        required: false
+        description: 'Preview and validate without writing release state or pushing'
         default: false
         type: boolean
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: release-${{ github.workflow }}
+  group: release-batch-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   cut-release:
-    name: Cut release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - name: Generate app token
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -62,131 +64,31 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
 
-      - name: Validate published dependencies before creating a tag
-        # Dev overrides are excluded from the published package. Resolve the
-        # same root/example graph that consumers receive before any release
-        # commit or tag is pushed, without changing the release checkout.
-        run: |
-          set -euo pipefail
-          release_check_dir="$(mktemp -d "$RUNNER_TEMP/simple-sms-release.XXXXXX")"
-          trap 'rm -rf "$release_check_dir"' EXIT
-          git archive HEAD | tar -x -C "$release_check_dir"
-          rm "$release_check_dir/pubspec_overrides.yaml" "$release_check_dir/example/pubspec_overrides.yaml"
-          cd "$release_check_dir"
-          flutter pub get --no-example
-          (cd example && flutter pub get)
+      - name: Install release tooling
+        run: python3 -m pip install -r tool/release-requirements.txt
 
-      - name: Cut release
+      - name: Coordinate batch release
         env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          OPERATION: ${{ inputs.operation }}
+          PACKAGE: ${{ inputs.package }}
           BUMP: ${{ inputs.bump }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-
-          pkg="simple_sms_native"
-          dir="."
-          pubspec="pubspec.yaml"
-          changelog="CHANGELOG.md"
-
-          bump_version() {
-            local v="$1" mode="$2"
-            local base="${v%%-*}"
-            IFS='.' read -r major minor patch <<< "$base"
-            case "$mode" in
-              major) major=$((major + 1)); minor=0; patch=0 ;;
-              minor) minor=$((minor + 1)); patch=0 ;;
-              patch) patch=$((patch + 1)) ;;
-              *) echo "::error::unknown bump: $mode"; exit 1 ;;
-            esac
-            echo "${major}.${minor}.${patch}"
-          }
-
-          current="$(grep '^version:' "$pubspec" | sed 's/version:[[:space:]]*//' | tr -d '\r')"
-          next="$(bump_version "$current" "$BUMP")"
-          tag="${pkg}-v${next}"
-
-          prev_tag="$(git tag --merged HEAD --list "${pkg}-v*" | sort -V | tail -1 || true)"
-
-          if [ -n "$prev_tag" ]; then
-            entries="$(git log "${prev_tag}..HEAD" --pretty=format:'- %s' 2>/dev/null || true)"
-            range_label="${prev_tag}..HEAD"
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            args=(--operation resume --scheduled)
           else
-            entries="$(git log HEAD --pretty=format:'- %s' 2>/dev/null | head -50 || true)"
-            range_label="initial release (last 50 commits)"
+            args=(--operation "${OPERATION:-cut}" --package "${PACKAGE:-all}" --bump "${BUMP:-patch}")
+            if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           fi
-          [ -z "$entries" ] && entries="- (no commits since ${prev_tag:-repo init})"
-
-          # Build the CHANGELOG entry via printf rather than a multi-
-          # line bash literal — a literal with an unindented line (e.g.
-          # the trailing `"` at column 1) breaks the YAML `run: |`
-          # block-scalar indent contract and the workflow fails to
-          # parse before it can run. `$(...)` strips trailing newlines,
-          # so append a sentinel, then remove it after capture to keep
-          # the blank line that should separate this entry from any
-          # existing CHANGELOG content.
-          entry_block="$(
-            printf '## %s\n\n%s\n\n' "$next" "$entries"
-            printf '_'
-          )"
-          entry_block="${entry_block%_}"
-
-          echo "==================== Release plan ===================="
-          echo "package:  ${pkg}"
-          echo "current:  ${current}"
-          echo "next:     ${next}"
-          echo "tag:      ${tag}"
-          echo "range:    ${range_label}"
-          echo ""
-          echo "${entries}"
-          echo "======================================================"
-
-          if [ "$DRY_RUN" = "true" ]; then
-            echo "::notice::Dry run — no commits, no tags, no push."
-            exit 0
-          fi
-
-          sed -i -E "s/^version:[[:space:]]*.*$/version: ${next}/" "$pubspec"
-          git add "$pubspec"
-
-          if [ -f "$changelog" ]; then
-            { printf '%s\n' "$entry_block"; cat "$changelog"; } > "${changelog}.new"
-            mv "${changelog}.new" "$changelog"
-          else
-            printf '%s\n' "$entry_block" > "$changelog"
-          fi
-          git add "$changelog"
-
-          # Defensive: if no staged changes, something went wrong upstream
-          # (file write failed, package already at the bumped version, etc.).
-          # Aborting before tag creation prevents tags pointing at a stale
-          # commit that has nothing to do with the release.
-          if git diff --cached --quiet; then
-            echo "::error::No staged changes after bump — release.yml ran but no version updates were applied. Aborting before tag creation."
-            exit 1
-          fi
-
-          git commit -m "chore(release): cut ${tag}"
-
-          if git rev-parse "$tag" >/dev/null 2>&1; then
-            echo "::error::tag $tag already exists locally — abort"
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "::error::tag $tag already exists on origin — abort"
-            exit 1
-          fi
-          git tag -a "$tag" -m "Release $tag"
-
-          # Push commit first, then tag separately. Separate pushes
-          # are required so the tag push fires a distinct `push`
-          # webhook event — the Deploy workflow's `on: push: tags:`
-          # trigger keys off that event. App-token pushes (unlike
-          # GITHUB_TOKEN) DO trigger downstream workflows.
-          git push origin HEAD:main
-          git push origin "$tag"
-
-          echo "::notice::Pushed commit + tag $tag. The Deploy workflow will fire."
+          python3 tool/release_coordinator.py "${args[@]}"
