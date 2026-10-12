@@ -100,8 +100,9 @@ class AndroidMessaging {
   /// or the send can't be started; without the `DefaultSmsApp` role the
   /// provider refuses the SMS row and the send fails with `PERMISSION_DENIED`
   /// before anything is sent. Otherwise the future settles once the
-  /// carrier reports the result. A multipart SMS settles as failed at its
-  /// first failed part, and as sent only once every part was sent.
+  /// carrier reports the result. A multipart SMS settles once every part
+  /// has reported: as failed if any part failed, with the first failure to
+  /// arrive, else as sent.
   ///
   /// Normally it resolves with the message row; a send the carrier rejected
   /// has that row marked failed (SMS `type`, MMS `msg_box`). Two
