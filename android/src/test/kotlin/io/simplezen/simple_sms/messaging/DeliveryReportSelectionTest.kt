@@ -5,7 +5,6 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
-import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.Telephony
@@ -128,8 +127,16 @@ class DeliveryReportSelectionTest {
     }
 }
 
-/** [selection] on the row a row URI names (`_id = N AND (selection)`), as the platform's providers apply it. */
+/**
+ * [selection] on the row a row URI names, joined with a bare `AND` as AOSP
+ * MmsProvider joins them (SmsProvider parenthesizes each side), so a guard
+ * passes only if it is safe either way.
+ */
 internal fun rowWhere(uri: Uri, selection: String?): String? {
     val id = ContentUris.parseId(uri)
-    return if (id < 0) selection else DatabaseUtils.concatenateWhere("_id = $id", selection)
+    return when {
+        id < 0 -> selection
+        selection == null -> "_id = $id"
+        else -> "$selection AND _id = $id"
+    }
 }

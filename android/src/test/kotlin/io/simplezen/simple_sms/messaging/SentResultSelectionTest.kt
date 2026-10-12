@@ -160,7 +160,7 @@ class SentResultSelectionTest {
     @Test
     fun aResultTheProviderIgnores_isOwed_andLandsOnceTheAppMayWriteAgain() {
         // The app lost the default-SMS role or its WRITE_SMS app-op (UNFY-335).
-        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = 1_000)
         provider.ignoreWrites = true
 
         assertEquals(RowWriteOutcome.IGNORED, result(1, Activity.RESULT_OK))
@@ -178,7 +178,7 @@ class SentResultSelectionTest {
 
     @Test
     fun aResultWriteThatFails_isOwed_andDroppedOnceItNoLongerApplies() {
-        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = 1_000)
         provider.rowWriteFailure = IllegalStateException("provider down")
 
         assertThrows(IllegalStateException::class.java) { result(1, Activity.RESULT_OK) }
@@ -195,19 +195,67 @@ class SentResultSelectionTest {
     }
 
     @Test
-    fun aSweep_recordsOwedResultsFirst_andLeavesARowThatStillOwesOneAlone() {
-        val now = System.currentTimeMillis()
-        val overdue = now - STALE_OUTBOX_AGE_MS - 1
+    fun aResult_onlyEverWritesItsOwnRow() {
+        // The provider may join a guard to its row with a bare AND (AOSP
+        // MmsProvider does), so a guard must hold up on its own.
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        insert(id = 3, type = Telephony.Sms.MESSAGE_TYPE_SENT)
+
+        result(1, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(2))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(3))
+
+        insert(id = 4, type = Telephony.Sms.MESSAGE_TYPE_FAILED, errorCode = NO_SENT_RESULT_ERROR_CODE)
+        insert(id = 5, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        result(2, Activity.RESULT_OK)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(2))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(4))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(5))
+    }
+
+    @Test
+    fun anOwedWrite_neverLandsOnARowThatReusedItsId() {
+        // Deleted while its result was owed; this app's next send, or the app
+        // that holds the default-SMS role now, reused its id (UNFY-335).
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = 1_000)
+        provider.ignoreWrites = true
+        assertEquals(RowWriteOutcome.IGNORED, result(1, SmsManager.RESULT_ERROR_GENERIC_FAILURE))
+        provider.ignoreWrites = false
+        provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = 2_000)
+
+        assertEquals(0, OwedRowWrites.forApp(context).retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+    }
+
+    @Test
+    fun aSweep_recordsAnOwedResult_ratherThanFailingItsRow() {
+        val overdue = System.currentTimeMillis() - STALE_OUTBOX_AGE_MS - 1
         insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = overdue) // its success is owed
         insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = overdue) // its result never came
-        val owed = OwedRowWrites.forApp(context)
-        owed.owe(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK))
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK))
+
+        OutboxSweeper.sweepOnce(context, pending = emptySet())
+
+        assertEquals("sent, not failed for lack of a result", Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(2))
+    }
+
+    @Test
+    fun aRowWhoseOwedWriteStillFails_isSwept_andStillRecordedOnceItLands() {
+        // The sweep's bound holds: no row shows as sending for days (UNFY-299).
+        val overdue = System.currentTimeMillis() - STALE_OUTBOX_AGE_MS - 1
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = overdue)
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK))
         provider.rowWriteFailure = IllegalStateException("provider down")
 
         OutboxSweeper.sweepOnce(context, pending = emptySet())
 
-        assertEquals("owed, so not failed for lack of a result", Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
-        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(2))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(1))
+        assertEquals(NO_SENT_RESULT_ERROR_CODE, provider.errorCode(1))
 
         provider.rowWriteFailure = null
         OutboxSweeper.sweepOnce(context, pending = emptySet())

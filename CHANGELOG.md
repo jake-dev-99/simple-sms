@@ -79,14 +79,15 @@ return typed results.
     `sendMessage` then answers `SEND_ACK_FAILED` with the carrier result in
     `details['sent']`.
   - Such a write, or one that failed, is kept and retried before each send,
-    at each engine start, and before the stale-outbox sweep. That sweep
-    leaves a row that still owes a write alone. Delivery-status writes get
-    the same treatment.
+    at each engine start, and before the stale-outbox sweep. Each kept write
+    is tied to its row's `date`, so it never lands on a row that reused the
+    id. Delivery-status writes get the same treatment.
 - **Send results only rewrite a row still on its way out (UNFY-335).** A
   failed SMS result and every MMS result now carry the guard a successful SMS
   result already had. A late result for a deleted message never rewrites an
   inbound or draft row that reused its id, or a carrier failure already
-  recorded.
+  recorded. A failed SMS result still marks a sent row failed, as a part sent
+  before parts were tracked may have moved it there on its own.
 - **A send whose row is reused before its result comes is answered
   (UNFY-335).** If a pending send's row was deleted and a new send reused its
   id, the earlier `sendMessage` used to wait out its timeout. It now settles

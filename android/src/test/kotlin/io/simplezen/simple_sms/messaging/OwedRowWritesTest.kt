@@ -50,7 +50,20 @@ class OwedRowWritesTest {
     }
 
     @Test
-    fun writesOfOtherColumns_areKeptSideBySide() {
+    fun aRowOwesOneResultWrite_whateverColumnsEachSets() {
+        // An MMS failure sets the box alone, a success more columns.
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_FAILED))
+        owed().owe(
+            statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT).let {
+                it.copy(values = it.values + (Telephony.Sms.ERROR_CODE to 0L))
+            },
+        )
+
+        assertEquals(1, directory.listFiles()!!.size)
+    }
+
+    @Test
+    fun aResultWriteAndADeliveryWrite_areKeptSideBySide() {
         owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
         owed().owe(deliveryWrite(1, Telephony.Sms.STATUS_COMPLETE))
         provider.ignoreWrites = false
@@ -85,6 +98,7 @@ class OwedRowWritesTest {
 
     private fun statusWrite(id: Long, type: Int) = RowWrite(
         smsUri(id),
+        RowWriteKind.SEND_RESULT,
         mapOf(Telephony.Sms.TYPE to type.toLong()),
         "${Telephony.Sms.TYPE} = ?",
         listOf(Telephony.Sms.MESSAGE_TYPE_OUTBOX.toString()),
@@ -92,6 +106,7 @@ class OwedRowWritesTest {
 
     private fun deliveryWrite(id: Long, status: Int) = RowWrite(
         smsUri(id),
+        RowWriteKind.DELIVERY_STATUS,
         mapOf(Telephony.Sms.STATUS to status.toLong()),
         "${Telephony.Sms.STATUS} != ?",
         listOf(Telephony.Sms.STATUS_FAILED.toString()),

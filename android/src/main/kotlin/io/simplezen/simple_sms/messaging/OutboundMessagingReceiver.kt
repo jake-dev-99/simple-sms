@@ -118,6 +118,7 @@ internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status:
         context,
         RowWrite(
             messageUri.toString(),
+            RowWriteKind.DELIVERY_STATUS,
             mapOf(Telephony.Sms.STATUS to status.toLong()),
             DELIVERY_REPORT_SELECTION,
             DELIVERY_REPORT_ARGS.toList(),

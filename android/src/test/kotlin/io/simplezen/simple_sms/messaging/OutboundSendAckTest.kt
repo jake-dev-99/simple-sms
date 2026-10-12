@@ -142,21 +142,20 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun nullCursor_isReportedAsRowMissing() {
-        // simple_query maps a null cursor to no rows, so a provider that
-        // returns null is indistinguishable from a deleted row here.
+    fun aWriteThatTookNoRow_andCantBeReadBack_settlesSendAckFailed() {
+        // The provider returns no cursor, so whether the result was recorded
+        // is unknown (UNFY-335); the row can't be read to keep the write.
         smsProvider.nullCursor = true
         val result = pendingSend(smsUri)
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
-        assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
-        assertEquals(
-            "a write that can't be read back to check is owed (UNFY-335)",
-            setOf(smsUri),
-            OwedRowWrites.forApp(context).rows(),
-        )
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("no cursor"))
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
     }
 
     @Test
@@ -585,7 +584,7 @@ class OutboundSendAckTest {
     fun aResultWriteTheProviderIgnores_settlesSendAckFailed_andIsOwed() {
         // The app lost the default-SMS role or its WRITE_SMS app-op mid-send
         // (UNFY-335): the row would read back unchanged, still sending.
-        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_OUTBOX, "date" to 1_000L)
         smsProvider.ignoreWrites = true
         val result = pendingSend(smsUri)
 
@@ -627,7 +626,7 @@ class OutboundSendAckTest {
     @Test
     fun aSend_retriesTheOwedStatusWrites() {
         // A send needs write access, so an ignored write may land now.
-        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "date" to 1_000L)
         OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
         shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
 
@@ -643,7 +642,7 @@ class OutboundSendAckTest {
 
     @Test
     fun aDeliveryWriteTheProviderIgnores_isOwed() {
-        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT, "date" to 1_000L)
         smsProvider.ignoreWrites = true
 
         pendingSend(smsUri)

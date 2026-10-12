@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.AtomicFile
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import io.simplezen.simple_query.ContentQuery
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -16,6 +17,16 @@ private const val ROW_WRITES_TAG = "OwedRowWrites"
 private const val OWED_WRITES_DIRECTORY = "simple_sms_owed_row_writes"
 private const val OWED_WRITE_SUFFIX = ".json"
 
+/** What a [RowWrite] records; a row owes at most one write of each kind. */
+@Serializable
+internal enum class RowWriteKind {
+    /** A SENT result ([sendResultWrite]). */
+    SEND_RESULT,
+
+    /** An SMS delivery status ([persistSmsDeliveryStatus]). */
+    DELIVERY_STATUS,
+}
+
 /**
  * One guarded write to a message row: the row at [uri] takes [values] only
  * while it still matches [selection] (UNFY-335). Every send-status write sets
@@ -23,6 +34,7 @@ private const val OWED_WRITE_SUFFIX = ".json"
  * land simple to persist ([OwedRowWrites]).
  *
  * @param uri the message row, `content://sms/<id>` or `content://mms/<id>`.
+ * @param kind what it records.
  * @param values the columns to set, and their values.
  * @param selection the guard the row must still match.
  * @param selectionArgs the guard's arguments.
@@ -30,6 +42,7 @@ private const val OWED_WRITE_SUFFIX = ".json"
 @Serializable
 internal data class RowWrite(
     val uri: String,
+    val kind: RowWriteKind,
     val values: Map<String, Long>,
     val selection: String,
     val selectionArgs: List<String>,
@@ -67,6 +80,15 @@ internal enum class RowWriteOutcome {
 internal class RowWriteIgnoredException(messageUri: Uri) : IllegalStateException(
     "The SMS provider ignored the status write for $messageUri (no default-SMS role or WRITE_SMS " +
         "app-op); it is retried later",
+)
+
+/**
+ * A send-status write took no row, and the provider returned no cursor to
+ * read the row back and tell why (UNFY-335). The write is owed when its row
+ * can be read later ([OwedRowWrites]).
+ */
+internal class RowWriteUnreadableException(messageUri: Uri) : IllegalStateException(
+    "The status write for $messageUri took no row, and the provider returned no cursor to read it back",
 )
 
 /**
@@ -109,26 +131,57 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
     return outcome
 }
 
-// Owing is the fallback for a write that already failed; a ledger that
-// cannot record it is logged, and the write is lost as it was before.
+// Owing is the fallback for a write that already failed. A write whose row
+// can't be read to tie it to ([tiedToItsRow]), or that the store can't keep,
+// is logged and lost, as before UNFY-335.
 private fun oweRowWrite(context: Context, write: RowWrite) {
+    val tied = try {
+        tiedToItsRow(context, write)
+    } catch (e: Exception) {
+        Log.e(ROW_WRITES_TAG, "Could not read ${write.uri} to keep its unwritten status write", e)
+        return
+    }
+    if (tied == null) {
+        Log.w(ROW_WRITES_TAG, "${write.uri} is gone or unreadable; its unwritten status write is not kept")
+        return
+    }
     try {
-        OwedRowWrites.forApp(context).owe(write)
+        OwedRowWrites.forApp(context).owe(tied)
     } catch (e: IOException) {
         Log.e(ROW_WRITES_TAG, "Could not keep the unwritten status write for ${write.uri} to retry", e)
     }
 }
 
 /**
+ * [write], also guarded by its row's `date`, so it only ever lands on that
+ * row: a row deleted while the write is owed may have its id reused, by this
+ * app's next send or by whichever app holds the default-SMS role now. Null
+ * when the row is gone, or the provider returned no cursor.
+ */
+@VisibleForTesting
+internal fun tiedToItsRow(context: Context, write: RowWrite): RowWrite? {
+    val date = ContentQuery.queryOrNull(context, write.uri, arrayOf(DATE_COLUMN))
+        ?.singleOrNull()?.get(DATE_COLUMN) as? Long ?: return null
+    return write.copy(
+        selection = "(${write.selection}) AND $DATE_COLUMN = ?",
+        selectionArgs = write.selectionArgs + date.toString(),
+    )
+}
+
+// SMS and MMS rows both have it: when the message was sent or received (SMS
+// in milliseconds, MMS in seconds).
+private const val DATE_COLUMN = "date"
+
+/**
  * Purpose: keeps the send-status writes that did not land on their rows, so
  * they are retried rather than lost (UNFY-335): the provider ignored them
  * (the app lost the default-SMS role or its WRITE_SMS app-op) or failed.
+ * Each is tied to its row ([tiedToItsRow]).
  *
- * One small file per row and column set, written atomically; a later write
- * of the same columns to the same row replaces the earlier one. Each is
- * retried ([retry]) at every engine start, before the stale-outbox sweep,
- * which leaves rows that still owe a write ([rows]) alone, and before each new
- * send. One is dropped once it lands, once its row no longer matches its
+ * One small file per row and [RowWriteKind], written atomically; a later
+ * write of the same kind to the same row replaces the earlier one. Each is
+ * retried ([retry]) at every engine start, before the stale-outbox sweep, and
+ * before each new send. One is dropped once it lands, once its row no longer matches its
  * guard, or after [DELIVERY_REPORT_WAIT_MS]. Every access is serialized
  * process-wide.
  *
@@ -167,12 +220,12 @@ internal class OwedRowWrites(
     }
 
     /**
-     * Purpose: the rows that still owe a write, for the stale-outbox sweep to
-     * leave alone.
+     * Purpose: the rows that still owe a write.
      *
      * @returns their URIs.
      * @throws nothing; an unreadable write is left for [retry] to drop.
      */
+    @VisibleForTesting
     fun rows(): Set<Uri> = synchronized(LOCK) { entries().mapNotNull { it.second?.uri?.let(Uri::parse) }.toSet() }
 
     /**
@@ -241,7 +294,7 @@ internal class OwedRowWrites(
 
     private fun fileFor(write: RowWrite): File {
         val uri = Uri.parse(write.uri)
-        val key = listOf(uri.authority.orEmpty(), uri.lastPathSegment.orEmpty(), *write.values.keys.sorted().toTypedArray())
+        val key = listOf(uri.authority.orEmpty(), uri.lastPathSegment.orEmpty(), write.kind.name)
             .joinToString("_") { part -> part.replace(Regex("[^A-Za-z0-9]"), "-") }
         return File(directory, key + OWED_WRITE_SUFFIX)
     }

@@ -393,13 +393,15 @@ internal fun startTrackedSmsSend(
     return ledger.start(messageId.toLong(), partCount, markUntrackedSend = untrackedSendPending)
 }
 
-/** The write that moves an SMS (TYPE) or MMS (MESSAGE_BOX) row to the failed box. */
+/** The column and value that put an SMS (TYPE) or MMS (MESSAGE_BOX) row in the failed box. */
+internal fun failedBox(isMms: Boolean): Pair<String, Long> =
+    if (isMms) Telephony.Mms.MESSAGE_BOX to Telephony.Mms.MESSAGE_BOX_FAILED.toLong()
+    else Telephony.Sms.TYPE to Telephony.Sms.MESSAGE_TYPE_FAILED.toLong()
+
+/** The write that moves an SMS or MMS row to the failed box ([failedBox]). */
 internal fun failedBoxValues(isMms: Boolean): ContentValues = ContentValues().apply {
-    if (isMms) {
-        put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_FAILED)
-    } else {
-        put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED)
-    }
+    val (column, value) = failedBox(isMms)
+    put(column, value)
 }
 
 /** A synchronous initiation error must settle any row already persisted. */
@@ -437,8 +439,8 @@ internal const val NO_SENT_RESULT_ERROR_CODE = -2
  * sent before parts were tracked reaches here on its own.
  */
 internal val SENT_RESULT_SELECTION =
-    "${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
-        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?)"
+    "(${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
+        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?))"
 internal val SENT_RESULT_ARGS = (
     SMS_OUTBOX_TYPES + listOf(Telephony.Sms.MESSAGE_TYPE_FAILED, NO_SENT_RESULT_ERROR_CODE)
 ).map { it.toString() }.toTypedArray()
@@ -461,8 +463,8 @@ private fun inSelection(column: String, values: List<Int>): Pair<String, Array<S
  * (UNFY-335).
  */
 internal val SEND_FAILURE_SELECTION =
-    "${Telephony.Sms.TYPE} IN (${(SMS_OUTBOX_TYPES + Telephony.Sms.MESSAGE_TYPE_SENT).joinToString { "?" }}) OR " +
-        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?)"
+    "(${Telephony.Sms.TYPE} IN (${(SMS_OUTBOX_TYPES + Telephony.Sms.MESSAGE_TYPE_SENT).joinToString { "?" }}) OR " +
+        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?))"
 internal val SEND_FAILURE_ARGS = (
     SMS_OUTBOX_TYPES + listOf(Telephony.Sms.MESSAGE_TYPE_SENT, Telephony.Sms.MESSAGE_TYPE_FAILED, NO_SENT_RESULT_ERROR_CODE)
 ).map { it.toString() }.toTypedArray()
@@ -492,8 +494,7 @@ internal val MMS_RESULT_BOXES = MMS_OUTBOX_BOXES + Telephony.Mms.MESSAGE_BOX_FAI
 internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int): RowWrite {
     val isMms = eventType == SENTMMS_ACTION
     val values: Map<String, Long> = when {
-        isMms && resultCode != Activity.RESULT_OK ->
-            mapOf(Telephony.Mms.MESSAGE_BOX to Telephony.Mms.MESSAGE_BOX_FAILED.toLong())
+        isMms && resultCode != Activity.RESULT_OK -> mapOf(failedBox(isMms = true))
         isMms -> mapOf(
             Telephony.Mms.MESSAGE_BOX to Telephony.Mms.MESSAGE_BOX_SENT.toLong(),
             Telephony.Mms.READ to 1L,
@@ -504,7 +505,7 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
         // any no-result marker, so a later success (an untracked part) can't
         // move the row to sent.
         resultCode != Activity.RESULT_OK -> mapOf(
-            Telephony.Sms.TYPE to Telephony.Sms.MESSAGE_TYPE_FAILED.toLong(),
+            failedBox(isMms = false),
             Telephony.Sms.ERROR_CODE to resultCode.toLong(),
         )
         else -> mapOf(
@@ -517,7 +518,7 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
         resultCode != Activity.RESULT_OK -> SEND_FAILURE_SELECTION to SEND_FAILURE_ARGS
         else -> SENT_RESULT_SELECTION to SENT_RESULT_ARGS
     }
-    return RowWrite(messageUri.toString(), values, selection, args.toList())
+    return RowWrite(messageUri.toString(), RowWriteKind.SEND_RESULT, values, selection, args.toList())
 }
 
 /**
@@ -577,10 +578,8 @@ internal const val STALE_OUTBOX_AGE_MS = 10 * 60 * 1000L
  * [STALE_OUTBOX_AGE_MS] overdue, so a send whose result was lost never shows
  * as sending forever (UNFY-299); [OutboxSweeper] decides when. Only rows this
  * app created are touched (an MMS whose provider doesn't stamp the creator is
- * left alone), and never one in [owned]: one a live handler still awaits (see
- * [SendResultRouter.pendingSends]), or one that still owes a status write
- * ([OwedRowWrites.rows]), whose result did come. Returns the number of rows
- * marked failed.
+ * left alone), and never one a live handler still awaits ([owned], see
+ * [SendResultRouter.pendingSends]). Returns the number of rows marked failed.
  */
 internal fun markStaleOutboxFailed(
     context: Context,
@@ -864,8 +863,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      * receiver, which would crash the process and leave the Dart future
      * unsettled (UNFY-282). So does a status write the provider ignored (the
      * app lost the default-SMS role or its WRITE_SMS app-op), whose row would
-     * read back unchanged; the write is retried later (UNFY-335). The reply
-     * itself is sent once, outside any catch.
+     * read back unchanged, or one that can't be read back to tell; the write
+     * is retried later (UNFY-335). The reply itself is sent once, outside any
+     * catch.
      */
     internal fun onSendResult(
             messageId: Int,
@@ -880,8 +880,11 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
         // skips owned sends, can't fail the row between the two.
         val persistFailure: Exception? =
                 try {
-                    val written = recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)
-                    if (written == RowWriteOutcome.IGNORED) RowWriteIgnoredException(messageUri) else null
+                    when (recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)) {
+                        RowWriteOutcome.IGNORED -> RowWriteIgnoredException(messageUri)
+                        RowWriteOutcome.UNREADABLE -> RowWriteUnreadableException(messageUri)
+                        RowWriteOutcome.WRITTEN, RowWriteOutcome.NOT_APPLICABLE -> null
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed writing $eventType status for $messageUri", e)
                     e
