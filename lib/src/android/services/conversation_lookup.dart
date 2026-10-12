@@ -119,8 +119,10 @@ class ConversationLookup {
   /// follow-up lookups. Set to `false` to avoid the extra round-trips when
   /// only the flat conversation row is needed. A thread whose follow-up
   /// lookups find a provider unavailable is returned unenriched instead of
-  /// failing the list; any other error, or an unavailable conversations
-  /// provider, throws (UNFY-299).
+  /// failing the list (UNFY-299). A latest-MMS parts batch that fails as
+  /// `unavailable` or `transientFailure` leaves those MMS with empty parts
+  /// (UNFY-250). Any other error, or an unavailable conversations provider,
+  /// throws.
   Future<List<AndroidSimpleConversation>> listConversations({
     ConversationFilter? filter,
     ConversationSort? sort,
@@ -207,8 +209,8 @@ class ConversationLookup {
   /// is in [_toleratedPartsFailures] is logged with its stack and leaves each
   /// latest MMS with the empty parts list its bare row carries (empty preview)
   /// rather than failing the whole list (UNFY-250). `invalidQuery` (e.g. an
-  /// OEM schema without `mid`), `notSupported`, and every other error are
-  /// defects and propagate. Relies on `simple_query` mapping native failures
+  /// OEM schema without `mid`), `notSupported`, `permissionDenied`, and every
+  /// other error propagate. Relies on `simple_query` mapping native failures
   /// to [SimpleQueryError] per its `ERROR_MAPPING.md` (UNFY-284).
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
@@ -237,12 +239,14 @@ class ConversationLookup {
   }
 
   /// Provider-failure codes the latest-MMS parts hydration tolerates: the
-  /// provider is busy, missing, or not readable — conditions the empty
-  /// preview honestly reflects, unlike a malformed query.
+  /// provider is busy or missing — conditions the empty preview honestly
+  /// reflects, unlike a malformed query. `permissionDenied` is deliberately
+  /// absent: as in AOSP Messaging, whose parts load (`SyncMessagesAction`)
+  /// lets `SecurityException` propagate, missing SMS access is surfaced to
+  /// the caller rather than shown as an empty preview.
   static const Set<SimpleQueryErrorCode> _toleratedPartsFailures = {
     SimpleQueryErrorCode.transientFailure,
     SimpleQueryErrorCode.unavailable,
-    SimpleQueryErrorCode.permissionDenied,
   };
 
   /// Fetches a single conversation by thread id. Returns null if not found.

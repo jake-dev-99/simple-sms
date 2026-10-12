@@ -206,7 +206,6 @@ void main() {
     for (final code in [
       SimpleQueryErrorCode.transientFailure,
       SimpleQueryErrorCode.unavailable,
-      SimpleQueryErrorCode.permissionDenied,
     ]) {
       test('a failed parts batch (${code.name}) still returns the list, with '
           'the latest MMS unhydrated', () async {
@@ -229,24 +228,33 @@ void main() {
       });
     }
 
-    test('a malformed parts query (invalidQuery) propagates', () async {
-      _seedTables(
-        provider,
-        threads: [_thread(7)],
-        mms: [_mms(11, threadId: 7, seconds: 2)],
-      );
-      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
-      const schemaBug = SimpleQueryError(
+    // A malformed query is a defect, and missing SMS access is surfaced to
+    // the caller as AOSP Messaging does, so neither becomes an empty preview.
+    for (final failure in const [
+      SimpleQueryError(
         code: SimpleQueryErrorCode.invalidQuery,
         message: 'no such column: mid',
-      );
-      provider.failQueriesTo(ProviderUris.mmsParts, schemaBug);
+      ),
+      SimpleQueryError(
+        code: SimpleQueryErrorCode.permissionDenied,
+        message: 'READ_SMS not granted',
+      ),
+    ]) {
+      test('a failed parts batch (${failure.code.name}) propagates', () async {
+        _seedTables(
+          provider,
+          threads: [_thread(7)],
+          mms: [_mms(11, threadId: 7, seconds: 2)],
+        );
+        _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+        provider.failQueriesTo(ProviderUris.mmsParts, failure);
 
-      await expectLater(
-        LookupService().listConversations(),
-        throwsA(same(schemaBug)),
-      );
-    });
+        await expectLater(
+          LookupService().listConversations(),
+          throwsA(same(failure)),
+        );
+      });
+    }
 
     test('a latest MMS shared by threads across a chunk boundary is '
         'hydrated once', () async {

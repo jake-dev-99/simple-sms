@@ -54,6 +54,15 @@ return typed results.
   now throw it. Conversation enrichment tolerates it
   per thread: that thread comes back unenriched (null `participants`,
   `latestSms`, `latestMms`) instead of failing the list.
+- **Conversation-list MMS previews fail loudly on unrecoverable errors
+  (UNFY-253).** `listConversations` and `getConversationByThread` load the
+  latest MMS parts in batches of up to 500 ids. A batch that fails as
+  `unavailable` or `transientFailure` still leaves an empty preview; any
+  other error, including `permissionDenied` and `invalidQuery`, now throws
+  instead of returning the list with empty previews.
+- **Contact lookup by address trims and percent-encodes it (UNFY-253).**
+  An address with `+`, `#`, spaces or `@` now reaches the contacts filter
+  intact, and a blank address returns null without a query.
 
 ## 0.5.1
 
