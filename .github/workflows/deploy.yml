@@ -213,6 +213,9 @@ jobs:
         run: ./gradlew :simple_sms_native:testDebugUnitTest --console=plain --no-daemon --stacktrace
 
   publish:
+    # A 429 reaches the durable coordinator immediately; never retry inside pub.
+    env:
+      PUB_MAX_HTTP_RETRIES: '1'
     # Gated on the native build: don't publish a version to pub.dev that
     # doesn't compile / fails its JVM unit tests.
     needs: [resolve-tag, native-build]
