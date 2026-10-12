@@ -3,6 +3,7 @@ package io.simplezen.simple_sms.messaging
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.provider.Telephony
 import android.util.AtomicFile
 import android.util.Log
 import androidx.annotation.VisibleForTesting
@@ -142,7 +143,12 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
         RowWriteOutcome.NOT_APPLICABLE -> OwedRowWrites.forApp(context).waitsForSendResult(write)
         RowWriteOutcome.WRITTEN -> false
     }
-    if (owe) oweRowWrite(context, write)
+    if (owe) {
+        oweRowWrite(context, write)
+    } else if (outcome == RowWriteOutcome.WRITTEN) {
+        // An earlier write owed to the row is stale now.
+        OwedRowWrites.forApp(context).landed(write)
+    }
     return outcome
 }
 
@@ -207,7 +213,6 @@ internal fun RowWrite.tiedTo(date: Long): RowWrite = copy(
 )
 
 private const val DATE_COLUMN = "date"
-private const val MMS_AUTHORITY = "mms"
 
 /**
  * Purpose: keeps the send-status writes that did not land on their rows, so
@@ -245,6 +250,21 @@ internal class OwedRowWrites(
         if (target.exists() && read(target)?.final == true) return false
         store(target, write.copy(owedAtMillis = nowMillis()))
         true
+    }
+
+    /**
+     * Purpose: forgets the write of [write]'s kind owed to its row, now that
+     * [write] landed there and is newer, unless that one is final.
+     *
+     * @throws nothing; a write that can't be deleted is logged.
+     */
+    fun landed(write: RowWrite) {
+        synchronized(LOCK) {
+            val file = fileFor(write)
+            if (!file.exists() || read(file)?.final == true) return
+            AtomicFile(file).delete()
+            if (file.exists()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+        }
     }
 
     /**
@@ -333,13 +353,13 @@ internal class OwedRowWrites(
             when (outcome) {
                 RowWriteOutcome.WRITTEN -> {
                     landed++
-                    dropIfUnchanged(file, write)
+                    dropIfUnchanged(file, write, owedWrite)
                 }
                 RowWriteOutcome.NOT_APPLICABLE ->
                     if (waitsForSendResult(write)) {
                         Log.i(ROW_WRITES_TAG, "The delivery status owed to ${write.uri} waits for its send result")
                     } else {
-                        dropIfUnchanged(file, write)
+                        dropIfUnchanged(file, write, owedWrite)
                     }
                 RowWriteOutcome.IGNORED -> Log.w(ROW_WRITES_TAG, "The status write owed to ${write.uri} is still ignored")
                 RowWriteOutcome.UNREADABLE -> Log.w(ROW_WRITES_TAG, "The row owing a status write, ${write.uri}, is unreadable")
@@ -361,7 +381,7 @@ internal class OwedRowWrites(
             is RowDate.Known -> row.date
         }
         // An MMS row's date is in seconds, an SMS row's in milliseconds.
-        val dateMillis = if (Uri.parse(write.uri).authority == MMS_AUTHORITY) date * 1000L else date
+        val dateMillis = if (Uri.parse(write.uri).authority == Telephony.Mms.CONTENT_URI.authority) date * 1000L else date
         if (dateMillis > write.owedAtMillis) {
             Log.i(ROW_WRITES_TAG, "${write.uri} is a newer message than its owed status write; it is dropped")
             dropIfUnchanged(file, write)
@@ -398,10 +418,13 @@ internal class OwedRowWrites(
         null
     }
 
-    // Drops [file] unless a newer write replaced [write] in it meanwhile.
-    private fun dropIfUnchanged(file: File, write: RowWrite?) {
+    // Drops [file] unless a newer write replaced [write] in it meanwhile; it
+    // may still hold [write]'s untied form ([untied]), if tying it could not
+    // be stored.
+    private fun dropIfUnchanged(file: File, write: RowWrite?, untied: RowWrite? = write) {
         synchronized(LOCK) {
-            if (read(file) == write) AtomicFile(file).delete()
+            val held = read(file)
+            if (held == write || held == untied) AtomicFile(file).delete()
         }
     }
 

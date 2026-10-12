@@ -80,14 +80,16 @@ return typed results.
     `details['sent']`. So does a write that took no row when the provider
     returns no cursor to check it, which used to answer
     `MESSAGE_ROW_MISSING`.
-  - Such a write, or one that failed, is kept and retried as each send
-    starts, at each engine start, and before the stale-outbox sweep. A kept
-    write is tied to its row's `date` as soon as the row can be read, and
-    this app's next send forgets the writes owed to the row it takes, so a
-    write is not applied to a message that reused the id. A carrier
-    failure, or a failed delivery, is never replaced by a later write.
-    Delivery-status writes get the same treatment; one waits while its
-    row's send result is still owed.
+  - Such a write, or one that failed, is kept and retried once each send
+    has been handed off, at each engine start, and before the stale-outbox
+    sweep. A kept write is tied to its row's `date` as soon as the row can
+    be read, and this app's next send forgets the writes owed to the row it
+    takes, so a write is not applied to a message that reused the id. A row
+    newer than the write is never its row. A carrier failure, or a failed
+    delivery, is never replaced by a later write. A later write that lands
+    drops any other write still owed to the row. A write still owed 7 days
+    after it was first owed is given up. Delivery-status writes get the same
+    treatment; one waits while its row's send result is still owed.
 - **Send results only rewrite a row still on its way out (UNFY-335).** A
   failed SMS result and every MMS result now carry the guard a successful SMS
   result already had. A late result for a deleted message never rewrites an
@@ -96,7 +98,7 @@ return typed results.
   before parts were tracked may have moved it there on its own.
 - **A send whose row is reused before its result comes is answered
   (UNFY-335).** If a pending send's row was deleted and a new send reused its
-  id, the earlier `sendMessage` used to wait out its timeout. It now settles
+  id, the earlier `sendMessage` was never answered. It now settles
   at once with `MESSAGE_ROW_MISSING`, with `details['sent']` `null` (unknown).
 - **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
   object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it

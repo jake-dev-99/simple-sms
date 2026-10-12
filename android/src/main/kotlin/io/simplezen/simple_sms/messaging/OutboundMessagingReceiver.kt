@@ -265,7 +265,11 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             Log.e(TAG_RECEIVER, "Received $eventType broadcast with no messageID.")
             return
         }
-        val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
+        // Every send names its row; a broadcast that names none is not ours.
+        val messageUri = intent.getStringExtra("uri")?.toUri() ?: run {
+            Log.e(TAG_RECEIVER, "Received $eventType broadcast with no uri.")
+            return
+        }
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
         SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef())
     }

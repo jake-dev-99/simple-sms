@@ -244,6 +244,45 @@ class OwedRowWritesTest {
     }
 
     @Test
+    fun aWriteThatLands_forgetsTheStaleOneOwedToItsRow() {
+        // Owed while the app had lost the role; a later report lands.
+        val store = OwedRowWrites.forApp(context)
+        store.owe(deliveryWrite(1, Telephony.Sms.STATUS_PENDING))
+        provider.ignoreWrites = false
+
+        assertEquals(RowWriteOutcome.WRITTEN, recordRowWrite(context, deliveryWrite(1, Telephony.Sms.STATUS_COMPLETE)))
+
+        assertEquals(0, store.retry(context))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, provider.status(1))
+        assertTrue(store.rows().isEmpty())
+    }
+
+    @Test
+    fun aWriteThatLands_neverForgetsAFinalOneOwedToItsRow() {
+        val store = OwedRowWrites.forApp(context)
+        store.owe(sendResultWrite(Uri.parse(smsUri(1)), SENTSMS_ACTION, SmsManager.RESULT_ERROR_NO_SERVICE))
+        provider.ignoreWrites = false
+
+        recordRowWrite(context, statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+
+        assertEquals(setOf(Uri.parse(smsUri(1))), store.rows())
+    }
+
+    @Test
+    fun aRetriedWriteThatLands_isDroppedEvenIfItsTieCouldNotBeStored() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        // A directory, not empty, where the store writes its next version:
+        // storing the tie fails.
+        File(directory.listFiles()!!.single().path + ".new").apply { mkdir() }.resolve("blocker").writeText("")
+        provider.ignoreWrites = false
+
+        assertEquals(1, owed().retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
+        assertTrue("never applied again", owed().rows().isEmpty())
+    }
+
+    @Test
     fun anUndecodableWrite_isDropped() {
         owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
         directory.listFiles()!!.single().writeText("{ not json")
