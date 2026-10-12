@@ -19,6 +19,7 @@ class OutboundMessage {
   final String body;
 
   /// Opaque local queue identity, persisted before radio handoff.
+  /// Correlated sends also require ReadSms to verify the persisted row generation.
   final String? clientCorrelationId;
 
   /// Optional conversation thread ID to continue an existing thread.

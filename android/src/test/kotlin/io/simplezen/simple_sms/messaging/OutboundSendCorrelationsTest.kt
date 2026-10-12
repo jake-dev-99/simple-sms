@@ -3,7 +3,6 @@ package io.simplezen.simple_sms.messaging
 import android.content.Context
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -240,10 +239,12 @@ class OutboundSendCorrelationsTest {
         val store = OutboundSendCorrelations(context)
         val uri = Uri.parse("content://sms/7")
         store.record(uri, "old-job")
-        context.getSharedPreferences("outbound_send_correlations", Context.MODE_PRIVATE)
-            .edit().putString("attempts:old-job", "broken").commit()
-        assertThrows(org.json.JSONException::class.java) { store.record(uri, null) }
-        assertThrows(org.json.JSONException::class.java) { store.lookup(listOf(uri.toString())) }
+        val file = java.io.File(context.noBackupFilesDir, "outbound_send_correlations.db")
+        android.database.sqlite.SQLiteDatabase.openDatabase(file.path, null, 0).use {
+            it.execSQL("DROP TABLE correlations")
+        }
+        assertThrows(android.database.sqlite.SQLiteException::class.java) { store.record(uri, null) }
+        assertThrows(android.database.sqlite.SQLiteException::class.java) { store.lookup(listOf(uri.toString())) }
     }
 
     // Purpose: prevent the radio handoff from outrunning durable identity storage.
@@ -254,42 +255,10 @@ class OutboundSendCorrelationsTest {
      */
     @Test fun failedCommitAbortsBeforeReturningToTheRadioHandoff() {
         val context: Context = ApplicationProvider.getApplicationContext()
-        val actual = context.getSharedPreferences("failed_commit", Context.MODE_PRIVATE)
-        val failing = object : SharedPreferences by actual {
-            // Purpose: isolate the platform boundary needed by this regression.
-            /**
-             * @param None No arguments are needed.
-             * @returns An editor whose commit can be refused.
-             * @throws AssertionError If the regression boundary is used unexpectedly.
-             */
-            override fun edit(): SharedPreferences.Editor {
-                val editor = actual.edit()
-                return object : SharedPreferences.Editor by editor {
-                    // Purpose: isolate the platform boundary needed by this regression.
-                    /**
-                     * @param key Metadata staged for the controlled persistence failure.
-                     * @param value Metadata staged for the controlled persistence failure.
-                     * @returns The editor after staging metadata.
-                     * @throws AssertionError If the regression boundary is used unexpectedly.
-                     */
-                    override fun putString(key: String?, value: String?): SharedPreferences.Editor {
-                        editor.putString(key, value)
-                        return this
-                    }
-                    // Purpose: isolate the platform boundary needed by this regression.
-                    /**
-                     * @param None No arguments are needed.
-                     * @returns False to reproduce durable write failure.
-                     * @throws AssertionError If the regression boundary is used unexpectedly.
-                     */
-                    override fun commit() = false
-                }
-            }
-        }
-        assertThrows(IllegalStateException::class.java) {
-            OutboundSendCorrelations(failing) {
-                error("Recording must not read the provider")
-            }.record(Uri.parse("content://sms/14"), "job")
+        val directory = java.io.File(context.noBackupFilesDir, "outbound_send_correlations.db")
+        assertTrue(directory.mkdir())
+        assertThrows(android.database.sqlite.SQLiteException::class.java) {
+            OutboundSendCorrelations(context).record(Uri.parse("content://sms/14"), "job")
         }
     }
 
@@ -332,6 +301,120 @@ class OutboundSendCorrelationsTest {
         }
     }
 
+    // Purpose: reject provider ID reuse even when deletion was never observed.
+    /**
+     * @param None The provider changes only the date of an existing URI.
+     * @returns Unit after proving stale ownership is removed across reopening.
+     * @throws AssertionError If an unrelated row inherits the prior token.
+     */
+    @Test fun changedGenerationIsRejectedWithoutObservingDeletion() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val store = OutboundSendCorrelations(context)
+        store.record(Uri.parse("content://sms/7"), "job")
+        sms.dates[7L] = 2000L
+        assertTrue(OutboundSendCorrelations(context).lookup(listOf("content://sms/7")).isEmpty())
+        sms.dates[7L] = 1000L
+        assertTrue(OutboundSendCorrelations(context).lookup(listOf("content://sms/7")).isEmpty())
+    }
+
+    // Purpose: enforce device-local storage regardless of host backup settings.
+    /**
+     * @param None The host uses its default backup configuration.
+     * @returns Unit after proving the actual storage file is excluded from backup.
+     * @throws AssertionError If correlations are stored in the shared preferences domain.
+     */
+    @Test fun correlationStorageIsIndexedAndExcludedFromBackup() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        OutboundSendCorrelations(context).record(Uri.parse("content://sms/7"), "job")
+        val file = java.io.File(context.noBackupFilesDir, "outbound_send_correlations.db")
+        assertTrue(file.isFile)
+        android.database.sqlite.SQLiteDatabase.openDatabase(file.path, null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT name FROM sqlite_master WHERE type='index' AND name='correlations_job'", null).use {
+                assertTrue(it.moveToFirst())
+            }
+        }
+        assertTrue(context.getSharedPreferences("outbound_send_correlations", Context.MODE_PRIVATE).all.isEmpty())
+    }
+
+    // Purpose: retain every recipient row of the latest native MMS attempt.
+    /**
+     * @param None Each attempt contains two recipient-specific MMS rows.
+     * @returns Unit after proving retries supersede whole attempts, not sibling rows.
+     * @throws AssertionError If a current recipient row is classified as an obsolete retry.
+     */
+    @Test fun latestMmsAttemptPreservesAllRecipientRowsAfterRestart() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val store = OutboundSendCorrelations(context)
+        val first = store.beginAttempt("job", 2)
+        store.recordAttemptRow(Uri.parse("content://mms/1"), first)
+        store.recordAttemptRow(Uri.parse("content://mms/2"), first)
+        val initial = OutboundSendCorrelations(context).lookup(listOf("content://mms/1", "content://mms/2"))
+        assertEquals("content://mms/1", initial["content://mms/1"]?.get("latestMessageUri"))
+        assertEquals("content://mms/2", initial["content://mms/2"]?.get("latestMessageUri"))
+        val retry = store.beginAttempt("job", 2)
+        store.recordAttemptRow(Uri.parse("content://mms/3"), retry)
+        store.recordAttemptRow(Uri.parse("content://mms/4"), retry)
+        val recovered = OutboundSendCorrelations(context).lookup((1..4).map { "content://mms/$it" })
+        assertEquals("content://mms/4", recovered["content://mms/1"]?.get("latestMessageUri"))
+        assertEquals("content://mms/4", recovered["content://mms/2"]?.get("latestMessageUri"))
+        assertEquals("content://mms/3", recovered["content://mms/3"]?.get("latestMessageUri"))
+        assertEquals("content://mms/4", recovered["content://mms/4"]?.get("latestMessageUri"))
+        assertTrue(recovered.values.all { it["clientCorrelationId"] == "job" })
+    }
+
+    // Purpose: reject an oversized recipient attempt before any partial transmission.
+    /**
+     * @param None Existing history leaves only one free provider-row slot.
+     * @returns Unit after checking that a two-row request cannot start.
+     * @throws AssertionError If preflight allows a partially retained recipient attempt.
+     */
+    @Test fun recipientAttemptMustFitBeforeCreatingItsFirstRow() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val store = OutboundSendCorrelations(context)
+        for (id in 1..63) store.record(Uri.parse("content://sms/$id"), "job")
+        assertThrows(IllegalStateException::class.java) { store.beginAttempt("job", 2) }
+        assertThrows(IllegalArgumentException::class.java) { store.beginAttempt("job", 65) }
+        assertEquals("job", store.lookup(listOf("content://sms/63"))["content://sms/63"]?.get("clientCorrelationId"))
+    }
+
+    // Purpose: prevent a restored prerelease registry from importing foreign row IDs.
+    /**
+     * @param None Legacy preferences model metadata restored from another device.
+     * @returns Unit after proving unverifiable legacy ownership is ignored.
+     * @throws AssertionError If restored metadata assigns a foreign token.
+     */
+    @Test fun restoredLegacyPreferencesCannotAssignForeignOwnership() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        context.getSharedPreferences("outbound_send_correlations", Context.MODE_PRIVATE).edit()
+            .putString("row:content://sms/7", "foreign-job")
+            .putString("job:foreign-job", "content://sms/7").commit()
+        assertTrue(OutboundSendCorrelations(context).lookup(listOf("content://sms/7")).isEmpty())
+    }
+
+    // Purpose: exercise independent jobs without growing a rewritten preference document.
+    /**
+     * @param None One hundred sends use distinct logical identities.
+     * @returns Unit after proving the indexed registry retains and queries each job.
+     * @throws AssertionError If jobs are lost or the token index is not used.
+     */
+    @Test fun independentJobsUseIndexedStorageAfterReopening() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val store = OutboundSendCorrelations(context)
+        for (id in 1..100) store.record(Uri.parse("content://sms/$id"), "job-$id")
+        val recovered = OutboundSendCorrelations(context).lookup(listOf("content://sms/1", "content://sms/100"))
+        assertEquals("job-1", recovered["content://sms/1"]?.get("clientCorrelationId"))
+        assertEquals("job-100", recovered["content://sms/100"]?.get("clientCorrelationId"))
+        val file = java.io.File(context.noBackupFilesDir, "outbound_send_correlations.db")
+        android.database.sqlite.SQLiteDatabase.openDatabase(file.path, null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("EXPLAIN QUERY PLAN SELECT uri FROM correlations WHERE token=? ORDER BY ordinal DESC", arrayOf("job-100")).use {
+                assertTrue(it.moveToFirst())
+                assertTrue(it.getString(3).contains("correlations_job"))
+            }
+        }
+    }
+
     // Purpose: verify exact provider reads while controlling row availability.
     /**
      * @param None Robolectric constructs this fixture.
@@ -340,6 +423,7 @@ class OutboundSendCorrelationsTest {
      */
     class CorrelationRows : ContentProvider() {
         val absent = mutableSetOf<Long>()
+        val dates = mutableMapOf<Long, Long>()
         var unavailable = false
         var inserts = 0
         // Purpose: isolate the platform boundary needed by this regression.
@@ -362,10 +446,10 @@ class OutboundSendCorrelationsTest {
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
             selectionArgs: Array<out String>?, sortOrder: String?): Cursor? {
             if (unavailable) return null
-            assertArrayEquals(arrayOf("_id"), projection)
-            return MatrixCursor(arrayOf("_id")).apply {
+            assertArrayEquals(arrayOf("_id", "date"), projection)
+            return MatrixCursor(arrayOf("_id", "date")).apply {
                 val id = uri.lastPathSegment!!.toLong()
-                if (id !in absent) addRow(arrayOf(id))
+                if (id !in absent) addRow(arrayOf(id, dates[id] ?: 1000L))
             }
         }
         // Purpose: isolate the platform boundary needed by this regression.

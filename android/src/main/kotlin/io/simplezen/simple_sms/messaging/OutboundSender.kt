@@ -653,7 +653,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
             val clientCorrelationId: String? = null,
-    )
+    ) {
+        internal var correlationAttempt = OutboundSendCorrelations.Attempt(clientCorrelationId)
+    }
 
     init {
         SendResultRouter.register(this)
@@ -717,7 +719,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                     val correlationId = message["clientCorrelationId"]?.let {
                         it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
                     }
-                    OutboundSendCorrelations(context).requireAttemptCapacity(correlationId)
+                    val correlationAttempt = OutboundSendCorrelations(context).beginAttempt(correlationId, maxOf(1, recipients.size))
                     val details =
                             MessageRequestDetails(
                                     threadId =
@@ -736,6 +738,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                                     clientCorrelationId = correlationId,
                                     flutterResult = result,
                             )
+                    details.correlationAttempt = correlationAttempt
                     requestDetails = details
 
                     val smsManager: SmsManager =
@@ -904,7 +907,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
-            OutboundSendCorrelations(context).record(newUri, requestDetails.clientCorrelationId)
+            OutboundSendCorrelations(context).recordAttemptRow(newUri, requestDetails.correlationAttempt)
 
             val rawDest = requestDetails.addresses.first()
             // formatNumber may return null for non-E.164-parseable
@@ -1030,7 +1033,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
-                OutboundSendCorrelations(context).record(uri, requestDetails.clientCorrelationId)
+                OutboundSendCorrelations(context).recordAttemptRow(uri, requestDetails.correlationAttempt)
                 awaitResult(uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)
