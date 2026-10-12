@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.io.File
 
 /**
@@ -218,6 +219,20 @@ class OwedRowWritesTest {
     }
 
     @Test
+    fun aWriteThatReplacesAnOwedOne_keepsTheWindowOfTheFirst() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_FAILED))
+        now += DELIVERY_REPORT_WAIT_MS - 1_000
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+
+        now += 2_000
+        provider.ignoreWrites = false
+
+        assertEquals(0, owed().retry(context))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
     fun aWriteForgottenWhileARetryTiesIt_isNeverApplied() {
         // This app's new send takes the row while the retry reads it.
         owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
@@ -278,6 +293,10 @@ class OwedRowWritesTest {
 
         assertEquals(1, owed().retry(context))
 
+        assertTrue(
+            "the tie was not stored",
+            ShadowLog.getLogsForTag("OwedRowWrites").any { it.msg.startsWith("Could not keep the status write owed") },
+        )
         assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
         assertTrue("never applied again", owed().rows().isEmpty())
     }

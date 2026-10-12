@@ -87,8 +87,9 @@ return typed results.
     takes, so a write is not applied to a message that reused the id. A row
     newer than the write is never its row. A carrier failure, or a failed
     delivery, is never replaced by a later write. A later write that lands
-    drops any other write still owed to the row. A write still owed 7 days
-    after it was first owed is given up. Delivery-status writes get the same
+    drops an older write of its kind still owed to the row, unless that one
+    is final. A write still owed 7 days after the row was first owed one of
+    its kind is given up. Delivery-status writes get the same
     treatment; one waits while its row's send result is still owed.
 - **Send results only rewrite a row still on its way out (UNFY-335).** A
   failed SMS result and every MMS result now carry the guard a successful SMS

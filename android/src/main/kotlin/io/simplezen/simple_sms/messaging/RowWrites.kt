@@ -240,15 +240,17 @@ internal class OwedRowWrites(
 
     /**
      * Purpose: keeps [write] to retry, in place of any write of its kind owed
-     * to its row, unless that one is [RowWrite.final].
+     * to its row, unless that one is [RowWrite.final]. It keeps the time the
+     * row was first owed that write: its window runs from then.
      *
      * @returns whether it was kept: false when a final write is owed instead.
      * @throws IOException when it cannot be written.
      */
     fun owe(write: RowWrite): Boolean = synchronized(LOCK) {
         val target = fileFor(write)
-        if (target.exists() && read(target)?.final == true) return false
-        store(target, write.copy(owedAtMillis = nowMillis()))
+        val owed = if (target.exists()) read(target) else null
+        if (owed?.final == true) return false
+        store(target, write.copy(owedAtMillis = owed?.owedAtMillis ?: nowMillis()))
         true
     }
 
@@ -259,11 +261,11 @@ internal class OwedRowWrites(
      * @throws nothing; a write that can't be deleted is logged.
      */
     fun landed(write: RowWrite) {
+        val file = fileFor(write)
+        // Mostly none is: spare the lock a store's retry may hold.
+        if (!file.exists()) return
         synchronized(LOCK) {
-            val file = fileFor(write)
-            if (!file.exists() || read(file)?.final == true) return
-            AtomicFile(file).delete()
-            if (file.exists()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+            if (read(file)?.final != true) delete(file)
         }
     }
 
@@ -305,8 +307,7 @@ internal class OwedRowWrites(
         synchronized(LOCK) {
             RowWriteKind.entries.forEach { kind ->
                 val file = fileFor(uri, kind)
-                if (file.exists()) AtomicFile(file).delete()
-                if (file.exists()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+                if (file.exists()) delete(file)
             }
         }
     }
@@ -418,13 +419,19 @@ internal class OwedRowWrites(
         null
     }
 
+    // Deletes [file], logging one that stays; the caller holds LOCK.
+    private fun delete(file: File) {
+        AtomicFile(file).delete()
+        if (file.exists()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+    }
+
     // Drops [file] unless a newer write replaced [write] in it meanwhile; it
     // may still hold [write]'s untied form ([untied]), if tying it could not
     // be stored.
     private fun dropIfUnchanged(file: File, write: RowWrite?, untied: RowWrite? = write) {
         synchronized(LOCK) {
             val held = read(file)
-            if (held == write || held == untied) AtomicFile(file).delete()
+            if (held == write || held == untied) delete(file)
         }
     }
 
