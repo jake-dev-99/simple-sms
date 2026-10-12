@@ -246,6 +246,39 @@ class OwedRowWritesTest {
     }
 
     @Test
+    fun aTiedWriteReplacedDuringARetry_waitsForTheNextRetry() {
+        // Row 2's result is retried first, and row 1's tied status replaced
+        // meanwhile: the retry's copy of it is stale.
+        provider.db.execSQL("INSERT INTO sms (_id, type, date) VALUES (2, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX}, 1000)")
+        owed().owe(deliveryWrite(1, Telephony.Sms.STATUS_COMPLETE).tiedTo(1000))
+        owed().owe(statusWrite(2, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.ignoreWrites = false
+        provider.beforeNextQuery = { owed().owe(deliveryWrite(1, Telephony.Sms.STATUS_PENDING).tiedTo(1000)) }
+
+        assertEquals(1, owed().retry(context))
+        assertEquals("the replaced write is not applied", -1, provider.status(1))
+
+        assertEquals(1, owed().retry(context))
+        assertEquals(Telephony.Sms.STATUS_PENDING, provider.status(1))
+    }
+
+    @Test
+    fun aWriteIsNeverOwedToARowThatTookItsIdDuringTheWrite() {
+        // Deleted, and its id reused, between the ignored write and owing it.
+        provider.beforeNextQuery = {
+            provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
+            provider.db.execSQL(
+                "INSERT INTO sms (_id, type, date) VALUES " +
+                    "(1, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX}, ${System.currentTimeMillis() + 60_000})",
+            )
+        }
+
+        assertEquals(RowWriteOutcome.IGNORED, recordRowWrite(context, statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT)))
+
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+    }
+
+    @Test
     fun aWriteReplacedWhileARetryTiesIt_waitsForTheNextRetry() {
         owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
         provider.ignoreWrites = false

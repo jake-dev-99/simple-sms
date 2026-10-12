@@ -130,10 +130,11 @@ internal fun applyRowWrite(context: Context, write: RowWrite): RowWriteOutcome {
  * @throws Exception the provider's failure, after the write is owed.
  */
 internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome {
+    val attemptedAtMillis = System.currentTimeMillis()
     val outcome = try {
         applyRowWrite(context, write)
     } catch (e: Exception) {
-        oweRowWrite(context, write)
+        oweRowWrite(context, write, attemptedAtMillis)
         throw e
     }
     val owe = when (outcome) {
@@ -144,7 +145,7 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
         RowWriteOutcome.WRITTEN -> false
     }
     if (owe) {
-        oweRowWrite(context, write)
+        oweRowWrite(context, write, attemptedAtMillis)
     } else if (outcome == RowWriteOutcome.WRITTEN) {
         // An earlier write owed to the row is stale now.
         OwedRowWrites.forApp(context).landed(write)
@@ -153,8 +154,10 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
 }
 
 // Owing is the fallback for a write that already failed; one the store
-// can't keep is logged and lost, as before UNFY-335.
-private fun oweRowWrite(context: Context, write: RowWrite) {
+// can't keep is logged and lost, as before UNFY-335. A row newer than the
+// write's attempt ([attemptedAtMillis]) took a deleted message's id since,
+// and is not its row.
+private fun oweRowWrite(context: Context, write: RowWrite, attemptedAtMillis: Long) {
     val owed = when (val row = readRowDate(context, write.uri)) {
         RowDate.Gone -> {
             Log.i(ROW_WRITES_TAG, "${write.uri} is gone; its unwritten status write is dropped")
@@ -163,7 +166,13 @@ private fun oweRowWrite(context: Context, write: RowWrite) {
         RowDate.Unknown -> write.also {
             Log.w(ROW_WRITES_TAG, "${write.uri} can't be read; its unwritten status write is kept untied")
         }
-        is RowDate.Known -> write.tiedTo(row.date)
+        is RowDate.Known -> {
+            if (rowDateMillis(write.uri, row.date) > attemptedAtMillis) {
+                Log.i(ROW_WRITES_TAG, "${write.uri} is a newer message than its unwritten status write; it is dropped")
+                return
+            }
+            write.tiedTo(row.date)
+        }
     }
     try {
         if (!OwedRowWrites.forApp(context).owe(owed)) {
@@ -173,6 +182,11 @@ private fun oweRowWrite(context: Context, write: RowWrite) {
         Log.e(ROW_WRITES_TAG, "Could not keep the unwritten status write for ${write.uri} to retry", e)
     }
 }
+
+// [date], a row's `date`, in milliseconds: an MMS row's is in seconds, an SMS
+// row's in milliseconds.
+private fun rowDateMillis(uri: String, date: Long): Long =
+    if (Uri.parse(uri).authority == Telephony.Mms.CONTENT_URI.authority) date * 1000L else date
 
 /** What a row's `date` read found ([readRowDate]). */
 private sealed interface RowDate {
@@ -375,15 +389,13 @@ internal class OwedRowWrites(
     // was owed took a deleted message's id, and is not its row. Null too when
     // the file no longer holds [write] (forgotten, or replaced).
     private fun tiedForRetry(context: Context, file: File, write: RowWrite): RowWrite? {
-        if (write.tied) return write
+        if (write.tied) return write.takeIf { synchronized(LOCK) { read(file) == write } }
         val date = when (val row = readRowDate(context, write.uri)) {
             RowDate.Gone -> return null.also { dropIfUnchanged(file, write) }
             RowDate.Unknown -> return null
             is RowDate.Known -> row.date
         }
-        // An MMS row's date is in seconds, an SMS row's in milliseconds.
-        val dateMillis = if (Uri.parse(write.uri).authority == Telephony.Mms.CONTENT_URI.authority) date * 1000L else date
-        if (dateMillis > write.owedAtMillis) {
+        if (rowDateMillis(write.uri, date) > write.owedAtMillis) {
             Log.i(ROW_WRITES_TAG, "${write.uri} is a newer message than its owed status write; it is dropped")
             dropIfUnchanged(file, write)
             return null
