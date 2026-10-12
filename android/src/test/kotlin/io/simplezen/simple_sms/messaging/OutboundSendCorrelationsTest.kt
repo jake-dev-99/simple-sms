@@ -415,6 +415,51 @@ class OutboundSendCorrelationsTest {
         }
     }
 
+    // Purpose: verify the Android handler accepts the list payload emitted by Dart.
+    /**
+     * @param None A top-level URI list crosses the real native method handler.
+     * @returns Unit after proving the protocol recovers the persisted identity.
+     * @throws AssertionError If the handler expects an argument map or rejects the list.
+     */
+    @Test fun nativeRecoveryAcceptsTheDartTopLevelUriList() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val uri = "content://sms/7"
+        OutboundSendCorrelations(context).record(Uri.parse(uri), "job")
+        var reply: Any? = null
+        val result = object : MethodChannel.Result {
+            // Purpose: observe the real native recovery reply.
+            /**
+             * @param result The map returned by the method handler.
+             * @returns Unit after capturing the reply.
+             * @throws None Capturing the reply has no side effects.
+             */
+            override fun success(result: Any?) { reply = result }
+            // Purpose: fail if the list-shaped protocol is rejected.
+            /**
+             * @param code The unexpected native error.
+             * @param message The unexpected native error explanation.
+             * @param details The unexpected native error context.
+             * @returns Nothing because a valid list must recover successfully.
+             * @throws AssertionError If the method rejects the Dart argument shape.
+             */
+            override fun error(code: String, message: String?, details: Any?) { fail("$code: $message") }
+            // Purpose: fail if the advertised recovery API is missing.
+            /**
+             * @param None The method channel supplies no arguments here.
+             * @returns Nothing because recovery must be implemented.
+             * @throws AssertionError If the handler does not recognize the method.
+             */
+            override fun notImplemented() { fail("getSendCorrelations must be implemented") }
+        }
+        val sender = OutboundSender(context)
+        try {
+            sender.onMethodCall(MethodCall("getSendCorrelations", listOf(uri)), result)
+            assertEquals(mapOf(uri to mapOf("clientCorrelationId" to "job", "latestMessageUri" to uri)), reply)
+        } finally {
+            sender.release()
+        }
+    }
+
     // Purpose: verify exact provider reads while controlling row availability.
     /**
      * @param None Robolectric constructs this fixture.
