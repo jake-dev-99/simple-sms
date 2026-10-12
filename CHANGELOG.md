@@ -71,6 +71,29 @@ return typed results.
   now throw it. Conversation enrichment tolerates it
   per thread: that thread comes back unenriched (null `participants`,
   `latestSms`, `latestMms`) instead of failing the list.
+- **A send result that doesn't land on its row is retried (UNFY-335).** An
+  app that lost the default-SMS role or its `WRITE_SMS` app-op has its
+  provider writes ignored, not refused, so the row stayed in the outbox while
+  `sendMessage` answered with it. Now:
+  - A write the provider ignored is detected by reading the row back.
+    `sendMessage` then answers `SEND_ACK_FAILED` with the carrier result in
+    `details['sent']`.
+  - Such a write, or one that failed, is kept and retried before each send,
+    at each engine start, and before the stale-outbox sweep. That sweep
+    leaves a row that still owes a write alone. Delivery-status writes get
+    the same treatment.
+- **Send results only rewrite a row still on its way out (UNFY-335).** A
+  failed SMS result and every MMS result now carry the guard a successful SMS
+  result already had. A late result for a deleted message never rewrites an
+  inbound or draft row that reused its id, or a carrier failure already
+  recorded.
+- **A send whose row is reused before its result comes is answered
+  (UNFY-335).** If a pending send's row was deleted and a new send reused its
+  id, the earlier `sendMessage` used to wait out its timeout. It now settles
+  at once with `MESSAGE_ROW_MISSING`, with `details['sent']` `null` (unknown).
+- **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
+  object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it
+  too, instead of resolving to an empty map.
 
 ## 0.5.1
 

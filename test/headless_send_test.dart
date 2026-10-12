@@ -44,6 +44,29 @@ void main() {
     });
   });
 
+  for (final (what, answer) in <(String, Object?)>[
+    ('a JSON list', jsonEncode([1, 2])),
+    ('a JSON string', jsonEncode('sent')),
+    ('no answer', null),
+    ('a map, not JSON', {'_id': 42}),
+  ]) {
+    test('send rejects $what as a FormatException (UNFY-335)', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(messaging, (call) async => answer);
+
+      await expectLater(
+        AndroidMessaging.send(
+          message: OutboundMessage(
+            body: 'hi',
+            addresses: {'+15551234567'},
+            attachmentPaths: const {},
+          ),
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  }
+
   test('send surfaces the platform error unchanged', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(messaging, (call) async {

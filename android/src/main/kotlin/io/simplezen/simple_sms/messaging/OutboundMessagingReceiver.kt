@@ -2,7 +2,6 @@ package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -106,13 +105,23 @@ internal val DELIVERY_REPORT_ARGS = arrayOf(
     Telephony.Sms.MESSAGE_TYPE_QUEUED.toString(),
 )
 
-/** Records an SMS delivery report's [status] on [messageUri] (see [DELIVERY_REPORT_SELECTION]). */
-internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status: Int): Int =
-    context.contentResolver.update(
-        messageUri,
-        ContentValues().apply { put(Telephony.Sms.STATUS, status) },
-        DELIVERY_REPORT_SELECTION,
-        DELIVERY_REPORT_ARGS,
+/**
+ * Purpose: records an SMS delivery report's [status] on [messageUri] (see
+ * [DELIVERY_REPORT_SELECTION]). A write the provider ignored, or failed, is
+ * owed and retried ([OwedRowWrites], UNFY-335).
+ *
+ * @returns how the write went.
+ * @throws Exception the provider's failure, once the write is owed.
+ */
+internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status: Int): RowWriteOutcome =
+    recordRowWrite(
+        context,
+        RowWrite(
+            messageUri.toString(),
+            mapOf(Telephony.Sms.STATUS to status.toLong()),
+            DELIVERY_REPORT_SELECTION,
+            DELIVERY_REPORT_ARGS.toList(),
+        ),
     )
 
 // TP-Status range boundaries (3GPP TS 23.040 9.2.3.15).
@@ -286,8 +295,8 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             if (part == null) partStatus
             else messageDeliveryStatus(context, messageUri, part, partStatus, format) ?: return
         try {
-            val updated = persistSmsDeliveryStatus(context, messageUri, status)
-            Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri (rows=$updated)")
+            val written = persistSmsDeliveryStatus(context, messageUri, status)
+            Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri ($written)")
         } catch (e: Exception) {
             Log.e(TAG_RECEIVER, "Failed recording the delivery status for $messageUri", e)
         }

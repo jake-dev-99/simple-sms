@@ -6,7 +6,6 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
-import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.Telephony
@@ -14,6 +13,8 @@ import android.telephony.SmsManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.messaging.DeliveryReportSelectionTest.SqliteSmsProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,6 +120,102 @@ class SentResultSelectionTest {
     }
 
     @Test
+    fun failure_neverOverwritesAnInboundOrDraftRow_orACarrierFailure() {
+        // Rows that reused a deleted message's id; a row a carrier failure
+        // already marked failed (UNFY-335).
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_INBOX)
+        insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_DRAFT)
+        insert(id = 3, type = Telephony.Sms.MESSAGE_TYPE_FAILED, errorCode = SmsManager.RESULT_ERROR_NO_SERVICE)
+
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, result(1, SmsManager.RESULT_ERROR_GENERIC_FAILURE))
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, result(2, SmsManager.RESULT_ERROR_GENERIC_FAILURE))
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, result(3, SmsManager.RESULT_ERROR_GENERIC_FAILURE))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_INBOX, provider.type(1))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_DRAFT, provider.type(2))
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, provider.errorCode(3))
+    }
+
+    @Test
+    fun mmsResults_moveOnlyAnOutboxRow_orOneFailedForLackOfAResult() {
+        mms.insert(id = 1, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, date = 0)
+        mms.insert(id = 2, box = Telephony.Mms.MESSAGE_BOX_FAILED, date = 0) // timed out, then the success came
+        mms.insert(id = 3, box = Telephony.Mms.MESSAGE_BOX_INBOX, date = 0) // reused a deleted message's id
+        mms.insert(id = 4, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, date = 0)
+        mms.insert(id = 5, box = Telephony.Mms.MESSAGE_BOX_INBOX, date = 0)
+
+        mmsResult(1, Activity.RESULT_OK)
+        mmsResult(2, Activity.RESULT_OK)
+        mmsResult(3, Activity.RESULT_OK)
+        mmsResult(4, SmsManager.MMS_ERROR_IO_ERROR)
+        mmsResult(5, SmsManager.MMS_ERROR_IO_ERROR)
+
+        assertEquals(Telephony.Mms.MESSAGE_BOX_SENT, mms.box(1))
+        assertEquals(Telephony.Mms.MESSAGE_BOX_SENT, mms.box(2))
+        assertEquals(Telephony.Mms.MESSAGE_BOX_INBOX, mms.box(3))
+        assertEquals(Telephony.Mms.MESSAGE_BOX_FAILED, mms.box(4))
+        assertEquals(Telephony.Mms.MESSAGE_BOX_INBOX, mms.box(5))
+    }
+
+    @Test
+    fun aResultTheProviderIgnores_isOwed_andLandsOnceTheAppMayWriteAgain() {
+        // The app lost the default-SMS role or its WRITE_SMS app-op (UNFY-335).
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        provider.ignoreWrites = true
+
+        assertEquals(RowWriteOutcome.IGNORED, result(1, Activity.RESULT_OK))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        val owed = OwedRowWrites.forApp(context)
+        assertEquals(0, owed.retry(context))
+        assertEquals("still ignored, still owed", setOf(smsUri(1)), owed.rows())
+
+        provider.ignoreWrites = false
+        assertEquals(1, owed.retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
+        assertTrue(owed.rows().isEmpty())
+    }
+
+    @Test
+    fun aResultWriteThatFails_isOwed_andDroppedOnceItNoLongerApplies() {
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX)
+        provider.rowWriteFailure = IllegalStateException("provider down")
+
+        assertThrows(IllegalStateException::class.java) { result(1, Activity.RESULT_OK) }
+        val owed = OwedRowWrites.forApp(context)
+        assertEquals(setOf(smsUri(1)), owed.rows())
+
+        // Meanwhile a new inbound message reused the deleted row's id.
+        provider.rowWriteFailure = null
+        provider.db.execSQL("UPDATE sms SET type = ${Telephony.Sms.MESSAGE_TYPE_INBOX} WHERE _id = 1")
+        assertEquals(0, owed.retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_INBOX, provider.type(1))
+        assertTrue(owed.rows().isEmpty())
+    }
+
+    @Test
+    fun aSweep_recordsOwedResultsFirst_andLeavesARowThatStillOwesOneAlone() {
+        val now = System.currentTimeMillis()
+        val overdue = now - STALE_OUTBOX_AGE_MS - 1
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = overdue) // its success is owed
+        insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, date = overdue) // its result never came
+        val owed = OwedRowWrites.forApp(context)
+        owed.owe(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK))
+        provider.rowWriteFailure = IllegalStateException("provider down")
+
+        OutboxSweeper.sweepOnce(context, pending = emptySet())
+
+        assertEquals("owed, so not failed for lack of a result", Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(2))
+
+        provider.rowWriteFailure = null
+        OutboxSweeper.sweepOnce(context, pending = emptySet())
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
+    }
+
+    @Test
     fun staleOutboxSweep_failsOnlyThisAppsOverdueUnownedOutboxRows() {
         val now = 100 * 60 * 1000L
         val overdue = now - STALE_OUTBOX_AGE_MS - 1
@@ -165,7 +262,10 @@ class SentResultSelectionTest {
     /** A minimal SQLite-backed `mms` (pdu) provider applying selections like the platform's. */
     class SqliteMmsProvider : ContentProvider() {
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
-            execSQL("CREATE TABLE pdu (_id INTEGER PRIMARY KEY, msg_box INTEGER, creator TEXT, date INTEGER)")
+            execSQL(
+                "CREATE TABLE pdu (_id INTEGER PRIMARY KEY, msg_box INTEGER, creator TEXT, date INTEGER, " +
+                    "read INTEGER, seen INTEGER, date_sent INTEGER)",
+            )
         }
 
         fun insert(id: Long, box: Int, date: Long, creator: String = ApplicationProvider.getApplicationContext<Context>().packageName) {
@@ -182,11 +282,8 @@ class SentResultSelectionTest {
 
         override fun onCreate(): Boolean = true
 
-        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
-            val id = ContentUris.parseId(uri)
-            val where = if (id < 0) selection else DatabaseUtils.concatenateWhere("_id = $id", selection)
-            return db.update("pdu", values, where, selectionArgs)
-        }
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int =
+            db.update("pdu", values, rowWhere(uri, selection), selectionArgs)
 
         override fun query(
             uri: Uri,
@@ -194,7 +291,7 @@ class SentResultSelectionTest {
             selection: String?,
             selectionArgs: Array<out String>?,
             sortOrder: String?,
-        ): Cursor? = null
+        ): Cursor? = db.query("pdu", projection, rowWhere(uri, selection), selectionArgs, null, null, sortOrder)
 
         override fun getType(uri: Uri): String? = null
 
@@ -202,6 +299,17 @@ class SentResultSelectionTest {
 
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     }
+
+    private fun smsUri(id: Long): Uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, id)
+
+    private fun mmsResult(id: Long, resultCode: Int) = recordSendResult(
+        context,
+        id.toInt(),
+        ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, id),
+        SENTMMS_ACTION,
+        "test",
+        resultCode,
+    )
 
     private fun result(id: Long, resultCode: Int) = recordSendResult(
         context,
