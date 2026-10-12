@@ -102,12 +102,21 @@ class AndroidMessaging {
   ///
   /// - `MESSAGE_ROW_MISSING`: the message row was gone when read back.
   /// - `SEND_ACK_FAILED`: the provider threw while recording the result or
-  ///   reading the row back; `details['cause']` describes the failure.
+  ///   reading the row back, ignored the write that records the result (the
+  ///   app lost the default-SMS role or its `WRITE_SMS` app-op), or returned
+  ///   no cursor to check whether it did; `details['cause']` describes the
+  ///   failure. A write that did not land is retried at the next engine start
+  ///   and as the next send starts.
   ///
   /// For both, `details['sent']` is the carrier result: `true` means the
   /// message went out (don't resend it), `false` that the send failed.
   /// `details` also carry `messageUri`, `eventType`, `resultCode`, and
   /// `statusString`.
+  ///
+  /// `MESSAGE_ROW_MISSING` also settles a send whose row was deleted, and its
+  /// id reused by a new send, before its carrier result came. Whether it went
+  /// out is unknown, so `details['sent']` is `null`, and `details` carry only
+  /// `messageUri`.
   ///
   /// `SEND_RESULT_TIMEOUT` settles a send that got no carrier result within
   /// 10 minutes of device uptime (the timer pauses in deep sleep), e.g. after
@@ -115,6 +124,9 @@ class AndroidMessaging {
   /// `details['sent']` is `null`. The row, if still on its way out, is marked
   /// failed; a carrier success that arrives later still moves it to sent.
   /// `details` also carry `messageUri` and `timeoutMs`.
+  ///
+  /// Throws a [FormatException] when the platform answers with anything but
+  /// a JSON object: whether the message went out is unknown.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
   }) =>

@@ -33,14 +33,31 @@ class _Channels {
 class OutboundMessagingInterop {
   static const methodChannel = _Channels.messaging;
 
+  /// Sends [message] and resolves with the native message row.
+  ///
+  /// Throws a [FormatException] when the platform answers with anything but
+  /// a JSON object, no answer included (UNFY-335): the send's outcome is then
+  /// unknown, and it is never read as an empty row.
   static Future<Map<String, dynamic>> sendMessage(
     OutboundMessage message,
   ) async {
-    final result = await methodChannel.invokeMethod<String>(
+    final result = await methodChannel.invokeMethod<Object?>(
       'sendMessage',
       message.toJson(),
     );
-    return jsonDecode(result ?? '{}');
+    if (result is! String) {
+      throw FormatException(
+        'sendMessage answered with ${result.runtimeType}, not a JSON string',
+      );
+    }
+    final decoded = jsonDecode(result);
+    if (decoded is! Map<String, dynamic>) {
+      throw FormatException(
+        'sendMessage answered with ${decoded.runtimeType}, not a JSON object',
+        result,
+      );
+    }
+    return decoded;
   }
 }
 

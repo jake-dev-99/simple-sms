@@ -7,6 +7,7 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
@@ -16,6 +17,7 @@ import android.provider.Telephony
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import androidx.test.core.app.ApplicationProvider
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.time.Duration
@@ -140,16 +142,21 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun nullCursor_isReportedAsRowMissing() {
-        // simple_query maps a null cursor to no rows, so a provider that
-        // returns null is indistinguishable from a deleted row here.
+    fun aWriteThatTookNoRow_andCantBeReadBack_settlesSendAckFailed() {
+        // The provider returns no cursor, so whether the result was recorded
+        // is unknown (UNFY-335). The write is kept, though it can't be tied
+        // to its row's date.
         smsProvider.nullCursor = true
         val result = pendingSend(smsUri)
 
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
-        assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("no cursor"))
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
     }
 
     @Test
@@ -164,7 +171,7 @@ class OutboundSendAckTest {
 
         assertEquals(1, result.calls)
         assertEquals(true, (result.errorDetails as Map<*, *>)["sent"])
-        assertEquals(1, smsProvider.queries)
+        assertEquals(1, smsProvider.rowReads)
     }
 
     @Test
@@ -181,7 +188,7 @@ class OutboundSendAckTest {
             assertEquals(1, result.calls)
             assertTrue(result.successPayload is String)
             assertEquals("only the owner records the failed send", 1, smsProvider.updates)
-            assertEquals(1, smsProvider.queries)
+            assertEquals(1, smsProvider.rowReads)
         } finally {
             otherHandler.release()
         }
@@ -206,7 +213,7 @@ class OutboundSendAckTest {
         assertEquals("ERROR_GENERIC_FAILURE", details["statusString"])
         assertEquals("the row is written once, failed", 1, smsProvider.updates)
         assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
-        assertEquals("the row is re-read once, at settlement", 1, smsProvider.queries)
+        assertEquals("the row is re-read once, at settlement", 1, smsProvider.rowReads)
         assertTrue(handler.channelResultMap.isEmpty())
     }
 
@@ -554,7 +561,7 @@ class OutboundSendAckTest {
         assertEquals(1, result.calls)
         assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
         assertEquals(false, (result.errorDetails as Map<*, *>)["sent"])
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
     @Test
@@ -572,6 +579,87 @@ class OutboundSendAckTest {
         val details = result.errorDetails as Map<*, *>
         assertEquals(true, details["sent"])
         assertEquals("parts unreadable", details["cause"])
+    }
+
+    @Test
+    fun aResultWriteTheProviderIgnores_settlesSendAckFailed_andIsOwed() {
+        // The app lost the default-SMS role or its WRITE_SMS app-op mid-send
+        // (UNFY-335): the row would read back unchanged, still sending.
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_OUTBOX, "date" to 1_000L)
+        smsProvider.ignoreWrites = true
+        val result = pendingSend(smsUri)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals(1, result.calls)
+        assertNull("must not ack the unchanged row", result.successPayload)
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("ignored"))
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
+        assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
+    fun aPendingSendWhoseRowIdIsReused_isAnsweredRowMissing_itsOutcomeUnknown() {
+        // Its row was deleted and a new send reused the id before its result
+        // came; it would otherwise never be answered (UNFY-335).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val superseded = pendingSend(smsUri)
+        val current = pendingSend(smsUri)
+
+        assertEquals(1, superseded.calls)
+        assertEquals(ERR_MESSAGE_ROW_MISSING, superseded.errorCode)
+        val details = superseded.errorDetails as Map<*, *>
+        assertEquals("content://sms/42", details["messageUri"])
+        assertTrue(details.containsKey("sent"))
+        assertNull(details["sent"])
+        assertEquals(0, current.calls)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals("the superseded send is answered once", 1, superseded.calls)
+        assertEquals(1, current.calls)
+        assertNull(current.errorCode)
+    }
+
+    @Test
+    fun aNewSendThatTakesARow_forgetsTheWritesOwedToIt() {
+        // The message they were for was deleted, and its id reused (UNFY-335).
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
+
+        pendingSend(smsUri)
+
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+    }
+
+    @Test
+    fun aSend_retriesTheOwedStatusWrites() {
+        // A send needs write access, so an ignored write may land now.
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "date" to 1_000L)
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
+
+        handler.onMethodCall(MethodCall("sendMessage", null), RecordingResult())
+
+        val deadline = System.currentTimeMillis() + 5_000
+        while (OwedRowWrites.forApp(context).rows().isNotEmpty() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+    }
+
+    @Test
+    fun aDeliveryWriteTheProviderIgnores_isOwed() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT, "date" to 1_000L)
+        smsProvider.ignoreWrites = true
+
+        pendingSend(smsUri)
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
     }
 
     @Test
@@ -761,7 +849,7 @@ class OutboundSendAckTest {
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
         assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
         assertEquals(SENT_RESULT_SELECTION, smsProvider.lastSelection)
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
     @Test
@@ -802,7 +890,7 @@ class OutboundSendAckTest {
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
 
         assertEquals(1, smsProvider.updates)
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
     /** A send this test's handler owns; an SMS's [parts] are tracked in the ledger, as [sendSms] does. */
@@ -910,17 +998,26 @@ class OutboundSendAckTest {
      * Single-row message provider; [row] = null models the row being gone,
      * [nullCursor] a provider that returns no cursor at all, and
      * [queryFailure] / [updateFailure] a provider that throws, and
-     * [partQueryFailure] one that throws only for MMS part reads. It records
-     * but ignores selections: what the delivery-report guard admits is tested
-     * as real SQL in [DeliveryReportSelectionTest].
+     * [partQueryFailure] one that throws only for MMS part reads, and
+     * [ignoreWrites] an app without write access (the default-SMS role and
+     * its WRITE_SMS app-op), whose updates the provider ignores. It records
+     * but ignores selections: what the guards admit is tested as real SQL in
+     * [DeliveryReportSelectionTest] and [SentResultSelectionTest].
      */
     class FakeMessageProvider : ContentProvider() {
         var row: Map<String, Any?>? = null
+        var ignoreWrites = false
         var nullCursor = false
         var queryFailure: RuntimeException? = null
         var updateFailure: RuntimeException? = null
         var partQueryFailure: RuntimeException? = null
         var queries = 0
+
+        /**
+         * Reads of the row itself, to build an ack: no projection, unlike a
+         * check of whether an unwritten row still matches its write's guard.
+         */
+        var rowReads = 0
         var updates = 0
         var lastUri: Uri? = null
         var lastValues: ContentValues? = null
@@ -938,6 +1035,7 @@ class OutboundSendAckTest {
             sortOrder: String?,
         ): Cursor? {
             queries++
+            if (projection == null) rowReads++
             queryFailure?.let { throw it }
             if (uri.pathSegments.contains("part")) partQueryFailure?.let { throw it }
             if (nullCursor) return null
@@ -960,7 +1058,7 @@ class OutboundSendAckTest {
             lastSelectionArgs = selectionArgs
             duringUpdate?.invoke()
             updateFailure?.let { throw it }
-            return if (row == null) 0 else 1
+            return if (row == null || ignoreWrites) 0 else 1
         }
 
         override fun getType(uri: Uri): String? = null
