@@ -150,8 +150,8 @@ internal class MessageRowMissingException(messageUri: Uri, outcome: CarrierOutco
 
 /**
  * The ack could not be built — the provider threw while writing the send
- * status or reading the row back, or the row could not be encoded
- * (UNFY-282). Distinct from the initiation codes: the carrier has already
+ * status or reading the row back, returned no cursor for that read-back
+ * (UNFY-284), or the row could not be encoded (UNFY-282). Distinct from the initiation codes: the carrier has already
  * handled this send.
  */
 internal class SendAckFailedException(
