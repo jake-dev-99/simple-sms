@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
+
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.
 

@@ -41,7 +41,9 @@ dependencies:
   # that would surface as `SecurityException` without those grants
   # is a bug in the caller, not this plugin — docs on every such
   # method link back to the permission.
-  simple_permissions_native: ^1.6.0
+  # 1.6.4 requires the repaired 1.3.4 platform packages, including
+  # the native PermissionGuards API used by this plugin.
+  simple_permissions_native: ^1.6.4
 
 dev_dependencies:
   simple_query_platform_interface: ^0.2.0
