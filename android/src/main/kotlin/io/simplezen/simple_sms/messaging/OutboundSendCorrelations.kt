@@ -47,7 +47,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
      * @throws IllegalArgumentException If the request cannot fit a single bounded attempt.
      * @throws IllegalStateException If live rows exhaust retention or verification fails.
      */
-    fun beginAttempt(token: String?, expectedRows: Int): Attempt {
+    private fun beginAttempt(token: String?, expectedRows: Int): Attempt {
         if (token != null) {
             require(token.isNotBlank()) { "clientCorrelationId must not be blank" }
             require(expectedRows in 1..MAX_RETAINED_ROWS) { "Correlated send must persist at most 64 rows" }
@@ -56,14 +56,17 @@ internal class OutboundSendCorrelations(private val context: Context) {
         return Attempt(token)
     }
 
-    // Purpose: reject exhausted single-row retries before provider creation.
+    // Purpose: keep the capacity check and synchronous native initialization together.
     /**
-     * @param token The logical send identity, or null for an uncorrelated send.
-     * @returns Unit once at least one new row fits.
-     * @throws IllegalStateException If retention or verification prevents another attempt.
-     * @throws IllegalArgumentException If the token is blank.
+     * @param request The logical token and maximum provider-row budget.
+     * @param action The synchronous persistence and radio-initiation operation.
+     * @returns The action result after initialization completes.
+     * @throws IllegalStateException If retention or provider verification fails.
+     * @throws IllegalArgumentException If the request identity or budget is invalid.
      */
-    fun requireAttemptCapacity(token: String?) { beginAttempt(token, 1) }
+    fun <T> withAttempt(request: Pair<String?, Int>, action: (Attempt) -> T): T = synchronized(lock) {
+        action(beginAttempt(request.first, request.second))
+    }
 
     // Purpose: register a standalone row as a new native attempt.
     /**

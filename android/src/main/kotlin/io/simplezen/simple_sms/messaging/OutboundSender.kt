@@ -719,52 +719,55 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                     val correlationId = message["clientCorrelationId"]?.let {
                         it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
                     }
-                    val correlationAttempt = OutboundSendCorrelations(context).beginAttempt(correlationId, maxOf(1, recipients.size))
-                    val details =
-                            MessageRequestDetails(
-                                    threadId =
-                                            Telephony.Threads.getOrCreateThreadId(
-                                                    context,
-                                                    recipients.toSet(),
-                                            ),
-                                    addresses = recipients,
-                                    body = message["body"] as? String
-                                            ?: throw IllegalArgumentException("sendMessage has no body"),
-                                    subscriptionId = message["subscriptionId"]?.let {
-                                        it as? Int
-                                                ?: throw IllegalArgumentException("subscriptionId must be an int")
-                                    },
-                                    attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
-                                    clientCorrelationId = correlationId,
-                                    flutterResult = result,
-                            )
-                    details.correlationAttempt = correlationAttempt
-                    requestDetails = details
+                    OutboundSendCorrelations(context).withAttempt(
+                        correlationId to maxOf(1, recipients.size),
+                    ) { correlationAttempt ->
+                        val details =
+                                MessageRequestDetails(
+                                        threadId =
+                                                Telephony.Threads.getOrCreateThreadId(
+                                                        context,
+                                                        recipients.toSet(),
+                                                ),
+                                        addresses = recipients,
+                                        body = message["body"] as? String
+                                                ?: throw IllegalArgumentException("sendMessage has no body"),
+                                        subscriptionId = message["subscriptionId"]?.let {
+                                            it as? Int
+                                                    ?: throw IllegalArgumentException("subscriptionId must be an int")
+                                        },
+                                        attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
+                                        clientCorrelationId = correlationId,
+                                        flutterResult = result,
+                                )
+                        details.correlationAttempt = correlationAttempt
+                        requestDetails = details
 
-                    val smsManager: SmsManager =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                val subIdToUse =
-                                        selectSubscriptionId(
-                                                details.subscriptionId,
-                                                SmsManager::getDefaultSmsSubscriptionId,
-                                        )
-                                context.getSystemService(SmsManager::class.java)
-                                        .createForSubscriptionId(subIdToUse)
-                            } else {
-                                @Suppress("DEPRECATION") SmsManager.getDefault()
-                            }
+                        val smsManager: SmsManager =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    val subIdToUse =
+                                            selectSubscriptionId(
+                                                    details.subscriptionId,
+                                                    SmsManager::getDefaultSmsSubscriptionId,
+                                            )
+                                    context.getSystemService(SmsManager::class.java)
+                                            .createForSubscriptionId(subIdToUse)
+                                } else {
+                                    @Suppress("DEPRECATION") SmsManager.getDefault()
+                                }
 
-                    val route =
-                            routeMessage(
-                                    hasAttachments =
-                                            !details.attachmentPaths.isNullOrEmpty(),
-                                    recipientCount = details.addresses.size,
-                            )
-                    when (route) {
-                        OutboundRoute.MMS ->
-                                sendMms(smsManager = smsManager, requestDetails = details)
-                        OutboundRoute.SMS ->
-                                sendSms(smsManager = smsManager, requestDetails = details)
+                        val route =
+                                routeMessage(
+                                        hasAttachments =
+                                                !details.attachmentPaths.isNullOrEmpty(),
+                                        recipientCount = details.addresses.size,
+                                )
+                        when (route) {
+                            OutboundRoute.MMS ->
+                                    sendMms(smsManager = smsManager, requestDetails = details)
+                            OutboundRoute.SMS ->
+                                    sendSms(smsManager = smsManager, requestDetails = details)
+                        }
                     }
                 } catch (e: Exception) {
                     val pending = requestDetails

@@ -346,15 +346,17 @@ class OutboundSendCorrelationsTest {
     @Test fun latestMmsAttemptPreservesAllRecipientRowsAfterRestart() {
         val context: Context = ApplicationProvider.getApplicationContext()
         val store = OutboundSendCorrelations(context)
-        val first = store.beginAttempt("job", 2)
-        store.recordAttemptRow(Uri.parse("content://mms/1"), first)
-        store.recordAttemptRow(Uri.parse("content://mms/2"), first)
+        store.withAttempt("job" to 2) { first ->
+            store.recordAttemptRow(Uri.parse("content://mms/1"), first)
+            store.recordAttemptRow(Uri.parse("content://mms/2"), first)
+        }
         val initial = OutboundSendCorrelations(context).lookup(listOf("content://mms/1", "content://mms/2"))
         assertEquals("content://mms/1", initial["content://mms/1"]?.get("latestMessageUri"))
         assertEquals("content://mms/2", initial["content://mms/2"]?.get("latestMessageUri"))
-        val retry = store.beginAttempt("job", 2)
-        store.recordAttemptRow(Uri.parse("content://mms/3"), retry)
-        store.recordAttemptRow(Uri.parse("content://mms/4"), retry)
+        store.withAttempt("job" to 2) { retry ->
+            store.recordAttemptRow(Uri.parse("content://mms/3"), retry)
+            store.recordAttemptRow(Uri.parse("content://mms/4"), retry)
+        }
         val recovered = OutboundSendCorrelations(context).lookup((1..4).map { "content://mms/$it" })
         assertEquals("content://mms/4", recovered["content://mms/1"]?.get("latestMessageUri"))
         assertEquals("content://mms/4", recovered["content://mms/2"]?.get("latestMessageUri"))
@@ -373,8 +375,8 @@ class OutboundSendCorrelationsTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val store = OutboundSendCorrelations(context)
         for (id in 1..63) store.record(Uri.parse("content://sms/$id"), "job")
-        assertThrows(IllegalStateException::class.java) { store.beginAttempt("job", 2) }
-        assertThrows(IllegalArgumentException::class.java) { store.beginAttempt("job", 65) }
+        assertThrows(IllegalStateException::class.java) { store.withAttempt("job" to 2) { fail("Exhausted budget must reject before initialization") } }
+        assertThrows(IllegalArgumentException::class.java) { store.withAttempt("job" to 65) { fail("Oversized request must reject before initialization") } }
         assertEquals("job", store.lookup(listOf("content://sms/63"))["content://sms/63"]?.get("clientCorrelationId"))
     }
 
@@ -457,6 +459,55 @@ class OutboundSendCorrelationsTest {
             assertEquals(mapOf(uri to mapOf("clientCorrelationId" to "job", "latestMessageUri" to uri)), reply)
         } finally {
             sender.release()
+        }
+    }
+
+    // Purpose: prevent concurrent engines from consuming the same final retention slot.
+    /**
+     * @param None Two native initializations contend for one remaining row slot.
+     * @returns Unit after proving only the admitted send can create its provider row.
+     * @throws AssertionError If competing initialization passes preflight prematurely.
+     */
+    @Test fun competingSendCannotCreateARowAfterTheSameCapacityPreflight() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val store = OutboundSendCorrelations(context)
+        for (id in 1..63) store.record(Uri.parse("content://sms/$id"), "job")
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val firstEntered = java.util.concurrent.CountDownLatch(1)
+        val releaseFirst = java.util.concurrent.CountDownLatch(1)
+        val secondStarted = java.util.concurrent.CountDownLatch(1)
+        val secondEntered = java.util.concurrent.CountDownLatch(1)
+        val created = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val first = pool.submit<Unit> {
+                store.withAttempt("job" to 1) { attempt ->
+                    firstEntered.countDown()
+                    assertTrue(releaseFirst.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    created.incrementAndGet()
+                    store.recordAttemptRow(Uri.parse("content://sms/64"), attempt)
+                }
+            }
+            assertTrue(firstEntered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val second = pool.submit<Throwable> {
+                secondStarted.countDown()
+                assertThrows(IllegalStateException::class.java) {
+                    OutboundSendCorrelations(context).withAttempt("job" to 1) { attempt ->
+                        secondEntered.countDown()
+                        created.incrementAndGet()
+                        OutboundSendCorrelations(context).recordAttemptRow(Uri.parse("content://sms/65"), attempt)
+                    }
+                }
+            }
+            assertTrue(secondStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertFalse(secondEntered.await(300, java.util.concurrent.TimeUnit.MILLISECONDS))
+            releaseFirst.countDown()
+            first.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            second.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertEquals(1, created.get())
+            assertFalse(store.lookup(listOf("content://sms/65")).containsKey("content://sms/65"))
+        } finally {
+            releaseFirst.countDown()
+            pool.shutdownNow()
         }
     }
 
