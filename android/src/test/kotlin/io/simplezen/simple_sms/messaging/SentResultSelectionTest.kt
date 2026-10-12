@@ -215,6 +215,15 @@ class SentResultSelectionTest {
     }
 
     @Test
+    fun aWriteThatFails_forARowThatIsGone_isNotKept() {
+        provider.rowWriteFailure = IllegalStateException("provider down")
+
+        assertThrows(IllegalStateException::class.java) { result(1, Activity.RESULT_OK) }
+
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+    }
+
+    @Test
     fun anOwedWrite_neverLandsOnARowThatReusedItsId() {
         // Deleted while its result was owed; this app's next send, or the app
         // that holds the default-SMS role now, reused its id (UNFY-335).

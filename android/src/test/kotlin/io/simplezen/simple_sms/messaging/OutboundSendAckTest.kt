@@ -144,7 +144,8 @@ class OutboundSendAckTest {
     @Test
     fun aWriteThatTookNoRow_andCantBeReadBack_settlesSendAckFailed() {
         // The provider returns no cursor, so whether the result was recorded
-        // is unknown (UNFY-335); the row can't be read to keep the write.
+        // is unknown (UNFY-335). The write is kept, though it can't be tied
+        // to its row's date.
         smsProvider.nullCursor = true
         val result = pendingSend(smsUri)
 
@@ -155,7 +156,7 @@ class OutboundSendAckTest {
         val details = result.errorDetails as Map<*, *>
         assertEquals(true, details["sent"])
         assertTrue(details["cause"].toString(), details["cause"].toString().contains("no cursor"))
-        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
     }
 
     @Test
@@ -621,6 +622,16 @@ class OutboundSendAckTest {
         assertEquals("the superseded send is answered once", 1, superseded.calls)
         assertEquals(1, current.calls)
         assertNull(current.errorCode)
+    }
+
+    @Test
+    fun aNewSendThatTakesARow_forgetsTheWritesOwedToIt() {
+        // The message they were for was deleted, and its id reused (UNFY-335).
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
+
+        pendingSend(smsUri)
+
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
     }
 
     @Test

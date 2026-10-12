@@ -77,11 +77,16 @@ return typed results.
   `sendMessage` answered with it. Now:
   - A write the provider ignored is detected by reading the row back.
     `sendMessage` then answers `SEND_ACK_FAILED` with the carrier result in
-    `details['sent']`.
+    `details['sent']`. So does a write that took no row when the provider
+    returns no cursor to check it, which used to answer
+    `MESSAGE_ROW_MISSING`.
   - Such a write, or one that failed, is kept and retried before each send,
-    at each engine start, and before the stale-outbox sweep. Each kept write
-    is tied to its row's `date`, so it never lands on a row that reused the
-    id. Delivery-status writes get the same treatment.
+    at each engine start, and before the stale-outbox sweep. A kept write is
+    tied to its row's `date` when the row can be read, and this app's next
+    send forgets the writes owed to the row it takes, so one never lands on
+    a message that reused the id. A carrier failure, or a failed delivery,
+    is never replaced by a later write. Delivery-status writes get the same
+    treatment.
 - **Send results only rewrite a row still on its way out (UNFY-335).** A
   failed SMS result and every MMS result now carry the guard a successful SMS
   result already had. A late result for a deleted message never rewrites an

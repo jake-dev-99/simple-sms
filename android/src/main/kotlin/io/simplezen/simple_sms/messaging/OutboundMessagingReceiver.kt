@@ -122,6 +122,8 @@ internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status:
             mapOf(Telephony.Sms.STATUS to status.toLong()),
             DELIVERY_REPORT_SELECTION,
             DELIVERY_REPORT_ARGS.toList(),
+            // A failed delivery is terminal (see DELIVERY_REPORT_SELECTION).
+            final = status == Telephony.Sms.STATUS_FAILED,
         ),
     )
 

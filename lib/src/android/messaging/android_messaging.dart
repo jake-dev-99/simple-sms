@@ -102,10 +102,11 @@ class AndroidMessaging {
   ///
   /// - `MESSAGE_ROW_MISSING`: the message row was gone when read back.
   /// - `SEND_ACK_FAILED`: the provider threw while recording the result or
-  ///   reading the row back, or ignored the write that records the result
-  ///   (the app lost the default-SMS role or its `WRITE_SMS` app-op);
-  ///   `details['cause']` describes the failure. A write that did not land is
-  ///   retried at the next engine start and before the next send.
+  ///   reading the row back, ignored the write that records the result (the
+  ///   app lost the default-SMS role or its `WRITE_SMS` app-op), or returned
+  ///   no cursor to check whether it did; `details['cause']` describes the
+  ///   failure. A write that did not land is retried at the next engine start
+  ///   and before the next send.
   ///
   /// For both, `details['sent']` is the carrier result: `true` means the
   /// message went out (don't resend it), `false` that the send failed.

@@ -38,6 +38,8 @@ internal enum class RowWriteKind {
  * @param values the columns to set, and their values.
  * @param selection the guard the row must still match.
  * @param selectionArgs the guard's arguments.
+ * @param final whether it records an outcome nothing later may replace: a
+ *   carrier failure, or a failed delivery.
  */
 @Serializable
 internal data class RowWrite(
@@ -46,6 +48,7 @@ internal data class RowWrite(
     val values: Map<String, Long>,
     val selection: String,
     val selectionArgs: List<String>,
+    val final: Boolean = false,
 ) {
     fun contentValues(): ContentValues = ContentValues().apply { values.forEach { (column, value) -> put(column, value) } }
 }
@@ -84,8 +87,8 @@ internal class RowWriteIgnoredException(messageUri: Uri) : IllegalStateException
 
 /**
  * A send-status write took no row, and the provider returned no cursor to
- * read the row back and tell why (UNFY-335). The write is owed when its row
- * can be read later ([OwedRowWrites]).
+ * read the row back and tell why (UNFY-335). The write is owed and retried
+ * ([OwedRowWrites]).
  */
 internal class RowWriteUnreadableException(messageUri: Uri) : IllegalStateException(
     "The status write for $messageUri took no row, and the provider returned no cursor to read it back",
@@ -131,57 +134,74 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
     return outcome
 }
 
-// Owing is the fallback for a write that already failed. A write whose row
-// can't be read to tie it to ([tiedToItsRow]), or that the store can't keep,
-// is logged and lost, as before UNFY-335.
+// Owing is the fallback for a write that already failed; one the store
+// can't keep is logged and lost, as before UNFY-335.
 private fun oweRowWrite(context: Context, write: RowWrite) {
-    val tied = try {
-        tiedToItsRow(context, write)
-    } catch (e: Exception) {
-        Log.e(ROW_WRITES_TAG, "Could not read ${write.uri} to keep its unwritten status write", e)
-        return
-    }
-    if (tied == null) {
-        Log.w(ROW_WRITES_TAG, "${write.uri} is gone or unreadable; its unwritten status write is not kept")
-        return
+    val owed = when (val row = readRowDate(context, write.uri)) {
+        RowDate.Gone -> {
+            Log.i(ROW_WRITES_TAG, "${write.uri} is gone; its unwritten status write is dropped")
+            return
+        }
+        RowDate.Unknown -> write.also {
+            Log.w(ROW_WRITES_TAG, "${write.uri} can't be read; its unwritten status write is kept untied")
+        }
+        is RowDate.Known -> write.tiedTo(row.date)
     }
     try {
-        OwedRowWrites.forApp(context).owe(tied)
+        OwedRowWrites.forApp(context).owe(owed)
     } catch (e: IOException) {
         Log.e(ROW_WRITES_TAG, "Could not keep the unwritten status write for ${write.uri} to retry", e)
     }
 }
 
-/**
- * [write], also guarded by its row's `date`, so it only ever lands on that
- * row: a row deleted while the write is owed may have its id reused, by this
- * app's next send or by whichever app holds the default-SMS role now. Null
- * when the row is gone, or the provider returned no cursor.
- */
-@VisibleForTesting
-internal fun tiedToItsRow(context: Context, write: RowWrite): RowWrite? {
-    val date = ContentQuery.queryOrNull(context, write.uri, arrayOf(DATE_COLUMN))
-        ?.singleOrNull()?.get(DATE_COLUMN) as? Long ?: return null
-    return write.copy(
-        selection = "(${write.selection}) AND $DATE_COLUMN = ?",
-        selectionArgs = write.selectionArgs + date.toString(),
-    )
+/** What a row's `date` read found ([readRowDate]). */
+private sealed interface RowDate {
+    /** The row is gone: nothing is left to write to. */
+    data object Gone : RowDate
+
+    /** The row could not be read, or its date is not an integer. */
+    data object Unknown : RowDate
+
+    data class Known(val date: Long) : RowDate
 }
 
-// SMS and MMS rows both have it: when the message was sent or received (SMS
-// in milliseconds, MMS in seconds).
+// The row's `date`, which SMS and MMS rows both have: when the message was
+// sent or received (SMS in milliseconds, MMS in seconds).
+private fun readRowDate(context: Context, uri: String): RowDate {
+    val rows = try {
+        ContentQuery.queryOrNull(context, uri, arrayOf(DATE_COLUMN))
+    } catch (e: Exception) {
+        Log.e(ROW_WRITES_TAG, "Could not read the date of $uri", e)
+        return RowDate.Unknown
+    } ?: return RowDate.Unknown
+    if (rows.isEmpty()) return RowDate.Gone
+    val date = rows.first()[DATE_COLUMN] as? Long ?: return RowDate.Unknown
+    return RowDate.Known(date)
+}
+
+/**
+ * This write, also guarded by its row's `date`, so it only ever lands on
+ * that row: a row deleted while the write is owed may have its id reused,
+ * by whichever app holds the default-SMS role now. (This app forgets a row's
+ * owed writes when its own next send takes the row, [OwedRowWrites.forget].)
+ */
+@VisibleForTesting
+internal fun RowWrite.tiedTo(date: Long): RowWrite =
+    copy(selection = "($selection) AND $DATE_COLUMN = ?", selectionArgs = selectionArgs + date.toString())
+
 private const val DATE_COLUMN = "date"
 
 /**
  * Purpose: keeps the send-status writes that did not land on their rows, so
  * they are retried rather than lost (UNFY-335): the provider ignored them
  * (the app lost the default-SMS role or its WRITE_SMS app-op) or failed.
- * Each is tied to its row ([tiedToItsRow]).
+ * Each is tied to its row when its row can be read ([tiedTo]).
  *
  * One small file per row and [RowWriteKind], written atomically; a later
- * write of the same kind to the same row replaces the earlier one. Each is
- * retried ([retry]) at every engine start, before the stale-outbox sweep, and
- * before each new send. One is dropped once it lands, once its row no longer matches its
+ * write of the same kind to the same row replaces the earlier one, unless that
+ * one is [RowWrite.final]. Each is retried ([retry]) at every engine start,
+ * before the stale-outbox sweep, and before each new send; a row's send
+ * result goes before its delivery status, which needs the row sent. One is dropped once it lands, once its row no longer matches its
  * guard, or after [DELIVERY_REPORT_WAIT_MS]. Every access is serialized
  * process-wide.
  *
@@ -195,8 +215,8 @@ internal class OwedRowWrites(
     private val json = Json
 
     /**
-     * Purpose: keeps [write] to retry, in place of any write owed to the same
-     * row's same columns.
+     * Purpose: keeps [write] to retry, in place of any write of its kind owed
+     * to its row, unless that one is [RowWrite.final].
      *
      * @throws IOException when it cannot be written.
      */
@@ -205,7 +225,9 @@ internal class OwedRowWrites(
             if (!directory.isDirectory && !directory.mkdirs()) {
                 throw IOException("Could not create the owed row-write store at $directory")
             }
-            val file = AtomicFile(fileFor(write))
+            val target = fileFor(write)
+            if (target.exists() && read(target)?.final == true) return
+            val file = AtomicFile(target)
             val stream = file.startWrite()
             try {
                 stream.write(json.encodeToString(RowWrite.serializer(), write).toByteArray())
@@ -220,7 +242,22 @@ internal class OwedRowWrites(
     }
 
     /**
-     * Purpose: the rows that still owe a write.
+     * Purpose: forgets every write owed to [uri]: this app's new send has
+     * taken the row, so the message they were for is gone.
+     *
+     * @throws nothing; a write that can't be deleted is logged.
+     */
+    fun forget(uri: Uri) {
+        synchronized(LOCK) {
+            RowWriteKind.entries.forEach { kind ->
+                val file = fileFor(uri, kind)
+                if (file.exists() && !file.delete()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+            }
+        }
+    }
+
+    /**
+     * Purpose: the rows that still owe a write; a seam for tests.
      *
      * @returns their URIs.
      * @throws nothing; an unreadable write is left for [retry] to drop.
@@ -239,7 +276,7 @@ internal class OwedRowWrites(
      */
     fun retry(context: Context): Int {
         val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
-        val owed = synchronized(LOCK) { entries() }
+        val owed = synchronized(LOCK) { entries() }.sortedBy { (_, write) -> write?.kind?.ordinal ?: -1 }
         var landed = 0
         for ((file, write) in owed) {
             if (write == null || file.lastModified() < cutoff) {
@@ -292,9 +329,10 @@ internal class OwedRowWrites(
         }
     }
 
-    private fun fileFor(write: RowWrite): File {
-        val uri = Uri.parse(write.uri)
-        val key = listOf(uri.authority.orEmpty(), uri.lastPathSegment.orEmpty(), write.kind.name)
+    private fun fileFor(write: RowWrite): File = fileFor(Uri.parse(write.uri), write.kind)
+
+    private fun fileFor(uri: Uri, kind: RowWriteKind): File {
+        val key = listOf(uri.authority.orEmpty(), uri.lastPathSegment.orEmpty(), kind.name)
             .joinToString("_") { part -> part.replace(Regex("[^A-Za-z0-9]"), "-") }
         return File(directory, key + OWED_WRITE_SUFFIX)
     }

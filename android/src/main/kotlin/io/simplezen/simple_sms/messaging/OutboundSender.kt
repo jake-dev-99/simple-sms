@@ -518,7 +518,15 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
         resultCode != Activity.RESULT_OK -> SEND_FAILURE_SELECTION to SEND_FAILURE_ARGS
         else -> SENT_RESULT_SELECTION to SENT_RESULT_ARGS
     }
-    return RowWrite(messageUri.toString(), RowWriteKind.SEND_RESULT, values, selection, args.toList())
+    return RowWrite(
+        messageUri.toString(),
+        RowWriteKind.SEND_RESULT,
+        values,
+        selection,
+        args.toList(),
+        // A carrier failure is final (see above).
+        final = resultCode != Activity.RESULT_OK,
+    )
 }
 
 /**
@@ -660,6 +668,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      */
     @VisibleForTesting
     internal fun awaitResult(uri: Uri, details: MessageRequestDetails) {
+        // The row is this send's now: writes owed to a deleted message whose
+        // id it reused must not land on it (UNFY-335).
+        OwedRowWrites.forApp(context).forget(uri)
         val superseded = channelResultMap.put(uri, details)
         resultTimeouts.postDelayed({ onResultTimeout(uri, details) }, details, SEND_RESULT_TIMEOUT_MS)
         if (superseded != null && superseded !== details) onSuperseded(uri, superseded)
