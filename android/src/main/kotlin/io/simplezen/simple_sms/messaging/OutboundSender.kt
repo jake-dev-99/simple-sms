@@ -135,8 +135,9 @@ internal sealed class SendAckException(
 /**
  * The message row was absent on read-back — deleted between the status
  * `update` and the re-read. Mirrors the missing-just-persisted-row check in
- * [InboundMmsPersister] (UNFY-160). A provider that returns no cursor also
- * lands here until `simple_query` can report it separately (UNFY-284).
+ * [InboundMmsPersister] (UNFY-160). A provider that returns no cursor is not
+ * this: its row may still exist, so it settles as [SendAckFailedException]
+ * (UNFY-284).
  */
 internal class MessageRowMissingException(messageUri: Uri, outcome: CarrierOutcome) :
     SendAckException(
@@ -168,6 +169,11 @@ internal class SendAckFailedException(
     override fun extraDetails(): Map<String, Any?> =
         mapOf("cause" to (failure.message ?: failure.javaClass.name))
 }
+
+/** The provider returned no cursor to read the message row back, so whether it exists is unknown. */
+internal class AckReadUnreadableException(messageUri: Uri) : IllegalStateException(
+    "The provider returned no cursor reading back $messageUri",
+)
 
 /**
  * Maps an exception thrown from [sendSms] / [sendMms], or raised by the
@@ -960,8 +966,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
         // Message rows (content://sms/N, content://mms/N) are INTEGER/TEXT
         // only — no BLOB columns — so ContentQuery's BLOB-coalescing is
         // moot here (verified vs the AOSP sms/pdu schema + codec; UNFY-156).
-        val row =
-                Query(context).query(QueryObj(contentUri = messageUri.toString())).firstOrNull()
+        val rows = Query(context).queryOrNull(QueryObj(contentUri = messageUri.toString()))
+                ?: throw AckReadUnreadableException(messageUri)
+        val row = rows.firstOrNull()
         if (row == null) {
             val missing = MessageRowMissingException(messageUri, outcome)
             Log.w(TAG, "${missing.message} (resultCode=${outcome.resultCode}, ${outcome.statusString})")

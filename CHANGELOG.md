@@ -36,6 +36,11 @@ return typed results.
 
 ### Changed
 
+- **A send whose row can't be read back is `SEND_ACK_FAILED` (UNFY-284).**
+  When the provider returns no cursor on the read-back after a send result,
+  the row may still exist, so `sendMessage` fails with `SEND_ACK_FAILED`
+  (`sent` carries the carrier outcome) instead of `MESSAGE_ROW_MISSING`, which
+  stays for a row that is really gone.
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
   answers only once every part has reported its carrier result, rather than
   as soon as any part reports a failure: failed if any part failed, with the
