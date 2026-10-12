@@ -272,5 +272,13 @@ jobs:
       - name: Publish
         # Flutter sets FLUTTER_ROOT for pub's SDK dependency validation.
         # setup-dart has already registered the temporary pub.dev credential.
+        # Only the original tag-push event uploads; see workflow_dispatch above.
         timeout-minutes: 2
+        if: github.event_name == 'push'
         run: flutter pub publish --force
+
+      - name: Validate publish (dry run)
+        # Manual dispatch inspects the tag without uploading.
+        timeout-minutes: 2
+        if: github.event_name != 'push'
+        run: flutter pub publish --dry-run
