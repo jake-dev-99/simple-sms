@@ -653,10 +653,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
             val clientCorrelationId: String? = null,
-    ) {
-        /** Settles this send from its SENT part reports (UNFY-283). */
-        internal val sentParts = SentPartsAggregator()
-    }
+    )
 
     init {
         SendResultRouter.register(this)
@@ -906,9 +903,6 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
             OutboundSendCorrelations(context).record(newUri, requestDetails.clientCorrelationId)
-            awaitResult(newUri, requestDetails)
-
-            val statusIntents = smsStatusIntents(context, msgId, newUri)
 
             val rawDest = requestDetails.addresses.first()
             // formatNumber may return null for non-E.164-parseable

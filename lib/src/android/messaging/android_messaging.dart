@@ -69,6 +69,9 @@ class AndroidMessaging {
 
   /// Exact persisted queue identities for SMS/MMS provider URIs.
   /// Available without initializing inbound callbacks. No message content.
+  /// Requires ReadSms permission to verify that the provider rows still exist.
+  /// Deleted attempts are pruned; an unavailable provider fails the lookup
+  /// without treating its rows as deleted.
   static Future<Map<String, dynamic>> getSendCorrelations(List<String> uris) async {
     final result = await OutboundMessagingInterop.methodChannel
         .invokeMapMethod<String, dynamic>('getSendCorrelations', uris);
