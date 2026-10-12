@@ -2,7 +2,6 @@ package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -13,6 +12,7 @@ import android.util.Log
 import androidx.core.net.toUri
 import io.simplezen.simple_sms.mms.sending.MmsSentReceiver
 import io.simplezen.simple_sms.mms.sending.deleteMmsSendFile
+import java.io.IOException
 
 /**
  * The [Telephony.Sms] delivery status (`STATUS_COMPLETE` / `STATUS_PENDING` /
@@ -88,9 +88,9 @@ internal fun deliveryStatusFromReport(status: Int, format: String): Int? {
 
 /**
  * Which rows a delivery report may write (UNFY-293):
- * - not already `STATUS_FAILED`: a failed part is terminal for the whole
- *   message, so a multipart SMS whose later parts report delivered stays
- *   failed;
+ * - not already `STATUS_FAILED`: a failed delivery is terminal for the whole
+ *   message, so a late report (an untracked part's, or a stale one) never
+ *   turns it delivered;
  * - an outbound row whose send was not marked failed (sent, outbox or
  *   queued), so a late report for a deleted message never stamps an inbound
  *   row that reused its id.
@@ -105,13 +105,26 @@ internal val DELIVERY_REPORT_ARGS = arrayOf(
     Telephony.Sms.MESSAGE_TYPE_QUEUED.toString(),
 )
 
-/** Records an SMS delivery report's [status] on [messageUri] (see [DELIVERY_REPORT_SELECTION]). */
-internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status: Int): Int =
-    context.contentResolver.update(
-        messageUri,
-        ContentValues().apply { put(Telephony.Sms.STATUS, status) },
-        DELIVERY_REPORT_SELECTION,
-        DELIVERY_REPORT_ARGS,
+/**
+ * Purpose: records an SMS delivery report's [status] on [messageUri] (see
+ * [DELIVERY_REPORT_SELECTION]). A write the provider ignored, or failed, is
+ * owed and retried ([OwedRowWrites], UNFY-335).
+ *
+ * @returns how the write went.
+ * @throws Exception the provider's failure, once the write is owed.
+ */
+internal fun persistSmsDeliveryStatus(context: Context, messageUri: Uri, status: Int): RowWriteOutcome =
+    recordRowWrite(
+        context,
+        RowWrite(
+            messageUri.toString(),
+            RowWriteKind.DELIVERY_STATUS,
+            mapOf(Telephony.Sms.STATUS to status.toLong()),
+            DELIVERY_REPORT_SELECTION,
+            DELIVERY_REPORT_ARGS.toList(),
+            // A failed delivery is terminal (see DELIVERY_REPORT_SELECTION).
+            final = status == Telephony.Sms.STATUS_FAILED,
+        ),
     )
 
 // TP-Status range boundaries (3GPP TS 23.040 9.2.3.15).
@@ -127,6 +140,78 @@ private const val CDMA_UNDEFINED = 0xFF
 
 private const val TAG_RECEIVER = "OutboundMessagingReceiver"
 
+/** The name of an SMS SENT broadcast's result code, for logs and the Dart ack. */
+internal fun smsSentStatusString(resultCode: Int): String {
+    return when (resultCode) {
+        Activity.RESULT_OK -> "SENT_SUCCESS"
+        SmsManager.RESULT_BLUETOOTH_DISCONNECTED -> "ERROR_BLUETOOTH_DISCONNECTED"
+        SmsManager.RESULT_CANCELLED -> "ERROR_CANCELLED"
+        SmsManager.RESULT_ENCODING_ERROR -> "ERROR_ENCODING"
+        SmsManager.RESULT_ERROR_FDN_CHECK_FAILURE -> "ERROR_FDN_CHECK_FAILURE"
+        SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "ERROR_GENERIC_FAILURE"
+        SmsManager.RESULT_ERROR_LIMIT_EXCEEDED -> "ERROR_LIMIT_EXCEEDED"
+        SmsManager.RESULT_ERROR_NO_SERVICE -> "ERROR_NO_SERVICE"
+        SmsManager.RESULT_ERROR_NULL_PDU -> "ERROR_NULL_PDU"
+        SmsManager.RESULT_ERROR_RADIO_OFF -> "ERROR_RADIO_OFF"
+        SmsManager.RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED -> "ERROR_SHORT_CODE_NEVER_ALLOWED"
+        SmsManager.RESULT_ERROR_SHORT_CODE_NOT_ALLOWED -> "ERROR_SHORT_CODE_NOT_ALLOWED"
+        SmsManager.RESULT_INTERNAL_ERROR -> "ERROR_INTERNAL"
+        SmsManager.RESULT_INVALID_ARGUMENTS -> "ERROR_INVALID_ARGUMENTS"
+        SmsManager.RESULT_INVALID_BLUETOOTH_ADDRESS -> "ERROR_INVALID_BLUETOOTH_ADDRESS"
+        SmsManager.RESULT_INVALID_SMSC_ADDRESS -> "ERROR_INVALID_SMSC_ADDRESS"
+        SmsManager.RESULT_INVALID_SMS_FORMAT -> "ERROR_INVALID_SMS_FORMAT"
+        SmsManager.RESULT_INVALID_STATE -> "ERROR_INVALID_STATE"
+        SmsManager.RESULT_MODEM_ERROR -> "ERROR_MODEM"
+        SmsManager.RESULT_NETWORK_ERROR -> "ERROR_NETWORK"
+        SmsManager.RESULT_NETWORK_REJECT -> "ERROR_NETWORK_REJECT"
+        SmsManager.RESULT_NO_BLUETOOTH_SERVICE -> "ERROR_NO_BLUETOOTH_SERVICE"
+        SmsManager.RESULT_NO_DEFAULT_SMS_APP -> "ERROR_NO_DEFAULT_SMS_APP"
+        SmsManager.RESULT_NO_MEMORY -> "RESULT_NO_MEMORY"
+        SmsManager.RESULT_NO_RESOURCES -> "ERROR_NO_RESOURCES"
+        SmsManager.RESULT_OPERATION_NOT_ALLOWED -> "ERROR_OPERATION_NOT_ALLOWED"
+        SmsManager.RESULT_RADIO_NOT_AVAILABLE -> "ERROR_RADIO_NOT_AVAILABLE"
+        SmsManager.RESULT_REMOTE_EXCEPTION -> "ERROR_REMOTE_EXCEPTION"
+        SmsManager.RESULT_REQUEST_NOT_SUPPORTED -> "ERROR_REQUEST_NOT_SUPPORTED"
+        SmsManager.RESULT_RIL_ABORTED -> "ERROR_RIL_ABORTED"
+        SmsManager.RESULT_RIL_ACCESS_BARRED -> "ERROR_RIL_ACCESS_BARRED"
+        SmsManager.RESULT_RIL_BLOCKED_DUE_TO_CALL -> "ERROR_RIL_BLOCKED_DUE_TO_CALL"
+        SmsManager.RESULT_RIL_CANCELLED -> "ERROR_RIL_CANCELLED"
+        SmsManager.RESULT_RIL_ENCODING_ERR -> "ERROR_RIL_ENCODING_ERR"
+        SmsManager.RESULT_RIL_INTERNAL_ERR -> "ERROR_RIL_INTERNAL"
+        SmsManager.RESULT_RIL_INVALID_ARGUMENTS -> "ERROR_RIL_INVALID_ARGUMENTS"
+        SmsManager.RESULT_RIL_INVALID_MODEM_STATE -> "ERROR_RIL_INVALID_MODEM_STATE"
+        SmsManager.RESULT_RIL_INVALID_SMSC_ADDRESS -> "ERROR_RIL_INVALID_SMSC_ADDRESS"
+        SmsManager.RESULT_RIL_INVALID_SMS_FORMAT -> "ERROR_RIL_INVALID_SMS_FORMAT"
+        SmsManager.RESULT_RIL_INVALID_STATE -> "ERROR_RIL_INVALID_STATE"
+        SmsManager.RESULT_RIL_MODEM_ERR -> "ERROR_RIL_MODEM_ERR"
+        SmsManager.RESULT_RIL_NETWORK_ERR -> "ERROR_RIL_NETWORK_ERR"
+        SmsManager.RESULT_RIL_NETWORK_NOT_READY -> "ERROR_RIL_NETWORK_NOT_READY"
+        SmsManager.RESULT_RIL_NETWORK_REJECT -> "ERROR_RIL_NETWORK_REJECT"
+        SmsManager.RESULT_RIL_NO_MEMORY -> "ERROR_RIL_NO_MEMORY"
+        SmsManager.RESULT_RIL_NO_RESOURCES -> "ERROR_RIL_NO_RESOURCES"
+        SmsManager.RESULT_RIL_NO_SMS_TO_ACK-> "ERROR_RIL_NO_SMS_TO_ACK"
+        SmsManager.RESULT_RIL_NO_SUBSCRIPTION -> "ERROR_RIL_NO_SUBSCRIPTION"
+        SmsManager.RESULT_RIL_OPERATION_NOT_ALLOWED -> "ERROR_RIL_OPERATION_NOT_ALLOWED"
+        SmsManager.RESULT_RIL_RADIO_NOT_AVAILABLE -> "ERROR_RIL_RADIO_NOT_AVAILABLE"
+        SmsManager.RESULT_RIL_REQUEST_NOT_SUPPORTED -> "ERROR_RIL_REQUEST_NOT_SUPPORTED"
+        SmsManager.RESULT_RIL_REQUEST_RATE_LIMITED -> "ERROR_RIL_REQUEST_RATE_LIMITED"
+        SmsManager.RESULT_RIL_SIMULTANEOUS_SMS_AND_CALL_NOT_ALLOWED -> "ERROR_RIL_SIMULTANEOUS_SMS_AND_CALL_NOT_ALLOWED"
+        SmsManager.RESULT_RIL_SIM_ABSENT -> "ERROR_RIL_SIM_ABSENT"
+        SmsManager.RESULT_RIL_SIM_BUSY -> "ERROR_RIL_SIM_BUSY"
+        SmsManager.RESULT_RIL_SIM_FULL -> "ERROR_RIL_SIM_FULL"
+        SmsManager.RESULT_RIL_SIM_PIN2 -> "ERROR_RIL_SIM_PIN2"
+        SmsManager.RESULT_RIL_SIM_PUK2 -> "ERROR_RIL_SIM_PUK2"
+        SmsManager.RESULT_RIL_SMS_SEND_FAIL_RETRY -> "ERROR_RIL_SMS_SEND_FAIL_RETRY"
+        SmsManager.RESULT_RIL_SYSTEM_ERR -> "ERROR_RIL_SYSTEM_ERR"
+        SmsManager.RESULT_SMS_BLOCKED_DURING_EMERGENCY -> "ERROR_SMS_BLOCKED_DURING_EMERGENCY"
+        SmsManager.RESULT_SMS_SEND_RETRY_FAILED -> "ERROR_SMS_SEND_RETRY_FAILED"
+        SmsManager.RESULT_SYSTEM_ERROR -> "ERROR_SYSTEM_ERROR"
+        SmsManager.RESULT_UNEXPECTED_EVENT_STOP_SENDING -> "ERROR_UNEXPECTED_EVENT_STOP_SENDING"
+        else -> "SENT_UNKNOWN_ERROR ($resultCode)"
+    }
+}
+
+
 /**
  * Receives outbound status broadcasts. It is manifest-declared and not
  * exported; every status intent targets it explicitly, so Android delivers
@@ -134,8 +219,9 @@ private const val TAG_RECEIVER = "OutboundMessagingReceiver"
  *
  * - SENT results go to [SendResultRouter], which hands them to the handler
  *   that owns the send or records them on the row (UNFY-299).
- * - SMS delivery reports only record the parsed status on the row named by
- *   the intent data (UNFY-293).
+ * - SMS delivery reports record the message's delivery status, from every
+ *   part's report so far ([SmsPartLedger]), on the row named by the intent
+ *   data (UNFY-293, UNFY-180).
  */
 class OutboundMessagingReceiver : BroadcastReceiver() {
 
@@ -152,7 +238,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         when (eventType) {
             DELIVEREDSMS_ACTION -> onDeliveryReport(context, intent)
             SENTSMS_ACTION ->
-                onSentResult(context, intent, eventType, getSentStatusString(currentResultCode), currentResultCode)
+                onSentResult(context, intent, eventType, smsSentStatusString(currentResultCode), currentResultCode)
             SENTMMS_ACTION ->
                 // The platform has finished reading the send file whatever the
                 // result, so it goes even if handling the result fails
@@ -179,15 +265,21 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             Log.e(TAG_RECEIVER, "Received $eventType broadcast with no messageID.")
             return
         }
-        val messageUri = intent.getStringExtra("uri")?.toUri() ?: Uri.EMPTY
+        // Every send names its row; a broadcast that names none is not ours.
+        val messageUri = intent.getStringExtra("uri")?.toUri() ?: run {
+            Log.e(TAG_RECEIVER, "Received $eventType broadcast with no uri.")
+            return
+        }
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
-        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode)
+        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef())
     }
 
     /**
      * Records an SMS delivery report on its row. The row comes from the intent
      * data, which the platform's fill-in cannot replace (no `FILL_IN_DATA`).
-     * Failures are logged, never thrown: nothing is pending on a report.
+     * A report with no part token for a row a tracked send started on lately
+     * is an earlier send's, and is ignored ([isStaleUntrackedSmsResult]). Failures
+     * are logged, never thrown: nothing is pending on a report.
      */
     private fun onDeliveryReport(context: Context, intent: Intent) {
         val messageUri = intent.data
@@ -195,88 +287,53 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             Log.e(TAG_RECEIVER, "Delivery report without a message URI.")
             return
         }
-        val status = smsDeliveryStatus(intent.getByteArrayExtra("pdu"), intent.getStringExtra("format"))
-        if (status == null) {
+        val format = intent.getStringExtra("format")
+        val partStatus = smsDeliveryStatus(intent.getByteArrayExtra("pdu"), format)
+        if (partStatus == null) {
             Log.w(TAG_RECEIVER, "No delivery status in the report for $messageUri; row left unchanged.")
             return
         }
+        val part = intent.smsPartRef()
+        if (isStaleUntrackedSmsResult(context, part, messageUri.lastPathSegment?.toLongOrNull())) {
+            Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send made before parts were tracked; ignored")
+            return
+        }
+        val status =
+            if (part == null) partStatus
+            else messageDeliveryStatus(context, messageUri, part, partStatus, format) ?: return
         try {
-            val updated = persistSmsDeliveryStatus(context, messageUri, status)
-            Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri (rows=$updated)")
+            val written = persistSmsDeliveryStatus(context, messageUri, status)
+            Log.d(TAG_RECEIVER, "Delivery ${getSmsDeliveryStatusString(status)} for $messageUri ($written)")
         } catch (e: Exception) {
             Log.e(TAG_RECEIVER, "Failed recording the delivery status for $messageUri", e)
         }
     }
 
-    private fun getSentStatusString(resultCode: Int): String {
-
-        return when (resultCode) {
-            Activity.RESULT_OK -> "SENT_SUCCESS"
-            SmsManager.RESULT_BLUETOOTH_DISCONNECTED -> "ERROR_BLUETOOTH_DISCONNECTED"
-            SmsManager.RESULT_CANCELLED -> "ERROR_CANCELLED"
-            SmsManager.RESULT_ENCODING_ERROR -> "ERROR_ENCODING"
-            SmsManager.RESULT_ERROR_FDN_CHECK_FAILURE -> "ERROR_FDN_CHECK_FAILURE"
-            SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "ERROR_GENERIC_FAILURE"
-            SmsManager.RESULT_ERROR_LIMIT_EXCEEDED -> "ERROR_LIMIT_EXCEEDED"
-            SmsManager.RESULT_ERROR_NO_SERVICE -> "ERROR_NO_SERVICE"
-            SmsManager.RESULT_ERROR_NULL_PDU -> "ERROR_NULL_PDU"
-            SmsManager.RESULT_ERROR_RADIO_OFF -> "ERROR_RADIO_OFF"
-            SmsManager.RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED -> "ERROR_SHORT_CODE_NEVER_ALLOWED"
-            SmsManager.RESULT_ERROR_SHORT_CODE_NOT_ALLOWED -> "ERROR_SHORT_CODE_NOT_ALLOWED"
-            SmsManager.RESULT_INTERNAL_ERROR -> "ERROR_INTERNAL"
-            SmsManager.RESULT_INVALID_ARGUMENTS -> "ERROR_INVALID_ARGUMENTS"
-            SmsManager.RESULT_INVALID_BLUETOOTH_ADDRESS -> "ERROR_INVALID_BLUETOOTH_ADDRESS"
-            SmsManager.RESULT_INVALID_SMSC_ADDRESS -> "ERROR_INVALID_SMSC_ADDRESS"
-            SmsManager.RESULT_INVALID_SMS_FORMAT -> "ERROR_INVALID_SMS_FORMAT"
-            SmsManager.RESULT_INVALID_STATE -> "ERROR_INVALID_STATE"
-            SmsManager.RESULT_MODEM_ERROR -> "ERROR_MODEM"
-            SmsManager.RESULT_NETWORK_ERROR -> "ERROR_NETWORK"
-            SmsManager.RESULT_NETWORK_REJECT -> "ERROR_NETWORK_REJECT"
-            SmsManager.RESULT_NO_BLUETOOTH_SERVICE -> "ERROR_NO_BLUETOOTH_SERVICE"
-            SmsManager.RESULT_NO_DEFAULT_SMS_APP -> "ERROR_NO_DEFAULT_SMS_APP"
-            SmsManager.RESULT_NO_MEMORY -> "RESULT_NO_MEMORY"
-            SmsManager.RESULT_NO_RESOURCES -> "ERROR_NO_RESOURCES"
-            SmsManager.RESULT_OPERATION_NOT_ALLOWED -> "ERROR_OPERATION_NOT_ALLOWED"
-            SmsManager.RESULT_RADIO_NOT_AVAILABLE -> "ERROR_RADIO_NOT_AVAILABLE"
-            SmsManager.RESULT_REMOTE_EXCEPTION -> "ERROR_REMOTE_EXCEPTION"
-            SmsManager.RESULT_REQUEST_NOT_SUPPORTED -> "ERROR_REQUEST_NOT_SUPPORTED"
-            SmsManager.RESULT_RIL_ABORTED -> "ERROR_RIL_ABORTED"
-            SmsManager.RESULT_RIL_ACCESS_BARRED -> "ERROR_RIL_ACCESS_BARRED"
-            SmsManager.RESULT_RIL_BLOCKED_DUE_TO_CALL -> "ERROR_RIL_BLOCKED_DUE_TO_CALL"
-            SmsManager.RESULT_RIL_CANCELLED -> "ERROR_RIL_CANCELLED"
-            SmsManager.RESULT_RIL_ENCODING_ERR -> "ERROR_RIL_ENCODING_ERR"
-            SmsManager.RESULT_RIL_INTERNAL_ERR -> "ERROR_RIL_INTERNAL"
-            SmsManager.RESULT_RIL_INVALID_ARGUMENTS -> "ERROR_RIL_INVALID_ARGUMENTS"
-            SmsManager.RESULT_RIL_INVALID_MODEM_STATE -> "ERROR_RIL_INVALID_MODEM_STATE"
-            SmsManager.RESULT_RIL_INVALID_SMSC_ADDRESS -> "ERROR_RIL_INVALID_SMSC_ADDRESS"
-            SmsManager.RESULT_RIL_INVALID_SMS_FORMAT -> "ERROR_RIL_INVALID_SMS_FORMAT"
-            SmsManager.RESULT_RIL_INVALID_STATE -> "ERROR_RIL_INVALID_STATE"
-            SmsManager.RESULT_RIL_MODEM_ERR -> "ERROR_RIL_MODEM_ERR"
-            SmsManager.RESULT_RIL_NETWORK_ERR -> "ERROR_RIL_NETWORK_ERR"
-            SmsManager.RESULT_RIL_NETWORK_NOT_READY -> "ERROR_RIL_NETWORK_NOT_READY"
-            SmsManager.RESULT_RIL_NETWORK_REJECT -> "ERROR_RIL_NETWORK_REJECT"
-            SmsManager.RESULT_RIL_NO_MEMORY -> "ERROR_RIL_NO_MEMORY"
-            SmsManager.RESULT_RIL_NO_RESOURCES -> "ERROR_RIL_NO_RESOURCES"
-            SmsManager.RESULT_RIL_NO_SMS_TO_ACK-> "ERROR_RIL_NO_SMS_TO_ACK"
-            SmsManager.RESULT_RIL_NO_SUBSCRIPTION -> "ERROR_RIL_NO_SUBSCRIPTION"
-            SmsManager.RESULT_RIL_OPERATION_NOT_ALLOWED -> "ERROR_RIL_OPERATION_NOT_ALLOWED"
-            SmsManager.RESULT_RIL_RADIO_NOT_AVAILABLE -> "ERROR_RIL_RADIO_NOT_AVAILABLE"
-            SmsManager.RESULT_RIL_REQUEST_NOT_SUPPORTED -> "ERROR_RIL_REQUEST_NOT_SUPPORTED"
-            SmsManager.RESULT_RIL_REQUEST_RATE_LIMITED -> "ERROR_RIL_REQUEST_RATE_LIMITED"
-            SmsManager.RESULT_RIL_SIMULTANEOUS_SMS_AND_CALL_NOT_ALLOWED -> "ERROR_RIL_SIMULTANEOUS_SMS_AND_CALL_NOT_ALLOWED"
-            SmsManager.RESULT_RIL_SIM_ABSENT -> "ERROR_RIL_SIM_ABSENT"
-            SmsManager.RESULT_RIL_SIM_BUSY -> "ERROR_RIL_SIM_BUSY"
-            SmsManager.RESULT_RIL_SIM_FULL -> "ERROR_RIL_SIM_FULL"
-            SmsManager.RESULT_RIL_SIM_PIN2 -> "ERROR_RIL_SIM_PIN2"
-            SmsManager.RESULT_RIL_SIM_PUK2 -> "ERROR_RIL_SIM_PUK2"
-            SmsManager.RESULT_RIL_SMS_SEND_FAIL_RETRY -> "ERROR_RIL_SMS_SEND_FAIL_RETRY"
-            SmsManager.RESULT_RIL_SYSTEM_ERR -> "ERROR_RIL_SYSTEM_ERR"
-            SmsManager.RESULT_SMS_BLOCKED_DURING_EMERGENCY -> "ERROR_SMS_BLOCKED_DURING_EMERGENCY"
-            SmsManager.RESULT_SMS_SEND_RETRY_FAILED -> "ERROR_SMS_SEND_RETRY_FAILED"
-            SmsManager.RESULT_SYSTEM_ERROR -> "ERROR_SYSTEM_ERROR"
-            SmsManager.RESULT_UNEXPECTED_EVENT_STOP_SENDING -> "ERROR_UNEXPECTED_EVENT_STOP_SENDING"
-            else -> "SENT_UNKNOWN_ERROR ($resultCode)"
+    /**
+     * The message-level delivery status after [part]'s report, from every
+     * part's report so far (UNFY-180; see [SmsPartLedger.recordDelivery]).
+     * `null`, leaving the row unchanged, when the report is
+     * for a send no longer tracked (superseded by a newer send to the same
+     * row, or already finished) or names no part of its send. When the ledger
+     * cannot be read or written, a one-part SMS's report is the message's; a
+     * multipart one's is left unrecorded rather than stand for the message.
+     */
+    private fun messageDeliveryStatus(
+        context: Context,
+        messageUri: Uri,
+        part: SmsPartRef,
+        status: Int,
+        format: String?,
+    ): Int? = try {
+        SmsPartLedger.forApp(context).recordDelivery(part, status, format).also {
+            if (it == null) Log.i(TAG_RECEIVER, "Delivery report for $messageUri from a send no longer tracked; ignored")
         }
+    } catch (e: IOException) {
+        Log.e(TAG_RECEIVER, "SMS part ledger unavailable for $messageUri part ${part.index + 1}/${part.count}'s report", e)
+        status.takeIf { part.standsForMessage }
+    } catch (e: IllegalArgumentException) {
+        Log.e(TAG_RECEIVER, "Delivery report for $messageUri names no part of its send", e)
+        null
     }
 
     private fun getSmsDeliveryStatusString(deliveryStatus: Int?): String = when (deliveryStatus) {

@@ -5,7 +5,6 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
-import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.Telephony
@@ -40,8 +39,8 @@ class DeliveryReportSelectionTest {
         insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_SENT, status = Telephony.Sms.STATUS_PENDING)
         insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_OUTBOX, status = null)
 
-        assertEquals(1, report(1, Telephony.Sms.STATUS_COMPLETE))
-        assertEquals(1, report(2, Telephony.Sms.STATUS_FAILED))
+        assertEquals(RowWriteOutcome.WRITTEN, report(1, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(RowWriteOutcome.WRITTEN, report(2, Telephony.Sms.STATUS_FAILED))
         assertEquals(Telephony.Sms.STATUS_COMPLETE, provider.status(1))
         assertEquals(Telephony.Sms.STATUS_FAILED, provider.status(2))
     }
@@ -50,7 +49,7 @@ class DeliveryReportSelectionTest {
     fun aRecordedFailure_isNeverOverwritten() {
         insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_SENT, status = Telephony.Sms.STATUS_FAILED)
 
-        assertEquals(0, report(1, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, report(1, Telephony.Sms.STATUS_COMPLETE))
         assertEquals(Telephony.Sms.STATUS_FAILED, provider.status(1))
     }
 
@@ -59,8 +58,8 @@ class DeliveryReportSelectionTest {
         insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_INBOX, status = Telephony.Sms.STATUS_NONE)
         insert(id = 2, type = Telephony.Sms.MESSAGE_TYPE_FAILED, status = Telephony.Sms.STATUS_PENDING)
 
-        assertEquals(0, report(1, Telephony.Sms.STATUS_COMPLETE))
-        assertEquals(0, report(2, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, report(1, Telephony.Sms.STATUS_COMPLETE))
+        assertEquals(RowWriteOutcome.NOT_APPLICABLE, report(2, Telephony.Sms.STATUS_COMPLETE))
         assertEquals(Telephony.Sms.STATUS_NONE, provider.status(1))
         assertEquals(Telephony.Sms.STATUS_PENDING, provider.status(2))
     }
@@ -73,11 +72,24 @@ class DeliveryReportSelectionTest {
         })
     }
 
-    private fun report(id: Long, status: Int): Int =
+    private fun report(id: Long, status: Int): RowWriteOutcome =
         persistSmsDeliveryStatus(context, ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, id), status)
 
-    /** A minimal SQLite-backed `sms` provider applying selections like the platform's. */
+    /**
+     * A minimal SQLite-backed `sms` provider applying selections like the
+     * platform's. [ignoreWrites] models an app without write access (the
+     * default-SMS role and its WRITE_SMS app-op), whose updates the provider
+     * ignores rather than refuses.
+     */
     class SqliteSmsProvider : ContentProvider() {
+        var ignoreWrites = false
+
+        /** Thrown by a write to one row (not a table-wide one), when set. */
+        var rowWriteFailure: RuntimeException? = null
+
+        /** Run once, by the next query, before it reads. */
+        var beforeNextQuery: (() -> Unit)? = null
+
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
             execSQL(
                 "CREATE TABLE sms (_id INTEGER PRIMARY KEY, type INTEGER, status INTEGER DEFAULT -1, " +
@@ -97,9 +109,9 @@ class DeliveryReportSelectionTest {
         override fun onCreate(): Boolean = true
 
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int {
-            val id = ContentUris.parseId(uri)
-            val where = if (id < 0) selection else DatabaseUtils.concatenateWhere("_id = $id", selection)
-            return db.update("sms", values, where, selectionArgs)
+            if (ignoreWrites) return 0
+            if (ContentUris.parseId(uri) >= 0) rowWriteFailure?.let { throw it }
+            return db.update("sms", values, rowWhere(uri, selection), selectionArgs)
         }
 
         override fun query(
@@ -108,12 +120,29 @@ class DeliveryReportSelectionTest {
             selection: String?,
             selectionArgs: Array<out String>?,
             sortOrder: String?,
-        ): Cursor? = null
+        ): Cursor? {
+            beforeNextQuery?.also { beforeNextQuery = null }?.invoke()
+            return db.query("sms", projection, rowWhere(uri, selection), selectionArgs, null, null, sortOrder)
+        }
 
         override fun getType(uri: Uri): String? = null
 
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    }
+}
+
+/**
+ * [selection] on the row a row URI names, joined with a bare `AND` as AOSP
+ * MmsProvider joins them (SmsProvider parenthesizes each side), so a guard
+ * passes only if it is safe either way.
+ */
+internal fun rowWhere(uri: Uri, selection: String?): String? {
+    val id = ContentUris.parseId(uri)
+    return when {
+        id < 0 -> selection
+        selection == null -> "_id = $id"
+        else -> "$selection AND _id = $id"
     }
 }

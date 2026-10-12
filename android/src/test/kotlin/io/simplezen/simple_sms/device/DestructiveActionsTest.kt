@@ -25,9 +25,8 @@ import org.robolectric.shadows.ShadowRoleManager
  * Purpose: pin the verified-delete contract at the native provider boundary
  * (UNFY-244) — a delete reports success only when the read-back finds no row
  * that existed before it, messages that arrive mid-delete are told apart from
- * those survivors, a target the per-user subscription filter may be hiding is
- * never reported as absent, and every unverifiable state surfaces as its own
- * error code.
+ * those survivors, a message the provider doesn't return is already absent
+ * (UNFY-330), and every unverifiable state surfaces as its own error code.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -293,29 +292,20 @@ class DestructiveActionsTest {
     }
 
     /**
-     * Purpose: from Android 14 the per-user subscription filter hides a message
-     * from the delete and the read-back alike (Codex P2), so a delete that
-     * removes nothing and finds nothing is never reported as already absent.
+     * Purpose: a message the provider doesn't return is deleted as far as this
+     * app is concerned (UNFY-330) — from Android 14 that includes one the
+     * per-user subscription filter hides from the delete and the read alike.
      */
     @Test
-    fun deleteMessage_nothingDeletedNothingLeft_fromAndroid14_isAbsenceUnverified() {
+    fun deleteMessage_nothingDeletedNothingLeft_isAlreadyAbsent() {
         for (channel in listOf("sms", "mms")) {
             listOf(sms, mms).forEach { it.reset() }
 
             val result = invoke(MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to channel)))
 
-            assertEquals(listOf("ABSENCE_UNVERIFIED"), result.errors)
-            assertTrue(result.successes.isEmpty())
+            assertEquals(listOf<Any?>("alreadyAbsent"), result.successes)
+            assertTrue(result.errors.isEmpty())
         }
-    }
-
-    /** Purpose: before Android 14 there is no per-user filter, so an empty read-back proves absence. */
-    @Test
-    @Config(sdk = [33])
-    fun deleteMessage_nothingDeletedNothingLeft_belowAndroid14_isAlreadyAbsent() {
-        val result = invoke(MethodCall("deleteMessage", mapOf("messageId" to "42", "channel" to "mms")))
-
-        assertEquals(listOf<Any?>("alreadyAbsent"), result.successes)
     }
 
     /** Purpose: map each unverified state after the delete for a single message. */

@@ -67,6 +67,26 @@ class AndroidMessaging {
     );
   }
 
+  // Purpose: recover native send identities without matching message content.
+  /// Exact persisted queue identities for SMS/MMS provider URIs.
+  /// Available without initializing inbound callbacks. No message content.
+  /// Requires ReadSms permission to verify each row's recorded provider date.
+  /// Deleted or generation-changed rows are pruned; an unavailable provider fails the lookup
+  /// without treating its rows as deleted.
+  /// Every current recipient row of the latest native attempt returns itself
+  /// as latestMessageUri; an older retry points to a surviving latest row.
+  /// Stored in Android no-backup SQLite storage; no message content is retained.
+  /// @param uris At most 1000 exact SMS/MMS provider row URIs to recover.
+  /// @returns Persisted identities and their latest surviving attempt URIs.
+  /// @throws PlatformException When native verification or persistence fails.
+  /// @throws FormatException When the native reply is missing.
+  static Future<Map<String, dynamic>> getSendCorrelations(List<String> uris) async {
+    final result = await OutboundMessagingInterop.methodChannel
+        .invokeMapMethod<String, dynamic>('getSendCorrelations', uris);
+    if (result == null) throw const FormatException('Missing correlation reply');
+    return result;
+  }
+
   /// Sends an SMS or MMS message.
   ///
   /// Returns the message record as stored in the Android SMS/MMS database
@@ -91,8 +111,9 @@ class AndroidMessaging {
   /// or the send can't be started; without the `DefaultSmsApp` role the
   /// provider refuses the SMS row and the send fails with `PERMISSION_DENIED`
   /// before anything is sent. Otherwise the future settles once the
-  /// carrier reports the result. A multipart SMS settles as failed at its
-  /// first failed part, and as sent only once every part was sent.
+  /// carrier reports the result. A multipart SMS settles once every part
+  /// has reported: as failed if any part failed, with the first failure to
+  /// arrive, else as sent.
   ///
   /// Normally it resolves with the message row; a send the carrier rejected
   /// has that row marked failed (SMS `type`, MMS `msg_box`). Two
@@ -101,12 +122,21 @@ class AndroidMessaging {
   ///
   /// - `MESSAGE_ROW_MISSING`: the message row was gone when read back.
   /// - `SEND_ACK_FAILED`: the provider threw while recording the result or
-  ///   reading the row back; `details['cause']` describes the failure.
+  ///   reading the row back, ignored the write that records the result (the
+  ///   app lost the default-SMS role or its `WRITE_SMS` app-op), or returned
+  ///   no cursor to check whether it did; `details['cause']` describes the
+  ///   failure. A write that did not land is retried at the next engine start
+  ///   and as the next send starts.
   ///
   /// For both, `details['sent']` is the carrier result: `true` means the
   /// message went out (don't resend it), `false` that the send failed.
   /// `details` also carry `messageUri`, `eventType`, `resultCode`, and
   /// `statusString`.
+  ///
+  /// `MESSAGE_ROW_MISSING` also settles a send whose row was deleted, and its
+  /// id reused by a new send, before its carrier result came. Whether it went
+  /// out is unknown, so `details['sent']` is `null`, and `details` carry only
+  /// `messageUri`.
   ///
   /// `SEND_RESULT_TIMEOUT` settles a send that got no carrier result within
   /// 10 minutes of device uptime (the timer pauses in deep sleep), e.g. after
@@ -114,6 +144,9 @@ class AndroidMessaging {
   /// `details['sent']` is `null`. The row, if still on its way out, is marked
   /// failed; a carrier success that arrives later still moves it to sent.
   /// `details` also carry `messageUri` and `timeoutMs`.
+  ///
+  /// Throws a [FormatException] when the platform answers with anything but
+  /// a JSON object: whether the message went out is unknown.
   Future<Map<String, dynamic>> sendMessage({
     required OutboundMessage message,
   }) =>

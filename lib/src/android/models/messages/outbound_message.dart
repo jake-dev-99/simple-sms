@@ -18,6 +18,10 @@ class OutboundMessage {
   /// The text content of the message.
   final String body;
 
+  /// Opaque local queue identity, persisted before radio handoff.
+  /// Correlated sends also require ReadSms to verify the persisted row generation.
+  final String? clientCorrelationId;
+
   /// Optional conversation thread ID to continue an existing thread.
   final String? conversationId;
 
@@ -45,6 +49,7 @@ class OutboundMessage {
     required this.attachmentPaths,
     this.conversationId,
     this.subscriptionId,
+    this.clientCorrelationId,
   });
 
   /// Creates an [OutboundMessage] from a JSON map.
@@ -55,6 +60,7 @@ class OutboundMessage {
   /// recipients defaults to empty rather than throwing.
   static OutboundMessage fromJson(Map<String, dynamic> json) => OutboundMessage(
     body: json['body']?.toString() ?? '',
+    clientCorrelationId: json['clientCorrelationId'] as String?,
     attachmentPaths: _asStringSet(json['attachmentPaths']),
     addresses: _asStringSet(json['recipients']) ?? const <String>{},
     conversationId: json['conversationId']?.toString(),
@@ -69,6 +75,7 @@ class OutboundMessage {
   /// this call — now unnecessary.
   Map<String, dynamic> toJson() => {
     'body': body,
+    if (clientCorrelationId != null) 'clientCorrelationId': clientCorrelationId,
     'attachmentPaths': attachmentPaths?.toList(),
     'recipients': addresses.toList(),
     'conversationId': conversationId,

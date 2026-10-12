@@ -72,6 +72,16 @@ internal class SendResultTimeoutException(val messageUri: Uri, val timeoutMs: Lo
     Exception("No SENT result for $messageUri within ${timeoutMs / 1000}s; whether it was sent is unknown")
 
 /**
+ * A pending send's row was deleted, and its id reused by a new send, before
+ * its SENT result came: the row is gone and whether it was sent is unknown
+ * (UNFY-335). Settles as [ERR_MESSAGE_ROW_MISSING] with `sent` null.
+ */
+internal class SendSupersededException(val messageUri: Uri) : Exception(
+    "The row of a send awaiting its result, $messageUri, was deleted and its id reused by a new send; " +
+        "whether it was sent is unknown",
+)
+
+/**
  * Thrown when an outbound MMS attachment file cannot be read. Surfaces
  * to Dart as PlatformException(code = [ERR_ATTACHMENT_UNREADABLE]) so
  * the UI can show "couldn't attach this photo" instead of sending an
@@ -160,35 +170,6 @@ internal class SendAckFailedException(
 }
 
 /**
- * Collects the per-part SENT results of one outbound send. A multipart SMS
- * fires one SENT broadcast per part (the documented
- * `SmsManager.sendMultipartTextMessage` contract). The send counts as sent
- * only once every part has reported success; the first failing part settles
- * it immediately as failed, since the outcome is then known (UNFY-283).
- */
-internal class SentPartsAggregator {
-    private var expected = 1
-    private var reported = 0
-
-    /** Sets how many SENT reports to wait for; call before the send starts. */
-    fun expectParts(count: Int) {
-        require(count >= 1) { "A send has at least one part, got $count" }
-        check(reported == 0) { "Part count changed after $reported report(s)" }
-        expected = count
-    }
-
-    /**
-     * Records one part's result; returns the settled outcome on the first
-     * failed part or once every part has succeeded, else null. The owner stops
-     * recording once a send settles, so extra reports never reach here.
-     */
-    fun record(part: CarrierOutcome): CarrierOutcome? {
-        reported++
-        return if (!part.sent || reported >= expected) part else null
-    }
-}
-
-/**
  * Maps an exception thrown from [sendSms] / [sendMms], or raised by the
  * send-status ack path, into the typed `(code, message, details)` triple
  * consumed by [MethodChannel.Result.error].
@@ -208,6 +189,11 @@ internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when
         )
     )
     is SendAckException -> Triple(e.code, e.message, e.ackDetails())
+    is SendSupersededException -> Triple(
+        ERR_MESSAGE_ROW_MISSING,
+        e.message.orEmpty(),
+        mapOf("messageUri" to e.messageUri.toString(), "sent" to null),
+    )
     is SendResultTimeoutException -> Triple(
         ERR_SEND_RESULT_TIMEOUT,
         e.message.orEmpty(),
@@ -277,51 +263,145 @@ internal fun stringList(raw: Any?, name: String): List<String>? =
         } ?: throw IllegalArgumentException("$name must be a list")
     }
 
-/** The SENT and DELIVERED status broadcasts for one outbound SMS row. */
+/**
+ * One part of an outbound SMS, as its status intents carry it (UNFY-180).
+ *
+ * @param token the send's [SmsPartLedger] token.
+ * @param rowId the message row's `_id`.
+ * @param index the part's zero-based index.
+ * @param count how many parts the send has.
+ */
+internal data class SmsPartRef(val token: String, val rowId: Long, val index: Int, val count: Int) {
+    /**
+     * Whether this part's own result is the message's: a one-part SMS. Used
+     * when [SmsPartLedger] is unavailable and the parts cannot be added up.
+     */
+    val standsForMessage: Boolean get() = count == 1
+}
+
+private const val EXTRA_PART_TOKEN = "partToken"
+private const val EXTRA_PART_ROW_ID = "partRowId"
+private const val EXTRA_PART_INDEX = "partIndex"
+private const val EXTRA_PART_COUNT = "partCount"
+
+/**
+ * The part a status intent reports on, or `null` for an intent built before
+ * parts were tracked (UNFY-180), which carries none.
+ */
+internal fun Intent.smsPartRef(): SmsPartRef? {
+    val token = getStringExtra(EXTRA_PART_TOKEN) ?: return null
+    return SmsPartRef(
+        token,
+        getLongExtra(EXTRA_PART_ROW_ID, -1L),
+        getIntExtra(EXTRA_PART_INDEX, -1),
+        getIntExtra(EXTRA_PART_COUNT, -1),
+    )
+}
+
+/** The SENT and DELIVERED status broadcasts for one part of an outbound SMS. */
 internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingIntent)
 
 /**
- * Builds the status broadcasts for the SMS row at [messageUri]. Every part of
- * a multipart send shares both intents; the receiver counts the SENT reports
- * per part (UNFY-283).
+ * Builds the status broadcasts for one [part] of the SMS row at [messageUri].
+ * Each part gets its own pair, told apart by their identifier, so every
+ * part's result reaches [SmsPartLedger], which settles the row from all of
+ * them (UNFY-180).
  *
  * Both target the manifest-declared [OutboundMessagingReceiver], so they are
  * recorded even after the app process has gone (UNFY-293, UNFY-299).
  *
- * - SENT is routed to the handler that owns the send ([SendResultRouter]),
- *   or recorded on the row when none does. It needs no fill-in and stays
+ * - SENT is routed through [SendResultRouter]. It needs no fill-in and stays
  *   immutable.
  * - Delivery reports get their own [DELIVEREDSMS_ACTION] so they are never
  *   read as send results. That intent is mutable so the platform can
  *   attach the report (`pdu`, `format` extras); the row travels as the intent
  *   data, which a fill-in cannot replace.
  *
- * FLAG_CANCEL_CURRENT: a reused row id must not inherit an earlier send's
- * still-pending intents, whose late reports would land on the new row.
+ * A reused row id never inherits an earlier send's results: they carry that
+ * send's token, which [SmsPartLedger.start] forgets. A send made before
+ * parts were tracked had no token: its pair is cancelled when its row is
+ * reused ([cancelUntrackedStatusIntents]), and a result of it already on its
+ * way is ignored ([isStaleUntrackedSmsResult]).
  */
-internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri): SmsStatusIntents {
+internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
+    fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")
+        .putExtra(EXTRA_PART_TOKEN, part.token)
+        .putExtra(EXTRA_PART_ROW_ID, part.rowId)
+        .putExtra(EXTRA_PART_INDEX, part.index)
+        .putExtra(EXTRA_PART_COUNT, part.count)
     val sent = statusReceiverIntent(context, SENTSMS_ACTION)
         .putExtra("messageID", messageId)
         .putExtra("uri", messageUri.toString())
-    val delivered = statusReceiverIntent(context, DELIVEREDSMS_ACTION).setData(messageUri)
+        .forPart()
+    val delivered = statusReceiverIntent(context, DELIVEREDSMS_ACTION).setData(messageUri).forPart()
+    // Mutable is the default before Android 12 (S), which has no flag for it.
     val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
     return SmsStatusIntents(
-        sent = PendingIntent.getBroadcast(
-            context, messageId, sent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
-        ),
-        delivered = PendingIntent.getBroadcast(
-            context, messageId, delivered, mutable or PendingIntent.FLAG_CANCEL_CURRENT,
-        ),
+        sent = PendingIntent.getBroadcast(context, messageId, sent, PendingIntent.FLAG_IMMUTABLE),
+        delivered = PendingIntent.getBroadcast(context, messageId, delivered, mutable),
     )
 }
 
-/** The write that moves an SMS (TYPE) or MMS (MESSAGE_BOX) row to the failed box. */
+/**
+ * Cancels the status broadcasts a send made before parts were tracked may
+ * still hold for the SMS row [messageId] (one pair shared by all its parts,
+ * with no identifier), so a late result of that send never reaches a new send
+ * that reused the row id: it would carry no part token, and settle the new
+ * send directly (UNFY-180). Such a pair survives an app update. A result it
+ * already sent is ignored instead ([isStaleUntrackedSmsResult]). Extras play
+ * no part in matching a PendingIntent; the flags must be the ones it was
+ * made with.
+ *
+ * @returns whether such a pair was there: only then can a result of it still
+ *   be on its way.
+ */
+internal fun cancelUntrackedStatusIntents(context: Context, messageId: Int, messageUri: Uri): Boolean {
+    val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+    val sent = PendingIntent.getBroadcast(
+        context, messageId, statusReceiverIntent(context, SENTSMS_ACTION),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE,
+    )
+    val delivered = PendingIntent.getBroadcast(
+        context, messageId, statusReceiverIntent(context, DELIVEREDSMS_ACTION).setData(messageUri),
+        mutable or PendingIntent.FLAG_NO_CREATE,
+    )
+    sent?.cancel()
+    delivered?.cancel()
+    return sent != null || delivered != null
+}
+
+/**
+ * Purpose: starts tracking a new SMS send to the row [messageId] at
+ * [messageUri], before any part reaches the radio: cancels what an earlier,
+ * untracked send to the row could still report
+ * ([cancelUntrackedStatusIntents]), then records the send in [ledger],
+ * marking the row if it did, so a result of that send already on its way is
+ * still told apart ([SmsPartLedger.tracks]).
+ *
+ * @returns the send's parts, each carrying its token.
+ * @throws IOException when the ledger cannot record the send; it must then
+ *   not start.
+ */
+internal fun startTrackedSmsSend(
+    context: Context,
+    ledger: SmsPartLedger,
+    messageId: Int,
+    messageUri: Uri,
+    partCount: Int,
+): List<SmsPartRef> {
+    val untrackedSendPending = cancelUntrackedStatusIntents(context, messageId, messageUri)
+    return ledger.start(messageId.toLong(), partCount, markUntrackedSend = untrackedSendPending)
+}
+
+/** The column and value that put an SMS (TYPE) or MMS (MESSAGE_BOX) row in the failed box. */
+internal fun failedBox(isMms: Boolean): Pair<String, Long> =
+    if (isMms) Telephony.Mms.MESSAGE_BOX to Telephony.Mms.MESSAGE_BOX_FAILED.toLong()
+    else Telephony.Sms.TYPE to Telephony.Sms.MESSAGE_TYPE_FAILED.toLong()
+
+/** The write that moves an SMS or MMS row to the failed box ([failedBox]). */
 internal fun failedBoxValues(isMms: Boolean): ContentValues = ContentValues().apply {
-    if (isMms) {
-        put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_FAILED)
-    } else {
-        put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED)
-    }
+    val (column, value) = failedBox(isMms)
+    put(column, value)
 }
 
 /** A synchronous initiation error must settle any row already persisted. */
@@ -353,12 +433,14 @@ internal const val NO_SENT_RESULT_ERROR_CODE = -2
  * Rows a successful SMS SENT result moves to the sent box: those still on
  * their way out, and those failed only for lack of a result
  * ([NO_SENT_RESULT_ERROR_CODE]), since the message did go out after all. A
- * row a multipart part's carrier failure marked failed, or an inbound row that
- * reused a deleted message's id, is never overwritten (UNFY-299).
+ * row a carrier failure marked failed, or an inbound row that reused a
+ * deleted message's id, is never overwritten (UNFY-299). A tracked multipart
+ * SMS reaches here once, for the whole message ([SmsPartLedger]); a part
+ * sent before parts were tracked reaches here on its own.
  */
 internal val SENT_RESULT_SELECTION =
-    "${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
-        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?)"
+    "(${Telephony.Sms.TYPE} IN (${SMS_OUTBOX_TYPES.joinToString { "?" }}) OR " +
+        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?))"
 internal val SENT_RESULT_ARGS = (
     SMS_OUTBOX_TYPES + listOf(Telephony.Sms.MESSAGE_TYPE_FAILED, NO_SENT_RESULT_ERROR_CODE)
 ).map { it.toString() }.toTypedArray()
@@ -373,18 +455,86 @@ private fun inSelection(column: String, values: List<Int>): Pair<String, Array<S
     "$column IN (${values.joinToString { "?" }})" to values.map { it.toString() }.toTypedArray()
 
 /**
- * Records a SENT result on its row (UNFY-178). SMS uses the TYPE column, MMS
- * uses MESSAGE_BOX:
+ * Rows a failed SMS SENT result marks failed: those still on their way out,
+ * those failed only for lack of a result ([NO_SENT_RESULT_ERROR_CODE]), and
+ * sent ones, since a part sent before parts were tracked moved its row to sent
+ * on its own. An inbound or draft row that reused a deleted message's id, or
+ * a row a carrier failure already marked failed, is never overwritten
+ * (UNFY-335).
+ */
+internal val SEND_FAILURE_SELECTION =
+    "(${Telephony.Sms.TYPE} IN (${(SMS_OUTBOX_TYPES + Telephony.Sms.MESSAGE_TYPE_SENT).joinToString { "?" }}) OR " +
+        "(${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.ERROR_CODE} = ?))"
+internal val SEND_FAILURE_ARGS = (
+    SMS_OUTBOX_TYPES + listOf(Telephony.Sms.MESSAGE_TYPE_SENT, Telephony.Sms.MESSAGE_TYPE_FAILED, NO_SENT_RESULT_ERROR_CODE)
+).map { it.toString() }.toTypedArray()
+
+/**
+ * MMS rows a SENT result moves: those still in the outbox, and those failed
+ * for lack of a result, which a late success moves to sent. An MMS gets one
+ * SENT result, so a failed one can only be failed for lack of it; an inbound
+ * MMS that reused a deleted message's id is never overwritten (UNFY-335).
+ */
+internal val MMS_RESULT_BOXES = MMS_OUTBOX_BOXES + Telephony.Mms.MESSAGE_BOX_FAILED
+
+/**
+ * The guarded write that records a SENT result on its row (UNFY-178,
+ * UNFY-335). SMS uses the TYPE column, MMS uses MESSAGE_BOX:
  * - a failure moves the row to the failed box, so the consumer derives
- *   delivered=false;
+ *   delivered=false (see [SEND_FAILURE_SELECTION]);
  * - a success moves it from the outbox to the sent box. An SMS is inserted
  *   in the outbox and only moves once the carrier accepted it (UNFY-299);
- *   see [SENT_RESULT_SELECTION].
+ *   see [SENT_RESULT_SELECTION] and [MMS_RESULT_BOXES].
  * STATUS is a delivery status, which a send result never writes (UNFY-293):
  * an SMS's is left for the delivery report, and an MMS's `st` holds
  * X-Mms-Status values that only a delivery indication supplies.
  * NB: provider-write semantics — verify on a real device (esp. Samsung MMS
  * msg_box) before relying on it.
+ */
+internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int): RowWrite {
+    val isMms = eventType == SENTMMS_ACTION
+    val values: Map<String, Long> = when {
+        isMms && resultCode != Activity.RESULT_OK -> mapOf(failedBox(isMms = true))
+        isMms -> mapOf(
+            Telephony.Mms.MESSAGE_BOX to Telephony.Mms.MESSAGE_BOX_SENT.toLong(),
+            Telephony.Mms.READ to 1L,
+            Telephony.Mms.SEEN to 1L,
+            Telephony.Mms.DATE_SENT to System.currentTimeMillis() / 1000L,
+        )
+        // A carrier failure is final: its own (positive) error code replaces
+        // any no-result marker, so a later success (an untracked part) can't
+        // move the row to sent.
+        resultCode != Activity.RESULT_OK -> mapOf(
+            failedBox(isMms = false),
+            Telephony.Sms.ERROR_CODE to resultCode.toLong(),
+        )
+        else -> mapOf(
+            Telephony.Sms.TYPE to Telephony.Sms.MESSAGE_TYPE_SENT.toLong(),
+            Telephony.Sms.ERROR_CODE to 0L,
+        )
+    }
+    val (selection, args) = when {
+        isMms -> inSelection(Telephony.Mms.MESSAGE_BOX, MMS_RESULT_BOXES)
+        resultCode != Activity.RESULT_OK -> SEND_FAILURE_SELECTION to SEND_FAILURE_ARGS
+        else -> SENT_RESULT_SELECTION to SENT_RESULT_ARGS
+    }
+    return RowWrite(
+        messageUri.toString(),
+        RowWriteKind.SEND_RESULT,
+        values,
+        selection,
+        args.toList(),
+        // A carrier failure is final (see above).
+        final = resultCode != Activity.RESULT_OK,
+    )
+}
+
+/**
+ * Purpose: records a SENT result on its row ([sendResultWrite]). A write the
+ * provider ignored, or failed, is owed and retried ([OwedRowWrites], UNFY-335).
+ *
+ * @returns how the write went.
+ * @throws Exception the provider's failure, once the write is owed.
  */
 internal fun recordSendResult(
     context: Context,
@@ -393,49 +543,19 @@ internal fun recordSendResult(
     eventType: String,
     statusString: String,
     resultCode: Int,
-) {
-    val sendFailed = resultCode != Activity.RESULT_OK
-    val resolver = context.contentResolver
-    when {
-        sendFailed -> resolver.update(
-            messageUri,
-            failedBoxValues(isMms = eventType == SENTMMS_ACTION).apply {
-                // A carrier failure is final: its own (positive) error code
-                // replaces any no-result marker, so a later successful part
-                // can't move the row to sent.
-                if (eventType != SENTMMS_ACTION) put(Telephony.Sms.ERROR_CODE, resultCode)
-            },
-            null,
-            null,
-        )
-        eventType == SENTMMS_ACTION -> resolver.update(
-            messageUri,
-            ContentValues().apply {
-                put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_SENT)
-                put(Telephony.Mms.READ, 1)
-                put(Telephony.Mms.SEEN, 1)
-                put(Telephony.Mms.DATE_SENT, System.currentTimeMillis() / 1000L)
-            },
-            null,
-            null,
-        )
-        else -> resolver.update(
-            messageUri,
-            ContentValues().apply {
-                put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
-                put(Telephony.Sms.ERROR_CODE, 0)
-            },
-            SENT_RESULT_SELECTION,
-            SENT_RESULT_ARGS,
-        )
-    }
-    if (sendFailed) {
+): RowWriteOutcome {
+    val outcome = recordRowWrite(context, sendResultWrite(messageUri, eventType, resultCode))
+    if (resultCode != Activity.RESULT_OK) {
         Log.w(
             TAG,
             "Send FAILED for messageId=$messageId ($eventType, " +
                 "resultCode=$resultCode, $statusString) — marked failed.",
         )
     }
+    if (outcome == RowWriteOutcome.IGNORED) {
+        Log.w(TAG, "The provider ignored the $eventType status write for $messageUri; it is retried later")
+    }
+    return outcome
 }
 
 /**
@@ -542,12 +662,32 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      * Registers [details] as the send pending on [uri] and starts its result
      * timeout: with no SENT result within [SEND_RESULT_TIMEOUT_MS] of device
      * uptime (a radio crash mid-send, while this handler lives on), the send
-     * settles as [ERR_SEND_RESULT_TIMEOUT] (UNFY-299).
+     * settles as [ERR_SEND_RESULT_TIMEOUT] (UNFY-299). A send still pending on
+     * [uri], whose row was deleted and its id reused, is settled now
+     * ([onSuperseded]): it would otherwise never be answered (UNFY-335).
      */
     @VisibleForTesting
     internal fun awaitResult(uri: Uri, details: MessageRequestDetails) {
-        channelResultMap[uri] = details
+        // The row is this send's now: writes owed to a deleted message whose
+        // id it reused must not land on it (UNFY-335).
+        OwedRowWrites.forApp(context).forget(uri)
+        val superseded = channelResultMap.put(uri, details)
         resultTimeouts.postDelayed({ onResultTimeout(uri, details) }, details, SEND_RESULT_TIMEOUT_MS)
+        if (superseded != null && superseded !== details) onSuperseded(uri, superseded)
+    }
+
+    /**
+     * Settles [details], a send whose row at [uri] was deleted and its id
+     * reused by a new send before its SENT result came: replies once with
+     * [ERR_MESSAGE_ROW_MISSING], whether it was sent unknown
+     * ([SendSupersededException]). An SMS's late result carries a token the
+     * new send's start forgot ([SmsPartLedger]), so it is ignored.
+     */
+    private fun onSuperseded(uri: Uri, details: MessageRequestDetails) {
+        resultTimeouts.removeCallbacksAndMessages(details)
+        val (code, message, errorDetails) = mapSendException(SendSupersededException(uri))
+        Log.w(TAG, message)
+        details.flutterResult.error(code, message, errorDetails)
     }
 
     /** Stops awaiting [details] on [uri]; true when it was still pending. */
@@ -587,9 +727,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val attachmentPaths: List<String>? = null,
             val flutterResult: MethodChannel.Result,
             var messageUri: Uri? = null,
+            val clientCorrelationId: String? = null,
     ) {
-        /** Settles this send from its SENT part reports (UNFY-283). */
-        internal val sentParts = SentPartsAggregator()
+        internal var correlationAttempt = OutboundSendCorrelations.Attempt(clientCorrelationId)
     }
 
     init {
@@ -599,6 +739,16 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
     @Suppress("UNCHECKED_CAST")
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "getSendCorrelations" -> {
+                try {
+                    val uris = stringList(call.arguments, "messageUris")
+                        ?: throw IllegalArgumentException("messageUris must be a list")
+                    result.success(OutboundSendCorrelations(context).lookup(uris))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not read outbound correlations", e)
+                    result.error("CORRELATION_READ_FAILED", e.message, null)
+                }
+            }
             "sendMessage" -> {
                 if (!context.packageManager.hasSystemFeature(
                                 PackageManager.FEATURE_TELEPHONY_MESSAGING
@@ -615,7 +765,6 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                     // SmsManager.getDefault() on tablets without telephony.
                     return
                 }
-
                 // SMS-vs-MMS routing lives in [routeMessage] (the long-body
                 // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
                 // hang + orphan-MMS-rows bug — is documented there).
@@ -641,49 +790,58 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                             ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
                     val recipients = stringList(message["recipients"], "recipients")
                             ?: throw IllegalArgumentException("sendMessage has no recipients")
-                    val details =
-                            MessageRequestDetails(
-                                    threadId =
-                                            Telephony.Threads.getOrCreateThreadId(
-                                                    context,
-                                                    recipients.toSet(),
-                                            ),
-                                    addresses = recipients,
-                                    body = message["body"] as? String
-                                            ?: throw IllegalArgumentException("sendMessage has no body"),
-                                    subscriptionId = message["subscriptionId"]?.let {
-                                        it as? Int
-                                                ?: throw IllegalArgumentException("subscriptionId must be an int")
-                                    },
-                                    attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
-                                    flutterResult = result,
-                            )
-                    requestDetails = details
+                    val correlationId = message["clientCorrelationId"]?.let {
+                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
+                    }
+                    OutboundSendCorrelations(context).withAttempt(
+                        correlationId to maxOf(1, recipients.size),
+                    ) { correlationAttempt ->
+                        val details =
+                                MessageRequestDetails(
+                                        threadId =
+                                                Telephony.Threads.getOrCreateThreadId(
+                                                        context,
+                                                        recipients.toSet(),
+                                                ),
+                                        addresses = recipients,
+                                        body = message["body"] as? String
+                                                ?: throw IllegalArgumentException("sendMessage has no body"),
+                                        subscriptionId = message["subscriptionId"]?.let {
+                                            it as? Int
+                                                    ?: throw IllegalArgumentException("subscriptionId must be an int")
+                                        },
+                                        attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
+                                        clientCorrelationId = correlationId,
+                                        flutterResult = result,
+                                )
+                        details.correlationAttempt = correlationAttempt
+                        requestDetails = details
 
-                    val smsManager: SmsManager =
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                val subIdToUse =
-                                        selectSubscriptionId(
-                                                details.subscriptionId,
-                                                SmsManager::getDefaultSmsSubscriptionId,
-                                        )
-                                context.getSystemService(SmsManager::class.java)
-                                        .createForSubscriptionId(subIdToUse)
-                            } else {
-                                @Suppress("DEPRECATION") SmsManager.getDefault()
-                            }
+                        val smsManager: SmsManager =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    val subIdToUse =
+                                            selectSubscriptionId(
+                                                    details.subscriptionId,
+                                                    SmsManager::getDefaultSmsSubscriptionId,
+                                            )
+                                    context.getSystemService(SmsManager::class.java)
+                                            .createForSubscriptionId(subIdToUse)
+                                } else {
+                                    @Suppress("DEPRECATION") SmsManager.getDefault()
+                                }
 
-                    val route =
-                            routeMessage(
-                                    hasAttachments =
-                                            !details.attachmentPaths.isNullOrEmpty(),
-                                    recipientCount = details.addresses.size,
-                            )
-                    when (route) {
-                        OutboundRoute.MMS ->
-                                sendMms(smsManager = smsManager, requestDetails = details)
-                        OutboundRoute.SMS ->
-                                sendSms(smsManager = smsManager, requestDetails = details)
+                        val route =
+                                routeMessage(
+                                        hasAttachments =
+                                                !details.attachmentPaths.isNullOrEmpty(),
+                                        recipientCount = details.addresses.size,
+                                )
+                        when (route) {
+                            OutboundRoute.MMS ->
+                                    sendMms(smsManager = smsManager, requestDetails = details)
+                            OutboundRoute.SMS ->
+                                    sendSms(smsManager = smsManager, requestDetails = details)
+                        }
                     }
                 } catch (e: Exception) {
                     val pending = requestDetails
@@ -704,6 +862,12 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                         "providerStateErrors" to e.suppressed.map { it.message },
                     )
                     result.error(code, message, errorDetails)
+                } finally {
+                    // A send needs write access, so earlier status writes the
+                    // provider ignored may land now. Only once this send's row
+                    // is awaited, or failed: a write owed to a deleted message
+                    // whose id it reused must not land on it (UNFY-335).
+                    OutboxSweeper.onSend(context)
                 }
             }
             else -> result.notImplemented()
@@ -723,17 +887,20 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
     }
 
     /**
-     * Takes one SENT result for a send this handler owns; returns false, doing
-     * nothing, when it owns none ([SendResultRouter] then records it). Once
-     * the send's SENT parts settle its outcome, records it on the row
-     * ([recordSendResult]) and sends the Flutter reply exactly once; until
-     * then a successful part changes nothing, so a multipart SMS leaves the
-     * outbox only when every part was sent.
+     * Takes the settled SENT outcome of a send this handler owns; returns
+     * false, doing nothing, when it owns none ([SendResultRouter] then records
+     * it). Records it on the row ([recordSendResult]) and sends the Flutter
+     * reply exactly once. A multipart SMS arrives here once every part has
+     * reported ([SmsPartLedger]), so `send()` reflects the whole message.
      *
      * Failures here happen after the carrier has handled the send, so they
      * settle the pending send as [ERR_SEND_ACK_FAILED] instead of escaping the
      * receiver, which would crash the process and leave the Dart future
-     * unsettled (UNFY-282). The reply itself is sent once, outside any catch.
+     * unsettled (UNFY-282). So does a status write the provider ignored (the
+     * app lost the default-SMS role or its WRITE_SMS app-op), whose row would
+     * read back unchanged, or one that can't be read back to tell; the write
+     * is retried later (UNFY-335). The reply itself is sent once, outside any
+     * catch.
      */
     internal fun onSendResult(
             messageId: Int,
@@ -743,15 +910,16 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             resultCode: Int,
     ): Boolean {
         val pending = channelResultMap[messageUri] ?: return false
-        val part = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
-        // Parts still outstanding: nothing is recorded until the send settles.
-        val outcome = pending.sentParts.record(part) ?: return true
+        val outcome = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
         // Recorded while still owned, so a concurrent stale-outbox sweep, which
         // skips owned sends, can't fail the row between the two.
         val persistFailure: Exception? =
                 try {
-                    recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)
-                    null
+                    when (recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)) {
+                        RowWriteOutcome.IGNORED -> RowWriteIgnoredException(messageUri)
+                        RowWriteOutcome.UNREADABLE -> RowWriteUnreadableException(messageUri)
+                        RowWriteOutcome.WRITTEN, RowWriteOutcome.NOT_APPLICABLE -> null
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed writing $eventType status for $messageUri", e)
                     e
@@ -829,9 +997,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val newUri = insertSms(context, requestDetails)
             val msgId = ContentUris.parseId(newUri).toInt()
             requestDetails.messageUri = newUri
-            awaitResult(newUri, requestDetails)
-
-            val statusIntents = smsStatusIntents(context, msgId, newUri)
+            OutboundSendCorrelations(context).recordAttemptRow(newUri, requestDetails.correlationAttempt)
 
             val rawDest = requestDetails.addresses.first()
             // formatNumber may return null for non-E.164-parseable
@@ -840,14 +1006,10 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             // and other carrier-specific destinations directly.
             val destAddress = formatNumber(context, rawDest) ?: rawDest
 
-            // Use SmsManager's segmenter to decide whether the body
-            // fits in a single SMS or needs multipart concatenation.
-            // For bodies that fit (≤ 160 7-bit / 70 UCS-2 chars) we
-            // call the single-message API; for longer bodies we use
-            // sendMultipartTextMessage with one PendingIntent per
-            // part (all pointing at the same broadcast). The pending
-            // send settles once every part reports success, or on the
-            // first failed part (UNFY-283).
+            // Each part gets its own SENT and DELIVERED intent; the ledger
+            // settles the row, and this send, once every part has reported
+            // (UNFY-180). Its record is written before the radio sees a
+            // part, or the send does not start.
             //
             // Doing this in our own send path (instead of routing to
             // Klinker's Transaction.sendNewMessage for long bodies)
@@ -857,31 +1019,35 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             // so going through Klinker for long bodies left the
             // message stuck at "Sending…" with no status callback.
             val parts = smsManager.divideMessage(requestDetails.body)
-            requestDetails.sentParts.expectParts(maxOf(parts.size, 1))
-            if (parts.size <= 1) {
-                smsManager.sendTextMessage(
-                        destAddress,
-                        null, // originating address
-                        requestDetails.body,
-                        statusIntents.sent,
-                        statusIntents.delivered,
-                        msgId.toLong()
-                )
-            } else {
-                val sentPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
-                    repeat(parts.size) { add(statusIntents.sent) }
+            val partCount = maxOf(parts.size, 1)
+            val ledger = SmsPartLedger.forApp(context)
+            val partRefs = startTrackedSmsSend(context, ledger, msgId, newUri, partCount)
+            try {
+                val statusIntents = partRefs.map { smsStatusIntents(context, msgId, newUri, it) }
+                awaitResult(newUri, requestDetails)
+                if (parts.size <= 1) {
+                    smsManager.sendTextMessage(
+                            destAddress,
+                            null, // originating address
+                            requestDetails.body,
+                            statusIntents.single().sent,
+                            statusIntents.single().delivered,
+                            msgId.toLong()
+                    )
+                } else {
+                    smsManager.sendMultipartTextMessage(
+                            destAddress,
+                            null, // originating address
+                            parts,
+                            ArrayList(statusIntents.map { it.sent }),
+                            ArrayList(statusIntents.map { it.delivered }),
+                            msgId.toLong()
+                    )
                 }
-                val deliveredPendingIntents = ArrayList<PendingIntent>(parts.size).apply {
-                    repeat(parts.size) { add(statusIntents.delivered) }
-                }
-                smsManager.sendMultipartTextMessage(
-                        destAddress,
-                        null, // originating address
-                        parts,
-                        sentPendingIntents,
-                        deliveredPendingIntents,
-                        msgId.toLong()
-                )
+            } catch (e: Exception) {
+                // No part reached the radio; onMethodCall fails the row.
+                ledger.forget(partRefs.first())
+                throw e
             }
         } catch (e: SecurityException) {
             // Permission revoked between request and send (rare race).
@@ -957,6 +1123,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
                 requestDetails.messageUri = uri
+                OutboundSendCorrelations(context).recordAttemptRow(uri, requestDetails.correlationAttempt)
                 awaitResult(uri, requestDetails)
             }
             sendTransaction.sendNewMessage(message, requestDetails.threadId)

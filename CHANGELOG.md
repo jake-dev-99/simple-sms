@@ -12,10 +12,9 @@ return typed results.
   Every delete requires the default-SMS role and is read back natively; one
   that can't be verified throws `DeleteFailedException` carrying a
   `DeleteFailureReason` (`notDefaultSmsApp`, `deleteIncomplete`,
-  `deleteFailed`, `verifyFailed`, `absenceUnverified`, `invalidArgument`).
-  On Android 14+, the provider filters messages by the calling user's
-  subscriptions, so a `deleteMessage` that removes nothing throws
-  `absenceUnverified` instead of resolving to `alreadyAbsent`.
+  `deleteFailed`, `verifyFailed`, `invalidArgument`). A message the provider
+  doesn't return resolves to `alreadyAbsent`, as in AOSP Messaging, including
+  one the Android 14+ per-user subscription filter hides (UNFY-330).
 
 - **`Sms.status` is now `SmsDeliveryStatus?` (UNFY-299).** It was typed as the
   MMS `AndroidMessageStatus` enum, so it was null for every SMS. It now carries
@@ -23,6 +22,11 @@ return typed results.
   `pending` or `failed`. Raw TP-Status values in the provider map by range.
 
 ### Added
+
+- **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart. An indexed SQLite registry in Android's no-backup directory avoids whole-registry XML rewrites and prevents cloud backup/device transfer from restoring device-specific row IDs. Metadata contains no message content or recipient addresses; the exact provider `date` is retained only to verify row generation, never to discover or match a logical send. Unreleased XML metadata is not imported because it lacks a verified generation and device-local provenance.
+  Correlated sends and recovery require `ReadSms` for provider-generation verification. Recording an uncorrelated send clears prior identity at its URI. Recovery prunes absent or generation-changed rows, preserving a job's surviving attempts in recorded order; provider unavailability fails without pruning identities.
+  All recipient rows from one native MMS request share an attempt identity. Each surviving row of the latest attempt returns itself as `latestMessageUri`; rows from earlier retries return a surviving row of the latest attempt. Consumers comparing `latestMessageUri` with the requested URI therefore retain every current recipient row.
+  Each logical send retains at most 64 live provider rows. The sender holds one shared engine lock across the recipient-row budget check and synchronous native persistence/radio initialization; competing sends cannot consume the same free capacity before provider creation; absent or generation-changed rows can free space, and live identities are never silently evicted. Lookups accept at most 1000 URIs per batch.
 
 - **`SEND_RESULT_TIMEOUT` (UNFY-299).** `sendMessage` settles with this code
   when no carrier result arrives within 10 minutes of device uptime (e.g. the
@@ -32,6 +36,24 @@ return typed results.
 
 ### Changed
 
+- **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
+  answers only once every part has reported its carrier result, rather than
+  as soon as any part reports a failure: failed if any part failed, with the
+  result code of the first failure to arrive, else sent. The row moves to sent
+  or failed at the same point, even when the parts report to different app
+  processes: each part has its own status intents, and the parts' results are
+  persisted until they add up. The row's delivery status likewise comes from
+  every part's report: delivered only once every part is, failed if any part
+  failed, pending in between; a 3GPP2 (CDMA) report on the last part, the only
+  part CDMA asks one for, stands for the whole message. Results for a send
+  whose row was deleted and its id reused are ignored. A send made by an
+  earlier version and still pending across the update has its status intents
+  cancelled when its row is reused, and a result of it already on its way
+  is ignored for the 7 days a new send's results may take. If the app's files
+  cannot be read or written, a one-part SMS still settles from its result and
+  report; a multipart one is never settled from a single part: its delivery
+  status is left as is, and its send settles as `SEND_RESULT_TIMEOUT` (or, if
+  the app process died, is marked failed by the stale-outbox sweep).
 - **Delivery reports reach `NormalizedMessage.deliveryState` (UNFY-299).** An
   outbound SMS whose delivery report failed is `failed`; a sent SMS whose
   report says complete is `delivered`.
@@ -54,6 +76,39 @@ return typed results.
   now throw it. Conversation enrichment tolerates it
   per thread: that thread comes back unenriched (null `participants`,
   `latestSms`, `latestMms`) instead of failing the list.
+- **A send result that doesn't land on its row is retried (UNFY-335).** An
+  app that lost the default-SMS role or its `WRITE_SMS` app-op has its
+  provider writes ignored, not refused, so the row stayed in the outbox while
+  `sendMessage` answered with it. Now:
+  - A write the provider ignored is detected by reading the row back.
+    `sendMessage` then answers `SEND_ACK_FAILED` with the carrier result in
+    `details['sent']`. So does a write that took no row when the provider
+    returns no cursor to check it, which used to answer
+    `MESSAGE_ROW_MISSING`.
+  - Such a write, or one that failed, is kept and retried once each send
+    has been handed off, at each engine start, and before the stale-outbox
+    sweep. A kept write is tied to its row's `date` as soon as the row can
+    be read, and this app's next send forgets the writes owed to the row it
+    takes, so a write is not applied to a message that reused the id. A row
+    newer than the write is never its row. A carrier failure, or a failed
+    delivery, is never replaced by a later write. A later write that lands
+    drops an older write of its kind still owed to the row, unless that one
+    is final. A write still owed 7 days after the row was first owed one of
+    its kind is given up. Delivery-status writes get the same
+    treatment; one waits while its row's send result is still owed.
+- **Send results only rewrite a row still on its way out (UNFY-335).** A
+  failed SMS result and every MMS result now carry the guard a successful SMS
+  result already had. A late result for a deleted message never rewrites an
+  inbound or draft row that reused its id, or a carrier failure already
+  recorded. A failed SMS result still marks a sent row failed, as a part sent
+  before parts were tracked may have moved it there on its own.
+- **A send whose row is reused before its result comes is answered
+  (UNFY-335).** If a pending send's row was deleted and a new send reused its
+  id, the earlier `sendMessage` was never answered. It now settles
+  at once with `MESSAGE_ROW_MISSING`, with `details['sent']` `null` (unknown).
+- **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
+  object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it
+  too, instead of resolving to an empty map.
 - **Conversation-list MMS previews fail loudly on unrecoverable errors
   (UNFY-253).** `listConversations` and `getConversationByThread` load the
   latest MMS parts in batches of up to 500 ids. A batch that fails as

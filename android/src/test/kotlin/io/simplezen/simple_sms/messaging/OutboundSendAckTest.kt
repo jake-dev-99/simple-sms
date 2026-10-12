@@ -1,20 +1,25 @@
 package io.simplezen.simple_sms.messaging
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Build
 import android.os.Looper
 import android.provider.Telephony
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import androidx.test.core.app.ApplicationProvider
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.time.Duration
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -30,13 +35,13 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283).
+ * Send-status ack golden (UNFY-160, UNFY-282, UNFY-283, UNFY-180).
  *
  * Drives the real [OutboundMessagingReceiver] callback registered by
  * [OutboundSender] with status broadcasts, against fake `sms` /
  * `mms` providers, and pins how the pending Flutter result is settled:
- * exactly once — after every SENT part succeeded, or at the first failed
- * part; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
+ * exactly once — after every SENT part has reported, failed if any part
+ * failed; with the re-read row when it exists, [ERR_MESSAGE_ROW_MISSING] —
  * never a URI-only success — when it doesn't, and [ERR_SEND_ACK_FAILED] when
  * the ack can't be built.
  */
@@ -50,6 +55,7 @@ class OutboundSendAckTest {
     private lateinit var smsProvider: FakeMessageProvider
     private lateinit var mmsProvider: FakeMessageProvider
     private lateinit var handler: OutboundSender
+    private var sendParts: List<SmsPartRef>? = null
 
     @Before
     fun setUp() {
@@ -68,7 +74,7 @@ class OutboundSendAckTest {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
         assertNull(result.errorCode)
@@ -83,7 +89,7 @@ class OutboundSendAckTest {
         smsProvider.row = null
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
         assertNull("must not ack a URI-only success", result.successPayload)
@@ -103,7 +109,7 @@ class OutboundSendAckTest {
         smsProvider.row = null
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part())
 
         assertEquals(1, result.calls)
         assertNull(result.successPayload)
@@ -136,31 +142,36 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun nullCursor_isReportedAsRowMissing() {
-        // simple_query maps a null cursor to no rows, so a provider that
-        // returns null is indistinguishable from a deleted row here.
+    fun aWriteThatTookNoRow_andCantBeReadBack_settlesSendAckFailed() {
+        // The provider returns no cursor, so whether the result was recorded
+        // is unknown (UNFY-335). The write is kept, though it can't be tied
+        // to its row's date.
         smsProvider.nullCursor = true
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
-        assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("no cursor"))
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
     }
 
     @Test
     fun laterBroadcast_afterSettlement_isNoOp() {
-        // Every part of a multipart SMS fires the same SENT broadcast; only
-        // the first settles, and the rest must not settle (or re-read) again.
+        // A part reported again after its send settled neither settles nor
+        // re-reads again.
         smsProvider.row = null
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part())
 
         assertEquals(1, result.calls)
         assertEquals(true, (result.errorDetails as Map<*, *>)["sent"])
-        assertEquals(1, smsProvider.queries)
+        assertEquals(1, smsProvider.rowReads)
     }
 
     @Test
@@ -172,26 +183,27 @@ class OutboundSendAckTest {
             smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
             val result = pendingSend(smsUri)
 
-            deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+            deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part())
 
             assertEquals(1, result.calls)
             assertTrue(result.successPayload is String)
             assertEquals("only the owner records the failed send", 1, smsProvider.updates)
-            assertEquals(1, smsProvider.queries)
+            assertEquals(1, smsProvider.rowReads)
         } finally {
             otherHandler.release()
         }
     }
 
     @Test
-    fun multipart_failedPart_settlesAtThatPart_laterPartsAreGuarded() {
+    fun multipart_successThenFailure_settlesOnceAfterEveryPart_asFailed() {
         smsProvider.row = null
         val result = pendingSend(smsUri, parts = 3)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
-        assertEquals("a successful part alone doesn't settle", 0, result.calls)
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 3))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part(1, 3))
+        assertEquals("a failed part does not settle before the others report", 0, result.calls)
+        assertEquals(0, smsProvider.updates)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(2, 3))
 
         assertEquals(1, result.calls)
         assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
@@ -199,13 +211,47 @@ class OutboundSendAckTest {
         assertEquals(false, details["sent"])
         assertEquals(SmsManager.RESULT_ERROR_GENERIC_FAILURE, details["resultCode"])
         assertEquals("ERROR_GENERIC_FAILURE", details["statusString"])
-        // The failed part marks the row failed; the later successful part is
-        // nobody's, so it is recorded through the outbox-only guard, which
-        // never moves a failed row (SentResultSelectionTest).
-        assertEquals(2, smsProvider.updates)
-        assertEquals(SENT_RESULT_SELECTION, smsProvider.lastSelection)
-        assertEquals("the row is re-read once, at settlement", 1, smsProvider.queries)
+        assertEquals("the row is written once, failed", 1, smsProvider.updates)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals("the row is re-read once, at settlement", 1, smsProvider.rowReads)
         assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
+    fun multipart_failureThenSuccess_settlesOnceAfterEveryPart_asFailed() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri, parts = 2)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_NO_SERVICE, part(0, 2))
+        assertEquals(0, result.calls)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+
+        assertEquals(1, result.calls)
+        assertEquals(1, smsProvider.updates)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.ERROR_CODE))
+    }
+
+    @Test
+    fun multipart_failuresOutOfOrder_settleWithTheFirstFailureToArrive() {
+        smsProvider.row = null
+        val result = pendingSend(smsUri, parts = 3)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_NO_SERVICE, part(2, 3))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part(0, 3))
+        assertEquals("failed parts do not settle before the others report", 0, result.calls)
+        assertEquals(0, smsProvider.updates)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 3))
+
+        assertEquals(1, result.calls)
+        assertEquals(ERR_MESSAGE_ROW_MISSING, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(false, details["sent"])
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, details["resultCode"])
+        assertEquals("ERROR_NO_SERVICE", details["statusString"])
+        assertEquals(1, smsProvider.updates)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals(SmsManager.RESULT_ERROR_NO_SERVICE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.ERROR_CODE))
     }
 
     @Test
@@ -213,15 +259,261 @@ class OutboundSendAckTest {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri, parts = 2)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
         assertEquals(0, result.calls)
         assertEquals("the row stays in the outbox until every part is sent", 0, smsProvider.updates)
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+        assertEquals("a repeated part is not another part", 0, result.calls)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
 
         assertEquals(1, result.calls)
         assertTrue(result.successPayload is String)
         assertEquals(1, smsProvider.updates)
         assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
+    fun multipart_partsAcrossProcessDeath_stillSettleTheRowFromEveryPart() {
+        // The app process dies after part 1 reports; Android starts it again for
+        // part 2's result, with no handler owning the send (UNFY-180).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        pendingSend(smsUri, parts = 2)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
+        handler.release()
+        assertEquals(0, smsProvider.updates)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_RADIO_OFF, part(1, 2))
+
+        assertEquals(1, smsProvider.updates)
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+    }
+
+    @Test
+    fun aReusedRowId_ignoresTheEarlierSendsLateParts() {
+        // The row was deleted mid-send and its _id taken by a new send.
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        pendingSend(smsUri, parts = 2)
+        val earlier = part(0, 2)
+        val result = pendingSend(smsUri, parts = 1)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, earlier)
+
+        assertEquals(0, result.calls)
+        assertEquals(0, smsProvider.updates)
+    }
+
+    @Test
+    fun deliveryReports_settleTheMessageFromEveryPart() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 2)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part(0, 2))
+        assertEquals(
+            "one part delivered is not the message delivered",
+            Telephony.Sms.STATUS_PENDING,
+            smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS),
+        )
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part(1, 2))
+
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun deliveryReports_anyFailedPart_failsTheMessage() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 2)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x41), part(1, 2))
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part(0, 2))
+
+        assertEquals(Telephony.Sms.STATUS_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun anUnavailableLedger_neverSettlesAMultipartSmsFromOnePart() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri, parts = 2)
+        makeUnreadable(part(0, 2))
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(0, 2))
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part(1, 2))
+        assertEquals("every part reported, but they cannot be added up", 0, result.calls)
+        assertEquals(0, smsProvider.updates)
+
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SEND_RESULT_TIMEOUT_MS))
+
+        assertEquals(1, result.calls)
+        assertEquals(ERR_SEND_RESULT_TIMEOUT, result.errorCode)
+    }
+
+    @Test
+    fun anUnavailableLedger_leavesAMultipartSmsDeliveryStatusAsIs() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 2)
+        makeUnreadable(part(0, 2))
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part(0, 2))
+
+        assertEquals(0, smsProvider.updates)
+    }
+
+    @Test
+    fun anUnavailableLedger_stillRecordsAOnePartSmsReport() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        pendingSend(smsUri, parts = 1)
+        makeUnreadable(part())
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun anUnavailableLedger_stillSettlesAOnePartSms_fromItsOnlyResult() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri, parts = 1)
+        makeUnreadable(part())
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals(1, result.calls)
+        assertTrue(result.successPayload is String)
+        assertEquals(1, smsProvider.updates)
+    }
+
+    // Replaces [part]'s ledger record with a directory, which cannot be read.
+    private fun makeUnreadable(part: SmsPartRef) {
+        val record = File(File(File(context.filesDir, "simple_sms_sms_parts"), part.rowId.toString()), part.token + ".json")
+        record.delete()
+        record.mkdirs()
+    }
+
+    @Test
+    fun eachPart_getsItsOwnStatusIntents() {
+        val first = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 2))
+        val second = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 1, 2))
+
+        assertFalse(first.sent == second.sent)
+        assertFalse(first.delivered == second.delivered)
+        val secondSent = shadowOf(second.sent).savedIntent
+        assertEquals("t", secondSent.getStringExtra("partToken"))
+        assertEquals(42L, secondSent.getLongExtra("partRowId", -1L))
+        assertEquals(1, secondSent.getIntExtra("partIndex", -1))
+        assertEquals(2, secondSent.getIntExtra("partCount", -1))
+        assertEquals(1, shadowOf(second.delivered).savedIntent.getIntExtra("partIndex", -1))
+    }
+
+    @Test
+    fun aSentResultWithoutAPartToken_forARowATrackedSendHolds_isIgnored() {
+        // A send made before parts were tracked, whose status intents outlived
+        // an app update, while the provider reused its row id (UNFY-180).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val result = pendingSend(smsUri)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        assertEquals(0, result.calls)
+        assertEquals(0, smsProvider.updates)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+        assertEquals(1, result.calls)
+        assertTrue(result.successPayload is String)
+    }
+
+    @Test
+    fun aSentResultWithoutAPartToken_afterTheTrackedSendFinished_isStillIgnored() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        // Its start cancelled an earlier, untracked send's status intents.
+        val result = pendingSend(smsUri, markUntrackedSend = true)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+        assertEquals(1, result.calls)
+        val updates = smsProvider.updates
+
+        // An earlier, untracked send's late failure for the reused row.
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+
+        assertEquals(updates, smsProvider.updates)
+    }
+
+    @Test
+    fun aDeliveryReportWithoutAPartToken_forARowATrackedSendHolds_isIgnored() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+        val part = trackedPart()
+
+        deliverUntrackedReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x41))
+        assertEquals(0, smsProvider.updates)
+
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part)
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun aDeliveryReportWithoutAPartToken_forAnUntrackedRow_isStillRecorded() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
+
+        deliverUntrackedReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00))
+
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
+    }
+
+    @Test
+    fun startingATrackedSend_cancelsTheStatusIntentsOfAnUntrackedSendToItsRow() {
+        // The pair a send made before parts were tracked, still pending after
+        // an app update: shared by every part, with no identifier.
+        val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+        val untrackedSent = PendingIntent.getBroadcast(
+            context, 42,
+            Intent(SENTSMS_ACTION).putExtra("messageID", 42).putExtra("uri", smsUri.toString()).setComponent(receiver),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_CANCEL_CURRENT,
+        )
+        val untrackedDelivered = PendingIntent.getBroadcast(
+            context, 42, Intent(DELIVEREDSMS_ACTION).setData(smsUri).setComponent(receiver),
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0) or
+                PendingIntent.FLAG_CANCEL_CURRENT,
+        )
+
+        val parts = startTrackedSmsSend(context, SmsPartLedger.forApp(context), 42, smsUri, 1)
+
+        assertTrue("its late SENT result never lands", shadowOf(untrackedSent).isCanceled)
+        assertTrue("its late delivery report never lands", shadowOf(untrackedDelivered).isCanceled)
+        SmsPartLedger.forApp(context).forget(parts.single())
+        assertTrue("one already on its way is still told apart", SmsPartLedger.forApp(context).tracks(42L))
+        val tracked = smsStatusIntents(context, 42, smsUri, parts.single())
+        assertFalse(shadowOf(tracked.sent).isCanceled)
+        assertFalse(shadowOf(tracked.delivered).isCanceled)
+        assertTrue(SmsPartLedger.forApp(context).tracks(42L))
+    }
+
+    @Test
+    fun startingATrackedSend_withNoUntrackedSendToItsRow_leavesNoMark() {
+        val parts = startTrackedSmsSend(context, SmsPartLedger.forApp(context), 42, smsUri, 1)
+        SmsPartLedger.forApp(context).forget(parts.single())
+        assertFalse(SmsPartLedger.forApp(context).tracks(42L))
+    }
+
+    @Test
+    fun cancellingUntrackedStatusIntents_sparesTrackedIntents_andOtherRows() {
+        val receiver = ComponentName(context, OutboundMessagingReceiver::class.java)
+        val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val tracked = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 1))
+        val otherRowSent = PendingIntent.getBroadcast(
+            context, 43, Intent(SENTSMS_ACTION).setComponent(receiver), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val otherRowDelivered = PendingIntent.getBroadcast(
+            context, 43, Intent(DELIVEREDSMS_ACTION).setData(Uri.parse("content://sms/43")).setComponent(receiver),
+            mutable,
+        )
+
+        cancelUntrackedStatusIntents(context, 42, smsUri)
+
+        assertFalse(shadowOf(tracked.sent).isCanceled)
+        assertFalse(shadowOf(tracked.delivered).isCanceled)
+        assertFalse(shadowOf(otherRowSent).isCanceled)
+        assertFalse(shadowOf(otherRowDelivered).isCanceled)
     }
 
     @Test
@@ -235,7 +527,7 @@ class OutboundSendAckTest {
         assertEquals(Telephony.Sms.STATUS_COMPLETE, smsProvider.lastValues?.getAsInteger(Telephony.Sms.STATUS))
         assertTrue(handler.channelResultMap.containsKey(smsUri))
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
         assertEquals(1, result.calls)
         assertTrue(result.successPayload is String)
     }
@@ -246,7 +538,7 @@ class OutboundSendAckTest {
         smsProvider.queryFailure = SecurityException("role revoked")
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
         assertNull(result.successPayload)
@@ -264,12 +556,12 @@ class OutboundSendAckTest {
         smsProvider.updateFailure = SecurityException("role revoked")
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE, part())
 
         assertEquals(1, result.calls)
         assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
         assertEquals(false, (result.errorDetails as Map<*, *>)["sent"])
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
     @Test
@@ -290,6 +582,87 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun aResultWriteTheProviderIgnores_settlesSendAckFailed_andIsOwed() {
+        // The app lost the default-SMS role or its WRITE_SMS app-op mid-send
+        // (UNFY-335): the row would read back unchanged, still sending.
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_OUTBOX, "date" to 1_000L)
+        smsProvider.ignoreWrites = true
+        val result = pendingSend(smsUri)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals(1, result.calls)
+        assertNull("must not ack the unchanged row", result.successPayload)
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("ignored"))
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
+        assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
+    fun aPendingSendWhoseRowIdIsReused_isAnsweredRowMissing_itsOutcomeUnknown() {
+        // Its row was deleted and a new send reused the id before its result
+        // came; it would otherwise never be answered (UNFY-335).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        val superseded = pendingSend(smsUri)
+        val current = pendingSend(smsUri)
+
+        assertEquals(1, superseded.calls)
+        assertEquals(ERR_MESSAGE_ROW_MISSING, superseded.errorCode)
+        val details = superseded.errorDetails as Map<*, *>
+        assertEquals("content://sms/42", details["messageUri"])
+        assertTrue(details.containsKey("sent"))
+        assertNull(details["sent"])
+        assertEquals(0, current.calls)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals("the superseded send is answered once", 1, superseded.calls)
+        assertEquals(1, current.calls)
+        assertNull(current.errorCode)
+    }
+
+    @Test
+    fun aNewSendThatTakesARow_forgetsTheWritesOwedToIt() {
+        // The message they were for was deleted, and its id reused (UNFY-335).
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
+
+        pendingSend(smsUri)
+
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+    }
+
+    @Test
+    fun aSend_retriesTheOwedStatusWrites() {
+        // A send needs write access, so an ignored write may land now.
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "date" to 1_000L)
+        OwedRowWrites.forApp(context).owe(sendResultWrite(smsUri, SENTSMS_ACTION, Activity.RESULT_OK))
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
+
+        handler.onMethodCall(MethodCall("sendMessage", null), RecordingResult())
+
+        val deadline = System.currentTimeMillis() + 5_000
+        while (OwedRowWrites.forApp(context).rows().isNotEmpty() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertTrue(OwedRowWrites.forApp(context).rows().isEmpty())
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+    }
+
+    @Test
+    fun aDeliveryWriteTheProviderIgnores_isOwed() {
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT, "date" to 1_000L)
+        smsProvider.ignoreWrites = true
+
+        pendingSend(smsUri)
+        deliverReport(SmsDeliveryStatusTest.gsmStatusReportPdu(tpStatus = 0x00), part())
+
+        assertEquals(setOf(smsUri), OwedRowWrites.forApp(context).rows())
+    }
+
+    @Test
     fun providerFailure_withNothingPending_doesNotEscapeTheReceiver() {
         // An escaping exception would crash the app process (UNFY-282).
         smsProvider.updateFailure = SecurityException("role revoked")
@@ -301,7 +674,7 @@ class OutboundSendAckTest {
 
     @Test
     fun smsStatusIntents_separateDeliveryReportsFromSendResults() {
-        val intents = smsStatusIntents(context, 42, smsUri)
+        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 2))
 
         val sent = shadowOf(intents.sent).savedIntent
         assertEquals(SENTSMS_ACTION, sent.action)
@@ -354,7 +727,7 @@ class OutboundSendAckTest {
         // A fill-in may add extras, but the row comes from the intent data.
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi", "type" to Telephony.Sms.MESSAGE_TYPE_SENT)
 
-        smsStatusIntents(context, 42, smsUri).delivered.send(
+        smsStatusIntents(context, 42, smsUri, trackedPart()).delivered.send(
             context,
             Activity.RESULT_OK,
             Intent()
@@ -386,7 +759,7 @@ class OutboundSendAckTest {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(1, result.calls)
         assertNull(result.errorCode)
@@ -406,7 +779,7 @@ class OutboundSendAckTest {
         var ownedAtWrite: Boolean? = null
         smsProvider.duringUpdate = { ownedAtWrite = smsUri in SendResultRouter.pendingSends() }
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
 
         assertEquals(true, ownedAtWrite)
         assertTrue(handler.channelResultMap.isEmpty())
@@ -432,7 +805,7 @@ class OutboundSendAckTest {
         assertTrue(handler.channelResultMap.isEmpty())
 
         // A result arriving after the timeout is unowned: no second reply.
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
         assertEquals(1, result.calls)
     }
 
@@ -441,7 +814,7 @@ class OutboundSendAckTest {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri)
 
-        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
         assertEquals("the timer is cancelled", Duration.ZERO, shadowOf(Looper.getMainLooper()).nextScheduledTaskTime)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SEND_RESULT_TIMEOUT_MS))
 
@@ -464,7 +837,9 @@ class OutboundSendAckTest {
     @Test
     fun sentResult_withNoLiveHandler_isStillRecorded() {
         // The app process died after sending: no handler owns the result, and
-        // the manifest receiver still records it on the row (UNFY-299).
+        // the manifest receiver still records it on the row (UNFY-299). These
+        // parts carry no token, as from an intent built before parts were
+        // tracked, so each is recorded on its own.
         handler.release()
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
 
@@ -474,7 +849,7 @@ class OutboundSendAckTest {
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK)
         assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
         assertEquals(SENT_RESULT_SELECTION, smsProvider.lastSelection)
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
     @Test
@@ -482,7 +857,7 @@ class OutboundSendAckTest {
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
         val result = pendingSend(smsUri)
 
-        smsStatusIntents(context, 42, smsUri).sent.send(context, Activity.RESULT_OK, null)
+        smsStatusIntents(context, 42, smsUri, part()).sent.send(context, Activity.RESULT_OK, null)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(1, result.calls)
@@ -491,7 +866,7 @@ class OutboundSendAckTest {
 
     @Test
     fun deliveryIntent_isMutableForTheReport_sentIntentIsNot() {
-        val intents = smsStatusIntents(context, 42, smsUri)
+        val intents = smsStatusIntents(context, 42, smsUri, SmsPartRef("t", 42L, 0, 1))
         assertFalse("the platform must be able to attach the report", intents.delivered.isImmutable)
         assertTrue(intents.sent.isImmutable)
     }
@@ -515,11 +890,15 @@ class OutboundSendAckTest {
         deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
 
         assertEquals(1, smsProvider.updates)
-        assertEquals(0, smsProvider.queries)
+        assertEquals(0, smsProvider.rowReads)
     }
 
-    private fun pendingSend(messageUri: Uri, parts: Int = 1): RecordingResult {
+    /** A send this test's handler owns; an SMS's [parts] are tracked in the ledger, as [sendSms] does. */
+    private fun pendingSend(messageUri: Uri, parts: Int = 1, markUntrackedSend: Boolean = false): RecordingResult {
         val result = RecordingResult()
+        if (messageUri.authority == "sms") {
+            sendParts = SmsPartLedger.forApp(context).start(42L, parts, markUntrackedSend)
+        }
         handler.awaitResult(
             messageUri,
             OutboundSender.MessageRequestDetails(
@@ -528,16 +907,33 @@ class OutboundSendAckTest {
                 body = "hi",
                 flutterResult = result,
                 messageUri = messageUri,
-            ).apply { sentParts.expectParts(parts) },
+            ),
         )
         return result
     }
 
-    private fun deliverStatusBroadcast(action: String, messageId: Int, messageUri: Uri, resultCode: Int) {
+    /** Part [index] of the [count]-part SMS [pendingSend] started. */
+    private fun part(index: Int = 0, count: Int = 1): SmsPartRef =
+        checkNotNull(sendParts).single { it.index == index }.also { check(it.count == count) }
+
+    /** The SENT broadcast of [part], or of an intent built before parts were tracked when null. */
+    private fun deliverStatusBroadcast(
+        action: String,
+        messageId: Int,
+        messageUri: Uri,
+        resultCode: Int,
+        part: SmsPartRef? = null,
+    ) {
         val intent = Intent(action)
             .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
             .putExtra("messageID", messageId)
             .putExtra("uri", messageUri.toString())
+        if (part != null) {
+            intent.putExtra("partToken", part.token)
+                .putExtra("partRowId", part.rowId)
+                .putExtra("partIndex", part.index)
+                .putExtra("partCount", part.count)
+        }
         context.sendOrderedBroadcast(intent, null, null, null, resultCode, null, null)
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -549,11 +945,29 @@ class OutboundSendAckTest {
      * where Android delivers it only to the manifest receiver; every instance
      * records it the same way, so tests assert the written status, not counts.
      */
-    private fun deliverReport(pdu: ByteArray?) {
+    private fun deliverReport(pdu: ByteArray?, part: SmsPartRef = trackedPart()) {
         val fillIn = Intent()
         if (pdu != null) fillIn.putExtra("pdu", pdu).putExtra("format", SmsMessage.FORMAT_3GPP)
-        smsStatusIntents(context, 42, smsUri).delivered.send(context, Activity.RESULT_OK, fillIn)
+        smsStatusIntents(context, 42, smsUri, part).delivered.send(context, Activity.RESULT_OK, fillIn)
         shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** A delivery report on the intent a send made before parts were tracked. */
+    private fun deliverUntrackedReport(pdu: ByteArray) {
+        context.sendBroadcast(
+            Intent(DELIVEREDSMS_ACTION)
+                .setData(smsUri)
+                .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
+                .putExtra("pdu", pdu)
+                .putExtra("format", SmsMessage.FORMAT_3GPP),
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** Part 0 of the send [pendingSend] started, or of a new one-part send. */
+    private fun trackedPart(): SmsPartRef {
+        if (sendParts == null) sendParts = SmsPartLedger.forApp(context).start(42L, 1)
+        return part()
     }
 
     private class RecordingResult : MethodChannel.Result {
@@ -584,17 +998,26 @@ class OutboundSendAckTest {
      * Single-row message provider; [row] = null models the row being gone,
      * [nullCursor] a provider that returns no cursor at all, and
      * [queryFailure] / [updateFailure] a provider that throws, and
-     * [partQueryFailure] one that throws only for MMS part reads. It records
-     * but ignores selections: what the delivery-report guard admits is tested
-     * as real SQL in [DeliveryReportSelectionTest].
+     * [partQueryFailure] one that throws only for MMS part reads, and
+     * [ignoreWrites] an app without write access (the default-SMS role and
+     * its WRITE_SMS app-op), whose updates the provider ignores. It records
+     * but ignores selections: what the guards admit is tested as real SQL in
+     * [DeliveryReportSelectionTest] and [SentResultSelectionTest].
      */
     class FakeMessageProvider : ContentProvider() {
         var row: Map<String, Any?>? = null
+        var ignoreWrites = false
         var nullCursor = false
         var queryFailure: RuntimeException? = null
         var updateFailure: RuntimeException? = null
         var partQueryFailure: RuntimeException? = null
         var queries = 0
+
+        /**
+         * Reads of the row itself, to build an ack: no projection, unlike a
+         * check of whether an unwritten row still matches its write's guard.
+         */
+        var rowReads = 0
         var updates = 0
         var lastUri: Uri? = null
         var lastValues: ContentValues? = null
@@ -612,6 +1035,7 @@ class OutboundSendAckTest {
             sortOrder: String?,
         ): Cursor? {
             queries++
+            if (projection == null) rowReads++
             queryFailure?.let { throw it }
             if (uri.pathSegments.contains("part")) partQueryFailure?.let { throw it }
             if (nullCursor) return null
@@ -634,7 +1058,7 @@ class OutboundSendAckTest {
             lastSelectionArgs = selectionArgs
             duringUpdate?.invoke()
             updateFailure?.let { throw it }
-            return if (row == null) 0 else 1
+            return if (row == null || ignoreWrites) 0 else 1
         }
 
         override fun getType(uri: Uri): String? = null
