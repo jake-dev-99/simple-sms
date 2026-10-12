@@ -752,10 +752,6 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                     // SmsManager.getDefault() on tablets without telephony.
                     return
                 }
-                // A send needs write access, so earlier status writes the
-                // provider ignored may land now (UNFY-335).
-                OutboxSweeper.onSend(context)
-
                 // SMS-vs-MMS routing lives in [routeMessage] (the long-body
                 // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
                 // hang + orphan-MMS-rows bug — is documented there).
@@ -844,6 +840,12 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                         "providerStateErrors" to e.suppressed.map { it.message },
                     )
                     result.error(code, message, errorDetails)
+                } finally {
+                    // A send needs write access, so earlier status writes the
+                    // provider ignored may land now. Only once this send's row
+                    // is awaited, or failed: a write owed to a deleted message
+                    // whose id it reused must not land on it (UNFY-335).
+                    OutboxSweeper.onSend(context)
                 }
             }
             else -> result.notImplemented()

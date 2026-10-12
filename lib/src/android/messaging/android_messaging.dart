@@ -106,7 +106,7 @@ class AndroidMessaging {
   ///   app lost the default-SMS role or its `WRITE_SMS` app-op), or returned
   ///   no cursor to check whether it did; `details['cause']` describes the
   ///   failure. A write that did not land is retried at the next engine start
-  ///   and before the next send.
+  ///   and as the next send starts.
   ///
   /// For both, `details['sent']` is the carrier result: `true` means the
   /// message went out (don't resend it), `false` that the send failed.

@@ -36,7 +36,7 @@ class OwedRowWritesTest {
     @Before
     fun setUp() {
         provider = Robolectric.buildContentProvider(SqliteSmsProvider::class.java).create("sms").get()
-        provider.db.execSQL("INSERT INTO sms (_id, type) VALUES (1, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX})")
+        provider.db.execSQL("INSERT INTO sms (_id, type, date) VALUES (1, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX}, 1000)")
         provider.ignoreWrites = true
     }
 
@@ -114,6 +114,64 @@ class OwedRowWritesTest {
 
         assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
         assertEquals(Telephony.Sms.STATUS_COMPLETE, provider.status(1))
+    }
+
+    @Test
+    fun anUntiedWrite_isTiedToItsRowWhenRetried_soItNeverLandsOnARowThatReusedTheId() {
+        // Owed while its row couldn't be read (UNFY-335).
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        assertEquals("still ignored", 0, owed().retry(context))
+
+        // Deleted, and its id reused by the app that holds the role now.
+        provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
+        provider.db.execSQL("INSERT INTO sms (_id, type, date) VALUES (1, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX}, 2000)")
+        provider.ignoreWrites = false
+
+        assertEquals(0, owed().retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
+    fun anUntiedWrite_forARowThatIsGone_isDropped() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
+
+        assertEquals(0, owed().retry(context))
+
+        assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
+    fun aRowALiveSendAwaits_isNotRetried() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.ignoreWrites = false
+
+        assertEquals(0, owed().retry(context, skip = setOf(Uri.parse(smsUri(1)))))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+    }
+
+    @Test
+    fun aDeliveryStatus_waitsWhileItsRowsSendResultIsOwed() {
+        provider.db.execSQL(
+            "UPDATE sms SET type = ${Telephony.Sms.MESSAGE_TYPE_FAILED}, " +
+                "error_code = $NO_SENT_RESULT_ERROR_CODE WHERE _id = 1",
+        )
+        owed().owe(sendResultWrite(Uri.parse(smsUri(1)), SENTSMS_ACTION, Activity.RESULT_OK))
+        owed().owe(
+            RowWrite(
+                smsUri(1),
+                RowWriteKind.DELIVERY_STATUS,
+                mapOf(Telephony.Sms.STATUS to Telephony.Sms.STATUS_COMPLETE.toLong()),
+                DELIVERY_REPORT_SELECTION,
+                DELIVERY_REPORT_ARGS.toList(),
+            ),
+        )
+
+        assertEquals("both still ignored", 0, owed().retry(context))
+        assertEquals(2, directory.listFiles()!!.size)
     }
 
     @Test

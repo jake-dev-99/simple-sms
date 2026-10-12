@@ -23,8 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Owed writes go first, so a send the carrier accepted is recorded as sent
  * rather than failed for lack of a result once the app may write again. A row
  * whose owed write still fails is swept like any other, and that write still
- * moves it to sent or failed when it lands. [onSend] retries them before each
- * new send, when the app is likeliest to have write access again.
+ * moves it to sent or failed when it lands. [onSend] retries them as each new
+ * send starts, when the app is likeliest to have write access again.
  */
 internal object OutboxSweeper {
     private const val TAG = "OutboxSweeper"
@@ -53,14 +53,18 @@ internal object OutboxSweeper {
         }
     }
 
-    /** Retries the owed status writes off the main thread, as a send starts. */
+    /**
+     * Retries the owed status writes off the main thread, once a send has
+     * started: its row is then awaited, so no write owed to a deleted message
+     * that reused the row's id lands on it.
+     */
     fun onSend(context: Context) {
         val appContext = context.applicationContext
         if (retryQueued.compareAndSet(false, true)) {
             executor.execute {
                 retryQueued.set(false)
                 try {
-                    retryOwedWrites(appContext)
+                    retryOwedWrites(appContext, SendResultRouter.pendingSends())
                 } catch (e: Exception) {
                     Log.e(TAG, "Retrying the owed status writes failed", e)
                 }
@@ -78,14 +82,14 @@ internal object OutboxSweeper {
      */
     @VisibleForTesting
     internal fun sweepOnce(context: Context, pending: Set<Uri>): Int {
-        retryOwedWrites(context)
+        retryOwedWrites(context, pending)
         val failed = markStaleOutboxFailed(context, pending)
         if (failed > 0) Log.w(TAG, "Marked $failed stale outbox message(s) failed (SENT result lost)")
         return failed
     }
 
-    private fun retryOwedWrites(context: Context) {
-        val landed = OwedRowWrites.forApp(context).retry(context)
+    private fun retryOwedWrites(context: Context, pending: Set<Uri>) {
+        val landed = OwedRowWrites.forApp(context).retry(context, skip = pending)
         if (landed > 0) Log.i(TAG, "Recorded $landed owed status write(s)")
     }
 

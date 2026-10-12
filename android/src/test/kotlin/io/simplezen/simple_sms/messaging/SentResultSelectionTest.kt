@@ -215,6 +215,24 @@ class SentResultSelectionTest {
     }
 
     @Test
+    fun aDeliveryReport_forARowWhoseSendResultIsOwed_waitsForIt() {
+        // Failed for lack of a result, though its result came and is owed:
+        // the delivery status needs the row sent first (UNFY-335).
+        insert(id = 1, type = Telephony.Sms.MESSAGE_TYPE_FAILED, date = 1_000, errorCode = NO_SENT_RESULT_ERROR_CODE)
+        val owed = OwedRowWrites.forApp(context)
+        owed.owe(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK))
+
+        assertEquals(
+            RowWriteOutcome.NOT_APPLICABLE,
+            persistSmsDeliveryStatus(context, smsUri(1), Telephony.Sms.STATUS_COMPLETE),
+        )
+        assertEquals(2, owed.retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, provider.type(1))
+        assertEquals(Telephony.Sms.STATUS_COMPLETE, provider.status(1))
+    }
+
+    @Test
     fun aWriteThatFails_forARowThatIsGone_isNotKept() {
         provider.rowWriteFailure = IllegalStateException("provider down")
 

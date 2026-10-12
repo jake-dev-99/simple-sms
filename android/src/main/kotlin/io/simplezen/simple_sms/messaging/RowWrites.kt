@@ -40,6 +40,7 @@ internal enum class RowWriteKind {
  * @param selectionArgs the guard's arguments.
  * @param final whether it records an outcome nothing later may replace: a
  *   carrier failure, or a failed delivery.
+ * @param tied whether [selection] also names its row's `date` ([tiedTo]).
  */
 @Serializable
 internal data class RowWrite(
@@ -49,6 +50,7 @@ internal data class RowWrite(
     val selection: String,
     val selectionArgs: List<String>,
     val final: Boolean = false,
+    val tied: Boolean = false,
 ) {
     fun contentValues(): ContentValues = ContentValues().apply { values.forEach { (column, value) -> put(column, value) } }
 }
@@ -130,7 +132,16 @@ internal fun recordRowWrite(context: Context, write: RowWrite): RowWriteOutcome 
         oweRowWrite(context, write)
         throw e
     }
-    if (outcome == RowWriteOutcome.IGNORED || outcome == RowWriteOutcome.UNREADABLE) oweRowWrite(context, write)
+    val owe = when (outcome) {
+        RowWriteOutcome.IGNORED, RowWriteOutcome.UNREADABLE -> true
+        // The row is failed for lack of a result while that result is owed:
+        // the report waits for it (see [OwedRowWrites.retry]).
+        RowWriteOutcome.NOT_APPLICABLE ->
+            write.kind == RowWriteKind.DELIVERY_STATUS &&
+                OwedRowWrites.forApp(context).owes(write.uri, RowWriteKind.SEND_RESULT)
+        RowWriteOutcome.WRITTEN -> false
+    }
+    if (owe) oweRowWrite(context, write)
     return outcome
 }
 
@@ -148,7 +159,9 @@ private fun oweRowWrite(context: Context, write: RowWrite) {
         is RowDate.Known -> write.tiedTo(row.date)
     }
     try {
-        OwedRowWrites.forApp(context).owe(owed)
+        if (!OwedRowWrites.forApp(context).owe(owed)) {
+            Log.w(ROW_WRITES_TAG, "${write.uri} already owes a final ${write.kind}; this one is dropped")
+        }
     } catch (e: IOException) {
         Log.e(ROW_WRITES_TAG, "Could not keep the unwritten status write for ${write.uri} to retry", e)
     }
@@ -186,8 +199,11 @@ private fun readRowDate(context: Context, uri: String): RowDate {
  * owed writes when its own next send takes the row, [OwedRowWrites.forget].)
  */
 @VisibleForTesting
-internal fun RowWrite.tiedTo(date: Long): RowWrite =
-    copy(selection = "($selection) AND $DATE_COLUMN = ?", selectionArgs = selectionArgs + date.toString())
+internal fun RowWrite.tiedTo(date: Long): RowWrite = copy(
+    selection = "($selection) AND $DATE_COLUMN = ?",
+    selectionArgs = selectionArgs + date.toString(),
+    tied = true,
+)
 
 private const val DATE_COLUMN = "date"
 
@@ -195,15 +211,16 @@ private const val DATE_COLUMN = "date"
  * Purpose: keeps the send-status writes that did not land on their rows, so
  * they are retried rather than lost (UNFY-335): the provider ignored them
  * (the app lost the default-SMS role or its WRITE_SMS app-op) or failed.
- * Each is tied to its row when its row can be read ([tiedTo]).
+ * Each is tied to its row ([tiedTo]) as soon as the row can be read: when it
+ * is owed, or else when it is next retried.
  *
  * One small file per row and [RowWriteKind], written atomically; a later
  * write of the same kind to the same row replaces the earlier one, unless that
  * one is [RowWrite.final]. Each is retried ([retry]) at every engine start,
- * before the stale-outbox sweep, and before each new send; a row's send
- * result goes before its delivery status, which needs the row sent. One is dropped once it lands, once its row no longer matches its
- * guard, or after [DELIVERY_REPORT_WAIT_MS]. Every access is serialized
- * process-wide.
+ * before the stale-outbox sweep, and after each new send starts; a row's send
+ * result goes before its delivery status, which needs the row sent. One is
+ * dropped once it lands, once its row no longer matches its guard, or after
+ * [DELIVERY_REPORT_WAIT_MS]. Every access is serialized process-wide.
  *
  * @param directory the store's root directory.
  * @param nowMillis the wall clock, compared with the files' modification times.
@@ -218,17 +235,30 @@ internal class OwedRowWrites(
      * Purpose: keeps [write] to retry, in place of any write of its kind owed
      * to its row, unless that one is [RowWrite.final].
      *
+     * @returns whether it was kept: false when a final write is owed instead.
      * @throws IOException when it cannot be written.
      */
-    fun owe(write: RowWrite) {
-        synchronized(LOCK) {
-            if (!directory.isDirectory && !directory.mkdirs()) {
-                throw IOException("Could not create the owed row-write store at $directory")
-            }
-            val target = fileFor(write)
-            if (target.exists() && read(target)?.final == true) return
-            val file = AtomicFile(target)
-            val stream = file.startWrite()
+    fun owe(write: RowWrite): Boolean = synchronized(LOCK) {
+        val target = fileFor(write)
+        if (target.exists() && read(target)?.final == true) return false
+        store(target, write)
+        true
+    }
+
+    /**
+     * Purpose: whether [uri] owes a write of [kind].
+     *
+     * @throws nothing.
+     */
+    fun owes(uri: String, kind: RowWriteKind): Boolean = synchronized(LOCK) { fileFor(Uri.parse(uri), kind).exists() }
+
+    // Writes [write] to [target]; the caller holds LOCK.
+    private fun store(target: File, write: RowWrite) {
+        if (!directory.isDirectory && !directory.mkdirs()) {
+            throw IOException("Could not create the owed row-write store at $directory")
+        }
+        val file = AtomicFile(target)
+        val stream = file.startWrite()
             try {
                 stream.write(json.encodeToString(RowWrite.serializer(), write).toByteArray())
                 file.finishWrite(stream)
@@ -236,22 +266,21 @@ internal class OwedRowWrites(
                 file.failWrite(stream)
                 throw e
             }
-            // Its window runs on this store's clock.
-            file.baseFile.setLastModified(nowMillis())
-        }
+        // Its window runs on this store's clock.
+        file.baseFile.setLastModified(nowMillis())
     }
 
     /**
      * Purpose: forgets every write owed to [uri]: this app's new send has
      * taken the row, so the message they were for is gone.
      *
-     * @throws nothing; a write that can't be deleted is logged.
+     * @throws nothing.
      */
     fun forget(uri: Uri) {
         synchronized(LOCK) {
             RowWriteKind.entries.forEach { kind ->
                 val file = fileFor(uri, kind)
-                if (file.exists() && !file.delete()) Log.e(ROW_WRITES_TAG, "Could not forget ${file.name}")
+                if (file.exists()) AtomicFile(file).delete()
             }
         }
     }
@@ -268,22 +297,27 @@ internal class OwedRowWrites(
     /**
      * Purpose: retries every owed write, dropping each that lands or no
      * longer applies, and each owed for [DELIVERY_REPORT_WAIT_MS] or more.
-     * A write still ignored, or still failing, is kept.
+     * A write still ignored, or still failing, is kept, as is a row's
+     * delivery status while its send result is still owed. One not yet tied
+     * to its row is tied first, or dropped if its row is gone.
      *
      * @param context any context.
+     * @param skip rows a live send awaits: they are that send's now.
      * @returns how many landed.
      * @throws nothing; each failure is logged.
      */
-    fun retry(context: Context): Int {
+    fun retry(context: Context, skip: Set<Uri> = emptySet()): Int {
         val cutoff = nowMillis() - DELIVERY_REPORT_WAIT_MS
         val owed = synchronized(LOCK) { entries() }.sortedBy { (_, write) -> write?.kind?.ordinal ?: -1 }
         var landed = 0
-        for ((file, write) in owed) {
-            if (write == null || file.lastModified() < cutoff) {
-                if (write != null) Log.w(ROW_WRITES_TAG, "Gave up on the status write owed to ${write.uri}")
-                dropIfUnchanged(file, write)
+        for ((file, owedWrite) in owed) {
+            if (owedWrite == null || file.lastModified() < cutoff) {
+                if (owedWrite != null) Log.w(ROW_WRITES_TAG, "Gave up on the status write owed to ${owedWrite.uri}")
+                dropIfUnchanged(file, owedWrite)
                 continue
             }
+            if (Uri.parse(owedWrite.uri) in skip) continue
+            val write = tiedForRetry(context, file, owedWrite) ?: continue
             val outcome = try {
                 applyRowWrite(context, write)
             } catch (e: Exception) {
@@ -295,12 +329,31 @@ internal class OwedRowWrites(
                     landed++
                     dropIfUnchanged(file, write)
                 }
-                RowWriteOutcome.NOT_APPLICABLE -> dropIfUnchanged(file, write)
+                RowWriteOutcome.NOT_APPLICABLE ->
+                    if (write.kind == RowWriteKind.DELIVERY_STATUS && owes(write.uri, RowWriteKind.SEND_RESULT)) {
+                        Log.i(ROW_WRITES_TAG, "The delivery status owed to ${write.uri} waits for its send result")
+                    } else {
+                        dropIfUnchanged(file, write)
+                    }
                 RowWriteOutcome.IGNORED -> Log.w(ROW_WRITES_TAG, "The status write owed to ${write.uri} is still ignored")
                 RowWriteOutcome.UNREADABLE -> Log.w(ROW_WRITES_TAG, "The row owing a status write, ${write.uri}, is unreadable")
             }
         }
         return landed
+    }
+
+    // [write], tied to its row ([tiedTo]) if it was not yet; null, leaving it
+    // for a later retry, while the row can't be read, or after dropping it
+    // when the row is gone.
+    private fun tiedForRetry(context: Context, file: File, write: RowWrite): RowWrite? {
+        if (write.tied) return write
+        return when (val row = readRowDate(context, write.uri)) {
+            RowDate.Gone -> null.also { dropIfUnchanged(file, write) }
+            RowDate.Unknown -> null
+            is RowDate.Known -> write.tiedTo(row.date).also { tied ->
+                synchronized(LOCK) { if (read(file) == write) store(file, tied) }
+            }
+        }
     }
 
     // Each owed file and its write ([read]).
