@@ -714,6 +714,10 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                             ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
                     val recipients = stringList(message["recipients"], "recipients")
                             ?: throw IllegalArgumentException("sendMessage has no recipients")
+                    val correlationId = message["clientCorrelationId"]?.let {
+                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
+                    }
+                    OutboundSendCorrelations(context).requireAttemptCapacity(correlationId)
                     val details =
                             MessageRequestDetails(
                                     threadId =
@@ -729,9 +733,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                                                 ?: throw IllegalArgumentException("subscriptionId must be an int")
                                     },
                                     attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
-                                    clientCorrelationId = message["clientCorrelationId"]?.let {
-                                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
-                                    },
+                                    clientCorrelationId = correlationId,
                                     flutterResult = result,
                             )
                     requestDetails = details

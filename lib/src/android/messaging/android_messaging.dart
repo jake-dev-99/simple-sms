@@ -67,11 +67,16 @@ class AndroidMessaging {
     );
   }
 
+  // Purpose: recover native send identities without matching message content.
   /// Exact persisted queue identities for SMS/MMS provider URIs.
   /// Available without initializing inbound callbacks. No message content.
   /// Requires ReadSms permission to verify that the provider rows still exist.
   /// Deleted attempts are pruned; an unavailable provider fails the lookup
   /// without treating its rows as deleted.
+  /// @param uris Exact SMS/MMS provider row URIs to recover.
+  /// @returns Persisted identities and their latest surviving attempt URIs.
+  /// @throws PlatformException When native verification or persistence fails.
+  /// @throws FormatException When the native reply is missing.
   static Future<Map<String, dynamic>> getSendCorrelations(List<String> uris) async {
     final result = await OutboundMessagingInterop.methodChannel
         .invokeMapMethod<String, dynamic>('getSendCorrelations', uris);
