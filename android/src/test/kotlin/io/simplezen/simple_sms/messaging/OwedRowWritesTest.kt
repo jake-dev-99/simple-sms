@@ -134,6 +134,23 @@ class OwedRowWritesTest {
     }
 
     @Test
+    fun anUntiedWrite_neverLandsOnANewerRowThatTookItsId() {
+        // Owed while its row couldn't be read, then deleted and its id reused
+        // before any retry could tie it (UNFY-335).
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
+        provider.db.execSQL(
+            "INSERT INTO sms (_id, type, date) VALUES (1, ${Telephony.Sms.MESSAGE_TYPE_OUTBOX}, ${now + 60_000})",
+        )
+        provider.ignoreWrites = false
+
+        assertEquals(0, owed().retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
     fun anUntiedWrite_forARowThatIsGone_isDropped() {
         owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
         provider.db.execSQL("DELETE FROM sms WHERE _id = 1")
@@ -184,6 +201,46 @@ class OwedRowWritesTest {
 
         assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
         assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
+    fun aWriteTiedAtARetry_keepsTheWindowOfWhenItWasFirstOwed() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        now += DELIVERY_REPORT_WAIT_MS - 1_000
+        assertEquals("tied, still ignored", 0, owed().retry(context))
+
+        now += 2_000
+        provider.ignoreWrites = false
+
+        assertEquals(0, owed().retry(context))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue(owed().rows().isEmpty())
+    }
+
+    @Test
+    fun aWriteForgottenWhileARetryTiesIt_isNeverApplied() {
+        // This app's new send takes the row while the retry reads it.
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.ignoreWrites = false
+        provider.beforeNextQuery = { owed().forget(Uri.parse(smsUri(1))) }
+
+        assertEquals(0, owed().retry(context))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+        assertTrue("not stored again", owed().rows().isEmpty())
+    }
+
+    @Test
+    fun aWriteReplacedWhileARetryTiesIt_waitsForTheNextRetry() {
+        owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT))
+        provider.ignoreWrites = false
+        provider.beforeNextQuery = { owed().owe(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_FAILED)) }
+
+        assertEquals(0, owed().retry(context))
+        assertEquals("the replaced write is not applied", Telephony.Sms.MESSAGE_TYPE_OUTBOX, provider.type(1))
+
+        assertEquals(1, owed().retry(context))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, provider.type(1))
     }
 
     @Test

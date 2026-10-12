@@ -87,6 +87,9 @@ class DeliveryReportSelectionTest {
         /** Thrown by a write to one row (not a table-wide one), when set. */
         var rowWriteFailure: RuntimeException? = null
 
+        /** Run once, by the next query, before it reads. */
+        var beforeNextQuery: (() -> Unit)? = null
+
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
             execSQL(
                 "CREATE TABLE sms (_id INTEGER PRIMARY KEY, type INTEGER, status INTEGER DEFAULT -1, " +
@@ -117,7 +120,10 @@ class DeliveryReportSelectionTest {
             selection: String?,
             selectionArgs: Array<out String>?,
             sortOrder: String?,
-        ): Cursor? = db.query("sms", projection, rowWhere(uri, selection), selectionArgs, null, null, sortOrder)
+        ): Cursor? {
+            beforeNextQuery?.also { beforeNextQuery = null }?.invoke()
+            return db.query("sms", projection, rowWhere(uri, selection), selectionArgs, null, null, sortOrder)
+        }
 
         override fun getType(uri: Uri): String? = null
 
