@@ -113,7 +113,7 @@ and a **single roll-up PR into `main`** as the review surface. After it
 merges, the **Cut Release** workflow ([`release.yml`](.github/workflows/release.yml),
 manual `workflow_dispatch`) tags the commit, and the resulting tag push
 fires [`deploy.yml`](.github/workflows/deploy.yml) (OIDC pub.dev publish).
-See [`doc/RELEASE.md`](doc/RELEASE.md).
+See [UNFY-345 release procedure](https://linear.app/simple-zen/issue/UNFY-345/repair-plugin-dependency-floors-and-telephony-release-example).
 
 Release validation must resolve the root package and bundled example against
 pub.dev, without `pubspec_overrides.yaml` files. Local sibling builds do not
@@ -123,8 +123,7 @@ so its release is a minor bump; device send/receive regression must pass first.
 Release batches select changed packages and affected dependents. After one manual
 Cut Release dispatch, hourly scheduled runs resume only that frozen batch;
 quota deadlines and completed publications survive runner restarts. Per-package
-hosted validation precedes each dependency-ordered tag. The repository release
-guide links to the Linear execution and recovery procedure.
+hosted validation precedes each dependency-ordered tag. Execution and recovery live in the Linear procedure linked above.
 
 ## What NOT to do (binding rulings)
 
@@ -167,3 +166,12 @@ guide links to the Linear execution and recovery procedure.
 - **Don't commit secrets.**
 - **Don't add app-level concerns** here (GTM, brand, product roadmap) —
   this is a library.
+
+## Release tooling configuration
+
+`tool/release-packages.json` defines package ownership; `release_coordinator.py`
+coordinates frozen batches, dependency gates, and original tag-push Deploy runs.
+The app credentials are `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`;
+`GITHUB_TOKEN` accesses draft journals and Actions recovery. Package tags follow
+`<package>-v<version>`. `PUB_MAX_HTTP_RETRIES=1` leaves quota recovery to the
+coordinator rather than SDK retries. Authored dependency overrides are rejected.
