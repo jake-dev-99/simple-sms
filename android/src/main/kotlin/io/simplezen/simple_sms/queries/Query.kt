@@ -32,6 +32,20 @@ class Query(val context: Context) {
     fun query(query: QueryObj): List<Map<String, Any?>> =
         getCursorData(context, query).map { it.toSortedMap() }
 
+    /**
+     * Like [query], but `null` when the provider returned no cursor, which
+     * is not the same as a query that matched zero rows (UNFY-284).
+     */
+    fun queryOrNull(query: QueryObj): List<Map<String, Any?>>? =
+        ContentQuery.queryOrNull(
+            context,
+            query.contentUri,
+            projection = query.projection?.toTypedArray(),
+            selection = query.selection,
+            selectionArgs = query.selectionArgs?.toTypedArray(),
+            sortOrder = query.sortOrder,
+        )?.map { it.toSortedMap() }
+
     fun getCursorData(context: Context, query: QueryObj): List<Map<String, Any?>> {
         // Delegate to simple_query's ContentQuery helper so Rule 1
         // ("content-provider queries route through simple-query")

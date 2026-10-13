@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
+
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.
 
@@ -39,6 +41,11 @@ return typed results.
 - **Migrates to built-in Kotlin (UNFY-174).** The Android build no longer
   applies the Kotlin Gradle Plugin. Updates the minimum supported SDK version
   to Flutter 3.44/Dart 3.12.
+- **A send whose row can't be read back is `SEND_ACK_FAILED` (UNFY-284).**
+  When the provider returns no cursor on the read-back after a send result,
+  the row may still exist, so `sendMessage` fails with `SEND_ACK_FAILED`
+  (`sent` carries the carrier outcome) instead of `MESSAGE_ROW_MISSING`, which
+  stays for a row that is really gone.
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
   answers only once every part has reported its carrier result, rather than
   as soon as any part reports a failure: failed if any part failed, with the
@@ -112,6 +119,15 @@ return typed results.
 - **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
   object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it
   too, instead of resolving to an empty map.
+- **Conversation-list MMS previews fail loudly on unrecoverable errors
+  (UNFY-253).** `listConversations` and `getConversationByThread` load the
+  latest MMS parts in batches of up to 500 ids. A batch that fails as
+  `unavailable` or `transientFailure` still leaves an empty preview; any
+  other error, including `permissionDenied` and `invalidQuery`, now throws
+  instead of returning the list with empty previews.
+- **Contact lookup by address trims and percent-encodes it (UNFY-253).**
+  An address with `+`, `#`, spaces or `@` now reaches the contacts filter
+  intact, and a blank address returns null without a query.
 
 ## 0.5.1
 

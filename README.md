@@ -251,7 +251,7 @@ implied by a successful build or package dry-run.
 
 The MMS migration preserves the public Dart API and channel contracts, so the
 next release uses a **minor** bump (`0.5.1` to `0.6.0`). The Cut Release workflow
-owns the version and tag; follow [Release flow](doc/RELEASE.md) after the device
+owns the version and tag; follow [release procedure in Linear](https://linear.app/simple-zen/issue/UNFY-345/repair-plugin-dependency-floors-and-telephony-release-example) after the device
 regression and code review pass.
 
 Local sibling overrides validate development sources, not the published

@@ -15,8 +15,8 @@ import '../models/people/mms_participant.dart';
 /// blast radius. LookupService keeps its public API for backward-
 /// compat — every method here is reached via LookupService delegation.
 ///
-/// Future work — `SimpleQuery` injection: deferred until a plugin-
-/// wide DI pass.
+/// **Testing.** Through the `SimpleQueryPlatform` seam documented at
+/// `AttachmentExtractor`; no `SimpleQuery` injection needed.
 
 // File-private content URIs.
 const String _smsUri = 'content://sms';
