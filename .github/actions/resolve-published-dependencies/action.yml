@@ -1,9 +1,9 @@
 name: Resolve published dependencies
 description: >-
   Resolve the root package and bundled example against pub.dev, the
-  dependency graph a published release ships (UNFY-154). Cut Release, the
-  Deploy native build and the Deploy publish all use this action, so they
-  always validate the same graph.
+  dependency graph a published release ships (UNFY-154). The Deploy native
+  build and the Deploy publish both use this action, so the pre-publish gate
+  compiles exactly what is published.
 
 inputs:
   directory:
