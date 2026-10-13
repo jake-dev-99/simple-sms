@@ -105,6 +105,25 @@ class OutboundSendAckTest {
     }
 
     @Test
+    fun rowReadBackWithNoCursor_settlesSendAckFailed_notRowMissing() {
+        // The status write landed; only the read-back returned no cursor, so
+        // the row may still exist (UNFY-284).
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        smsProvider.nullCursorOnRowRead = true
+        val result = pendingSend(smsUri)
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, Activity.RESULT_OK, part())
+
+        assertEquals(1, result.calls)
+        assertNull(result.successPayload)
+        assertEquals(ERR_SEND_ACK_FAILED, result.errorCode)
+        val details = result.errorDetails as Map<*, *>
+        assertEquals(true, details["sent"])
+        assertTrue(details["cause"].toString(), details["cause"].toString().contains("no cursor"))
+        assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
     fun rowMissing_failedSend_reportsSentFalse() {
         smsProvider.row = null
         val result = pendingSend(smsUri)
@@ -1008,6 +1027,7 @@ class OutboundSendAckTest {
         var row: Map<String, Any?>? = null
         var ignoreWrites = false
         var nullCursor = false
+        var nullCursorOnRowRead = false
         var queryFailure: RuntimeException? = null
         var updateFailure: RuntimeException? = null
         var partQueryFailure: RuntimeException? = null
@@ -1038,7 +1058,7 @@ class OutboundSendAckTest {
             if (projection == null) rowReads++
             queryFailure?.let { throw it }
             if (uri.pathSegments.contains("part")) partQueryFailure?.let { throw it }
-            if (nullCursor) return null
+            if (nullCursor || (nullCursorOnRowRead && projection == null)) return null
             val current = row ?: return MatrixCursor(arrayOf("_id"))
             return MatrixCursor(current.keys.toTypedArray()).apply {
                 addRow(current.values.toTypedArray())
