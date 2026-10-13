@@ -13,6 +13,7 @@ import io.flutter.plugin.common.PluginRegistry
 import io.flutter.plugin.common.StandardMethodCodec
 import io.simplezen.simple_sms.device.DestructiveActions
 import io.simplezen.simple_sms.device.DeviceActions
+import io.simplezen.simple_sms.device.DraftActions
 import io.simplezen.simple_sms.messaging.BackgroundEngineManager
 import io.simplezen.simple_sms.messaging.OutboundSender
 import io.simplezen.simple_sms.messaging.OutboxSweeper
@@ -47,6 +48,7 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     internal const val ACTIONS_CHANNEL = "io.simplezen.simple_sms/actions"
     internal const val DESTRUCTIVE_ACTIONS_CHANNEL =
       "io.simplezen.simple_sms/destructive_actions"
+    internal const val DRAFTS_CHANNEL = "io.simplezen.simple_sms/drafts"
 
     /**
      * The "best" binding for plugin-initiated calls into Dart (e.g.
@@ -141,6 +143,9 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
    *   this engine's own [OutboundSender]. Its SENT results reach it through
    *   the manifest receiver and `SendResultRouter` (UNFY-299), so it needs no
    *   Activity either. Each start also queues the stale-outbox sweep.
+   * - The drafts channel lets the hub write native SMS drafts from whichever
+   *   engine handles the draft intent (ADR-0016). Its writes and read-backs
+   *   are blocking provider I/O, so it runs on a background task queue.
    *
    * The destructive channel stays on the Activity engine and
    * BackgroundEngineManager engines only.
@@ -153,6 +158,12 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
     val sender = OutboundSender(appContext)
     outboundSender = sender
     MethodChannel(binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler(sender)
+    MethodChannel(
+      binaryMessenger,
+      DRAFTS_CHANNEL,
+      StandardMethodCodec.INSTANCE,
+      binaryMessenger.makeBackgroundTaskQueue(),
+    ).setMethodCallHandler(DraftActions(appContext))
     OutboxSweeper.onEngineStart(appContext)
   }
 
@@ -164,6 +175,7 @@ class SimpleSmsPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityRes
   internal fun detachEngineChannels(binaryMessenger: BinaryMessenger) {
     MethodChannel(binaryMessenger, ACTIONS_CHANNEL).setMethodCallHandler(null)
     MethodChannel(binaryMessenger, MESSAGING_CHANNEL).setMethodCallHandler(null)
+    MethodChannel(binaryMessenger, DRAFTS_CHANNEL).setMethodCallHandler(null)
     outboundSender?.release()
     outboundSender = null
   }

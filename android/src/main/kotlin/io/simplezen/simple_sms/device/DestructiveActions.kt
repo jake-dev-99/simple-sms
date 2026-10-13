@@ -11,7 +11,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_permissions_android.PermissionDeniedException
 import io.simplezen.simple_permissions_android.PermissionGuards
-import io.simplezen.simple_query.ContentQuery
 
 /**
  * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
@@ -21,15 +20,12 @@ import io.simplezen.simple_query.ContentQuery
  * only messages that arrived during the delete remain); otherwise it fails
  * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
  * its read-backs are blocking provider I/O, so the plugin registers this
- * handler on a background task queue rather than the platform main thread.
+ * handler on a background task queue rather than the platform main thread,
+ * and each delete holds [ProviderWriteLock] so no draft save interleaves.
  */
 class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
         private const val TAG = "DestructiveActions"
-
-        /** The `threads` table view the conversation list reads. */
-        private val SIMPLE_CONVERSATIONS_URI: Uri = Telephony.Threads.CONTENT_URI
-            .buildUpon().appendQueryParameter("simple", "true").build()
 
         private const val SMS_IN_THREAD = "${Telephony.Sms.THREAD_ID} = ?"
         private const val MMS_IN_THREAD = "${Telephony.Mms.THREAD_ID} = ?"
@@ -50,13 +46,15 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     )
                     return
                 }
-                verifiedDelete(
-                    result,
-                    target = "thread $threadId",
-                    mark = { threadSnapshot(threadId) },
-                    delete = { deleteThread(threadId) },
-                    readBack = { snapshot -> readBackThread(threadId, snapshot) },
-                )
+                synchronized(ProviderWriteLock) {
+                    verifiedDelete(
+                        result,
+                        target = "thread $threadId",
+                        mark = { threadSnapshot(threadId) },
+                        delete = { deleteThread(threadId) },
+                        readBack = { snapshot -> readBackThread(threadId, snapshot) },
+                    )
+                }
             }
             "deleteMessage" -> {
                 val args = call.arguments as? Map<*, *>
@@ -77,15 +75,19 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 // A single message has no later arrivals to tell apart, so it
                 // needs no snapshot: any row at its URI survived.
                 val messageUri = ContentUris.withAppendedId(table.contentUri(), messageId)
-                verifiedDelete(
-                    result,
-                    target = "${table.name} message $messageId",
-                    mark = {},
-                    delete = { context.contentResolver.delete(messageUri, null, null) },
-                    readBack = {
-                        DeleteReadBack(survivingRows = queryRows(messageUri, arrayOf(BaseColumns._ID)).size)
-                    },
-                )
+                // Deleting a thread's last message removes the thread, so this
+                // holds the lock a draft save takes too.
+                synchronized(ProviderWriteLock) {
+                    verifiedDelete(
+                        result,
+                        target = "${table.name} message $messageId",
+                        mark = {},
+                        delete = { context.contentResolver.delete(messageUri, null, null) },
+                        readBack = {
+                            DeleteReadBack(survivingRows = queryRows(context, messageUri, arrayOf(BaseColumns._ID)).size)
+                        },
+                    )
+                }
             }
             else -> result.notImplemented()
         }
@@ -210,38 +212,11 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
         uri: Uri,
         selection: String? = null,
         selectionArgs: Array<String>? = null,
-    ): List<RowKey> = queryRows(uri, arrayOf(BaseColumns._ID, DATE), selection, selectionArgs).map { row ->
+    ): List<RowKey> = queryRows(context, uri, arrayOf(BaseColumns._ID, DATE), selection, selectionArgs).map { row ->
         RowKey(
-            id = numeric(row[BaseColumns._ID], BaseColumns._ID, uri)
+            id = providerLong(row[BaseColumns._ID], BaseColumns._ID, uri)
                 ?: throw IllegalStateException("Missing ${BaseColumns._ID} from $uri"),
-            date = numeric(row[DATE], DATE, uri),
+            date = providerLong(row[DATE], DATE, uri),
         )
-    }
-
-    /**
-     * The rows at [uri] matching [selection], read via simple_query's
-     * `queryOrNull`. A null cursor (provider unreachable) throws instead of
-     * reading as zero rows.
-     */
-    private fun queryRows(
-        uri: Uri,
-        projection: Array<String>,
-        selection: String? = null,
-        selectionArgs: Array<String>? = null,
-    ): List<Map<String, Any?>> = ContentQuery.queryOrNull(
-        context,
-        uri.toString(),
-        projection = projection,
-        selection = selection,
-        selectionArgs = selectionArgs,
-    ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
-
-    /** [value] as a Long (providers may return numbers as text); null stays null. */
-    private fun numeric(value: Any?, column: String, uri: Uri): Long? = when (value) {
-        null -> null
-        is Number -> value.toLong()
-        is String -> value.toLongOrNull()
-            ?: throw IllegalStateException("Non-numeric $column \"$value\" from $uri")
-        else -> throw IllegalStateException("Non-numeric $column $value from $uri")
     }
 }

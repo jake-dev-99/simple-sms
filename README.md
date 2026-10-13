@@ -153,6 +153,31 @@ updated. Retrying the same action safely sets the requested flags again.
 The explicit read/unread method pairs provide the symmetric API. Existing
 `markMessageAsRead` and `markConversationAsRead` callers remain supported.
 
+### Save or discard SMS drafts
+
+The Android SMS store holds a thread's draft as its single `MESSAGE_TYPE_DRAFT`
+row. These methods write that row. Like deletes, they require the
+`DefaultSmsApp` role and read the result back before resolving.
+
+```dart
+// Thread IDs are native thread IDs; the thread must already exist.
+final draftId = await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'See you at 6');
+
+// On a multi-SIM device, store the draft on the conversation's SIM.
+await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'See you at 6', subscriptionId: 2);
+
+// discarded, or alreadyAbsent when the thread had no draft.
+final result = await AndroidDraftAction.discardSmsDraft('123');
+```
+
+A save updates the thread's draft in place, so its `_id` stays the same across
+saves, and deletes any extra draft rows another app left. The body must not be
+blank; discard to clear a draft. Discarding the draft of a thread that holds
+no other message also removes the thread, as Android does for any delete. A
+write that can't be verified throws
+`DraftWriteFailedException` with a `DraftWriteFailureReason`. SMS text drafts
+only; MMS drafts are not supported yet.
+
 ### Background message handling
 
 When your app is the default SMS app, messages arrive even when the app is killed. Define a top-level entrypoint:

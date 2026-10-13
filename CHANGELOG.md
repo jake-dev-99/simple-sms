@@ -25,6 +25,22 @@ return typed results.
 
 ### Added
 
+- **Native SMS draft writes (UNFY-213, ADR-0016).** `AndroidDraftAction`
+  saves (`saveSmsDraft`) or discards (`discardSmsDraft`) the single
+  `MESSAGE_TYPE_DRAFT` row of an existing thread on a new
+  `io.simplezen.simple_sms/drafts` channel, registered on every engine and run
+  on a background task queue. A save updates the thread's newest draft in
+  place, deletes any other draft rows, or inserts one, and resolves to the
+  draft's native `_id`. An optional `subscriptionId` stores the draft on the
+  conversation's SIM. A discard resolves to `DraftDiscardResult.discarded`
+  or `alreadyAbsent`. Both require the default-SMS role and read the thread's
+  drafts back before resolving. Draft writes and deletes are serialized
+  across engines, so a thread delete can't race a draft save. A write that can't be verified throws
+  `DraftWriteFailedException` carrying a `DraftWriteFailureReason`
+  (`notDefaultSmsApp`, `threadNotFound`, `draftWriteFailed`,
+  `draftWriteIncomplete`, `verifyFailed`, `invalidArgument`). SMS text drafts
+  only.
+
 - **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart. An indexed SQLite registry in Android's no-backup directory avoids whole-registry XML rewrites and prevents cloud backup/device transfer from restoring device-specific row IDs. Metadata contains no message content or recipient addresses; the exact provider `date` is retained only to verify row generation, never to discover or match a logical send. Unreleased XML metadata is not imported because it lacks a verified generation and device-local provenance.
   Correlated sends and recovery require `ReadSms` for provider-generation verification. Recording an uncorrelated send clears prior identity at its URI. Recovery prunes absent or generation-changed rows, preserving a job's surviving attempts in recorded order; provider unavailability fails without pruning identities.
   All recipient rows from one native MMS request share an attempt identity. Each surviving row of the latest attempt returns itself as `latestMessageUri`; rows from earlier retries return a surviving row of the latest attempt. Consumers comparing `latestMessageUri` with the requested URI therefore retain every current recipient row.
