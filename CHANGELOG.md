@@ -36,6 +36,9 @@ return typed results.
 
 ### Changed
 
+- **Migrates to built-in Kotlin (UNFY-174).** The Android build no longer
+  applies the Kotlin Gradle Plugin. Updates the minimum supported SDK version
+  to Flutter 3.44/Dart 3.12.
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
   answers only once every part has reported its carrier result, rather than
   as soon as any part reports a failure: failed if any part failed, with the

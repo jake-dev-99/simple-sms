@@ -27,7 +27,6 @@ rootProject.allprojects {
 
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20"
     // id("dev.flutter.flutter-gradle-plugin")
 }
@@ -38,10 +37,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_21.toString()
     }
 
     defaultConfig {
@@ -74,6 +69,16 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+    }
+}
+
+// Built-in Kotlin (UNFY-174): this module doesn't apply KGP. The host app
+// compiles its Kotlin with AGP 9's built-in Kotlin or, where that is off
+// (AGP < 9 or android.builtInKotlin=false), with the KGP that the Flutter
+// Gradle Plugin (3.44+) applies.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
 
