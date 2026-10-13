@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentUris
 import android.content.ContentValues
@@ -8,6 +9,7 @@ import android.content.Intent
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Looper
 import android.provider.Telephony
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -118,6 +120,35 @@ class MmsDeliveryReportsTest {
         push(deliveryInd("mid-1", "+15550000001/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED))
 
         assertTrue(Uri.parse("content://mms/1") in shadowOf(context.contentResolver).notifiedUris.map { it.uri })
+    }
+
+    @Test
+    fun aWapPushReport_isRecordedOffTheMainThread() {
+        mms.sent(id = 1, messageId = "mid-1", recipients = listOf("5550000001"))
+
+        context.sendBroadcast(
+            Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION)
+                .setComponent(ComponentName(context, InboundMmsHandler::class.java))
+                .setType("application/vnd.wap.mms-message")
+                .putExtra("data", deliveryInd("mid-1", "+15550000001/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED)),
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+        // The receiver hands the report to its executor and returns.
+        val deadline = System.currentTimeMillis() + 10_000
+        while (mms.status(1) == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+
+        assertEquals(PduHeaders.STATUS_RETRIEVED, mms.status(1))
+    }
+
+    @Test
+    fun e164Comparison_matchesFullNumbersOnly() {
+        // Android 11's loose comparison may match on trailing digits alone.
+        assertTrue(isSameE164Number("+16502530000", "650-253-0000", "US"))
+        assertTrue(isSameE164Number("+44 20 7183 8750", "+442071838750", "US"))
+        assertFalse(isSameE164Number("+442071838750", "+12121838750", "US"))
+        // Without a country (or a number with no valid E.164 form), only the digits count.
+        assertFalse(isSameE164Number("+16502530000", "6502530000", ""))
+        assertTrue(isSameE164Number("555-000-0001", "5550000001", ""))
     }
 
     @Test
@@ -289,6 +320,28 @@ class MmsDeliveryReportsTest {
     }
 
     @Test
+    fun aRoamingGroupWhoseSendResultIsOwed_isMatchedInItsSimsCountry() {
+        val telephony = context.getSystemService(TelephonyManager::class.java)
+        shadowOf(telephony).setNetworkCountryIso("mx")
+        val usSim = Shadow.newInstanceOf(TelephonyManager::class.java)
+        shadowOf(usSim).setSimCountryIso("us")
+        shadowOf(telephony).setTelephonyManagerForSubscriptionId(2, usSim)
+        mms.row(id = 1, messageId = null, type = PduHeaders.MESSAGE_TYPE_SEND_REQ, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, subscriptionId = 2)
+        mms.recipients(1, listOf("5550000001", "5550000002"))
+        mms.ignoreWrites = true
+        recordSendResult(
+            context, 1, Uri.parse("content://mms/1"), SENTMMS_ACTION, "test", android.app.Activity.RESULT_OK, "mid-1",
+        )
+
+        push(deliveryInd("mid-1", "+15550000001/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED))
+        push(deliveryInd("mid-1", "+15550000002/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED))
+        mms.ignoreWrites = false
+        OwedRowWrites.forApp(context).retry(context)
+
+        assertEquals(PduHeaders.STATUS_RETRIEVED, mms.status(1))
+    }
+
+    @Test
     fun rowNotInTheSentBox_isNotWritten() {
         mms.row(id = 1, messageId = "mid-1", type = PduHeaders.MESSAGE_TYPE_SEND_REQ, box = Telephony.Mms.MESSAGE_BOX_OUTBOX)
         mms.recipients(1, listOf("5550000001"))
@@ -305,13 +358,10 @@ class MmsDeliveryReportsTest {
         }
     }
 
+    // Records a DeliveryInd as [InboundMmsHandler] does, on this thread; the
+    // receiver's own hand-off is pinned by [aWapPushReport_isRecordedOffTheMainThread].
     private fun push(pdu: ByteArray) {
-        InboundMmsHandler().onReceive(
-            context,
-            Intent(Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION)
-                .setType("application/vnd.wap.mms-message")
-                .putExtra("data", pdu),
-        )
+        recordMmsDeliveryReport(context, PduParser(pdu, true).parse() as DeliveryInd)
     }
 
     /** A minimal SQLite-backed `mms` provider: `pdu` rows, and each row's `addr` rows. */

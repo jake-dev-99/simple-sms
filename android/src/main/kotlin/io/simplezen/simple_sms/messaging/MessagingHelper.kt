@@ -109,9 +109,10 @@ internal fun formatNumber(context: Context, number: String): String? {
 }
 
 /**
- * Whether [searchNum] is the same phone number as any of [numVals]: on
- * Android 12 (S) and later read in [region] (an ISO country; the network's
- * when null), before that by [PhoneNumberUtils.compare].
+ * Whether [searchNum] is the same phone number as any of [numVals], each
+ * read in [region] (an ISO country; the network's when null): on Android 12
+ * (S) and later by [PhoneNumberUtils.areSamePhoneNumber], before that by
+ * [isSameE164Number].
  */
 internal fun compareNumbers(
     context: Context,
@@ -126,8 +127,24 @@ internal fun compareNumbers(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PhoneNumberUtils.areSamePhoneNumber(num, searchNum, country)
         } else {
-            PhoneNumberUtils.compare(context, num, searchNum)
+            isSameE164Number(num, searchNum, country)
         }
     }
     return matched.contains(true)
+}
+
+/**
+ * Whether [a] and [b] are the same full phone number in [country]: their
+ * E.164 forms match, or, when either has none, their digits do. Android 11's
+ * [PhoneNumberUtils.compare] may match on trailing digits alone, which would
+ * take two distinct international numbers for one.
+ */
+internal fun isSameE164Number(a: String, b: String, country: String): Boolean {
+    val e164A = PhoneNumberUtils.formatNumberToE164(a, country)
+    val e164B = PhoneNumberUtils.formatNumberToE164(b, country)
+    return if (e164A != null && e164B != null) {
+        e164A == e164B
+    } else {
+        PhoneNumberUtils.normalizeNumber(a) == PhoneNumberUtils.normalizeNumber(b)
+    }
 }

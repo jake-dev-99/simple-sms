@@ -171,8 +171,16 @@ class InboundMmsHandler() : BroadcastReceiver() {
         val notification = when (val parsed = PduParser(pdu, true).parse()) {
             is NotificationInd -> parsed
             is DeliveryInd -> {
-                // The report for an MMS this app sent (UNFY-110).
-                recordMmsDeliveryReport(context, parsed)
+                // The report for an MMS this app sent (UNFY-110). Its provider
+                // and ledger I/O runs off the main thread, like a download.
+                val pendingResult = goAsync()
+                sharedExecutor.execute {
+                    try {
+                        recordMmsDeliveryReport(context, parsed)
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
                 return
             }
             else -> {

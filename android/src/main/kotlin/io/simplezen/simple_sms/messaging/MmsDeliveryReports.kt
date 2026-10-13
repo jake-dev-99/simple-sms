@@ -195,6 +195,21 @@ private fun mmsRecipients(context: Context, rowId: Long, region: String?): List<
 }
 
 /**
+ * The SIM subscription recorded on the MMS row at [uri], or null when it
+ * names none or cannot be read (logged): its recipients are then read in the
+ * network's country ([mmsRecipientRegion]).
+ */
+private fun rowSubscriptionId(context: Context, uri: Uri): Int? {
+    val rows = try {
+        ContentQuery.queryOrNull(context, uri.toString(), arrayOf(Telephony.Mms.SUBSCRIPTION_ID))
+    } catch (e: Exception) {
+        Log.e(TAG, "Could not read the subscription of $uri", e)
+        return null
+    }
+    return (rows?.firstOrNull()?.get(Telephony.Mms.SUBSCRIPTION_ID) as? Long)?.toInt()
+}
+
+/**
  * Purpose: records an M-Delivery.ind on the sent MMS it names. A report
  * without a verdict, without a message id, or for no sent MMS this device
  * holds, changes nothing; nor does one that waits on other recipients, or
@@ -248,7 +263,7 @@ internal fun recordMmsDeliveryReport(context: Context, report: DeliveryInd) {
     // names one message, so a row that carries it owes no such write.
     if (rowSubscriptions.isEmpty()) {
         OwedRowWrites.forApp(context).rowsOwingMmsMessageId(messageId).forEach {
-            rowSubscriptions[ContentUris.parseId(it)] = null
+            rowSubscriptions[ContentUris.parseId(it)] = rowSubscriptionId(context, it)
         }
     }
     if (rowSubscriptions.isEmpty()) {
