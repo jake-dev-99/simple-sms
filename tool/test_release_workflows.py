@@ -29,6 +29,13 @@ def shell_step(name, step_name):
     raise AssertionError('Missing workflow step: ' + step_name)
 
 
+RESOLVE_ACTION = 'resolve-published-dependencies'
+
+
+def action(name):
+    return yaml.load((ROOT / '.github/actions' / name / 'action.yml').read_text(), Loader=yaml.BaseLoader)
+
+
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -48,6 +55,11 @@ class WorkflowTest(unittest.TestCase):
     def step(self, workflow_name, name, cwd=None):
         return subprocess.run(['bash', '-euo', 'pipefail', '-c', shell_step(workflow_name, name)],
                               cwd=cwd or self.root, env=self.env, text=True, capture_output=True)
+
+    def action_step(self, name, cwd):
+        run = action(name)['runs']['steps'][0]['run']
+        return subprocess.run(['bash', '-euo', 'pipefail', '-c', run], cwd=cwd, env=self.env,
+                              text=True, capture_output=True)
 
     def route(self):
         self.fake('python3', '#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
@@ -85,6 +97,10 @@ class WorkflowTest(unittest.TestCase):
                     if 'run' in step:
                         result = subprocess.run(['bash', '-n'], input=step['run'], text=True, capture_output=True)
                         self.assertEqual(result.returncode, 0, str(file)+': '+result.stderr)
+        for file in (ROOT / '.github/actions').glob('*/action.yml'):
+            for step in yaml.load(file.read_text(), Loader=yaml.BaseLoader)['runs']['steps']:
+                result = subprocess.run(['bash', '-n'], input=step['run'], text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, str(file)+': '+result.stderr)
 
     def test_deploy_disables_sdk_retries_so_coordinator_owns_cooldown(self):
         self.assertEqual(workflow('deploy.yml')['jobs']['publish']['env']['PUB_MAX_HTTP_RETRIES'], '1')
@@ -95,6 +111,25 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("github.event_name != 'push'", steps['Validate publish (dry run)']['if'])
         self.assertEqual(steps['Validate publish (dry run)']['run'], 'flutter pub publish --dry-run')
 
+    def test_deploy_native_build_and_publish_share_published_dependency_resolution(self):
+        jobs = workflow('deploy.yml')['jobs']
+        uses = {name: [step['uses'] for step in jobs[name]['steps'] if RESOLVE_ACTION in step.get('uses', '')]
+                for name in ('native-build', 'publish')}
+        # Local action paths resolve from the workspace root, not a checkout `path:`.
+        self.assertEqual(uses['native-build'], ['./simple-sms/.github/actions/' + RESOLVE_ACTION])
+        self.assertEqual(uses['publish'], ['./.github/actions/' + RESOLVE_ACTION])
+        native = next(step for step in jobs['native-build']['steps'] if RESOLVE_ACTION in step.get('uses', ''))
+        self.assertEqual(native['with'], {'directory': 'simple-sms'})
+        # Resolve before anything that compiles or uploads.
+        for name, before in (('native-build', 'Compile native side (debug APK)'), ('publish', 'Publish')):
+            names = [step.get('name') for step in jobs[name]['steps']]
+            self.assertLess(names.index('Resolve published dependencies'), names.index(before), name)
+
+    def test_deploy_native_build_does_not_check_out_sibling_repositories(self):
+        for job in ('native-build', 'publish'):
+            for step in workflow('deploy.yml')['jobs'][job]['steps']:
+                self.assertNotIn('repository', step.get('with', {}), job + ': ' + step.get('name', ''))
+
     def test_deploy_removes_overrides_before_hosted_resolution(self):
         package = self.root / 'package'
         package.mkdir()
@@ -102,14 +137,25 @@ class WorkflowTest(unittest.TestCase):
         (package / 'pubspec_overrides.yaml').write_text('dependency_overrides: {}\n')
         example = package / 'example'; example.mkdir()
         (example / 'pubspec_overrides.yaml').write_text('dependency_overrides: {}\n')
+        (self.root / 'calls').write_text('')
         self.fake('flutter', '''#!/usr/bin/env bash
 if [ -n "$(find . -name pubspec_overrides.yaml -type f -print -quit)" ]; then exit 91; fi
 if [ "$1 $2" != 'pub get' ]; then exit 92; fi
+echo "$PWD $*" >> "''' + str(self.root / 'calls') + '''"
 ''')
-        result = self.step('deploy.yml', 'Install dependencies', package)
+        result = self.action_step(RESOLVE_ACTION, package)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((package / 'pubspec_overrides.yaml').exists())
         self.assertFalse((example / 'pubspec_overrides.yaml').exists())
+        # Root without its example, then the example, both against hosted packages.
+        self.assertEqual((self.root / 'calls').read_text().splitlines(),
+                         [str(package.resolve()) + ' pub get --no-example', str(example.resolve()) + ' pub get'])
+
+    def test_resolve_action_tolerates_missing_override_files(self):
+        package = self.root / 'package'
+        (package / 'example').mkdir(parents=True)
+        self.fake('flutter', '#!/usr/bin/env bash\n')
+        self.assertEqual(self.action_step(RESOLVE_ACTION, package).returncode, 0)
 
     def test_actual_cli_preview_uses_source_graph_and_leaves_remote_untouched(self):
         fixture = fixtures.CoordinatorTest()

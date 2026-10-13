@@ -1,0 +1,27 @@
+name: Resolve published dependencies
+description: >-
+  Resolve the root package and bundled example against pub.dev, the
+  dependency graph a published release ships (UNFY-154). The Deploy native
+  build and the Deploy publish both use this action, so the pre-publish gate
+  compiles exactly what is published.
+
+inputs:
+  directory:
+    description: >-
+      Package root to resolve. Its tracked, development-only
+      pubspec_overrides.yaml files are deleted (.pubignore keeps them out of
+      the published package), so it must be a disposable checkout.
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Remove dev overrides and resolve against pub.dev
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      run: |
+        set -euo pipefail
+        rm -f pubspec_overrides.yaml example/pubspec_overrides.yaml
+        flutter pub get --no-example
+        (cd example && flutter pub get)

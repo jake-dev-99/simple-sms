@@ -10,8 +10,9 @@
 .svn/
 migrate_working_dir/
 # Ignore ad-hoc .github content (local scratch, Copilot notes) but
-# track workflows + issue templates since those drive CI/CD.
+# track workflows, composite actions + issue templates since those drive CI/CD.
 .github/*
+!.github/actions/
 !.github/workflows/
 !.github/ISSUE_TEMPLATE/
 *.bin

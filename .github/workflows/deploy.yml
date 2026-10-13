@@ -17,6 +17,7 @@ on:
   # Manual dispatch remains for inspection/validation. Pub.dev automated upload
   # requires the original tag-push event: recover through Cut Release resume or
   # Re-run failed jobs on that original run. Never move/delete a package tag.
+  # Tags cut before UNFY-154 lack .github/actions/ and cannot be dispatched.
   workflow_dispatch:
     inputs:
       tag:
@@ -102,34 +103,9 @@ jobs:
           ref: ${{ needs.resolve-tag.outputs.ref }}
           path: simple-sms
 
-      # Sibling plugins below (simple-permissions, simple-query) are checked
-      # out at `ref: main` — an ACCEPTED non-hermeticity tradeoff (UNFY-189),
-      # captured here so it stays a deliberate decision rather than a silent
-      # one. The job builds against the siblings' moving `main`, not a
-      # coordinated revision, so a sibling push can flip this repo's CI with
-      # no change here. Acknowledged when the native gate was scoped. If
-      # sibling-drift flakiness becomes a real cost, tighten across all three
-      # workflows (verify-native.yml / verify.yml / deploy.yml) to pinned
-      # revisions (pubspec.lock / pubspec_overrides) or release tags.
       - name: Verify first-party MMS source and resources
         working-directory: simple-sms
         run: ./scripts/verify_mms_migration.sh
-
-      - name: Checkout simple-permissions (sibling dep)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-          repository: jake-dev-99/simple-permissions
-          ref: main
-          path: simple-permissions
-
-      - name: Checkout simple-query (sibling dep)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-          repository: jake-dev-99/simple-query
-          ref: main
-          path: simple-query
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
@@ -194,9 +170,14 @@ jobs:
           BUILD_TOOLS: ${{ steps.android-sdk.outputs.build_tools }}
         run: printf 'y\n%.0s' $(seq 50) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}"
 
-      - name: Resolve example app deps
-        working-directory: simple-sms/example
-        run: flutter pub get
+      - name: Resolve published dependencies
+        # Sibling plugins (simple_permissions_*, simple_query_*) resolve from
+        # their immutable pub.dev releases, the graph `publish` below ships
+        # and consumers of this tag receive, not a moving sibling `main`
+        # (UNFY-154). Local action paths resolve from the workspace root.
+        uses: ./simple-sms/.github/actions/resolve-published-dependencies
+        with:
+          directory: simple-sms
 
       - name: Compile native side (debug APK)
         working-directory: simple-sms/example
@@ -261,13 +242,8 @@ jobs:
             exit 1
           fi
 
-      - name: Install dependencies
-        # These development-only files are excluded by .pubignore. Resolving
-        # without them verifies the root and bundled example against pub.dev.
-        run: |
-          rm pubspec_overrides.yaml example/pubspec_overrides.yaml
-          flutter pub get --no-example
-          (cd example && flutter pub get)
+      - name: Resolve published dependencies
+        uses: ./.github/actions/resolve-published-dependencies
 
       - name: Publish
         # Flutter sets FLUTTER_ROOT for pub's SDK dependency validation.
