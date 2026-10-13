@@ -3,6 +3,7 @@ export 'src/android/android.dart';
 export 'src/android/messaging/android_messaging.dart';
 export 'src/android/messaging/action.dart';
 export 'src/android/messaging/destructive_action.dart';
+export 'src/android/messaging/draft_action.dart';
 // Permissions + default-SMS role management moved to simple_permissions_native;
 // imports of AndroidPermissions / Intention / PermissionsEnums should switch
 // to `package:simple_permissions_native/simple_permissions_native.dart`.
@@ -41,6 +42,7 @@ export 'src/android/models/conversations/mms_sms_simple_conversations.dart';
 export 'src/android/models/enums/contact_enums.dart';
 export 'src/android/models/enums/sms_mms_enums.dart';
 export 'src/android/models/enums/delete_result.dart';
+export 'src/android/models/enums/draft_result.dart';
 
 // Models - Filters (typed list-API inputs)
 export 'src/android/models/filters/sort_direction.dart';

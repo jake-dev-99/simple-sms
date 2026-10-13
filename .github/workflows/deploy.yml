@@ -14,19 +14,9 @@ on:
   push:
     tags:
       - 'simple_sms_native-v*'
-  # Manual re-fire for an existing tag — e.g. transient pub.dev
-  # outage swallowed the original tag-push run, or an OIDC config
-  # was fixed and the publish needs to be retried against the same
-  # tag.
-  #
-  # Caveat: workflow_dispatch's OIDC token claims `ref` as the
-  # branch the workflow was launched from (typically `main`), not
-  # the tag. pub.dev's automated-publishing binding validates the
-  # `ref` claim against the configured tag pattern, so a manual
-  # re-fire MAY be rejected at the OIDC handshake even though the
-  # checkout step operates on the tag. If a re-fire fails with
-  # OAuth-fallback, the path forward is to delete + re-cut the tag
-  # via the "Cut Release" workflow rather than re-firing this manually.
+  # Manual dispatch remains for inspection/validation. Pub.dev automated upload
+  # requires the original tag-push event: recover through Cut Release resume or
+  # Re-run failed jobs on that original run. Never move/delete a package tag.
   workflow_dispatch:
     inputs:
       tag:
@@ -223,6 +213,9 @@ jobs:
         run: ./gradlew :simple_sms_native:testDebugUnitTest --console=plain --no-daemon --stacktrace
 
   publish:
+    # A 429 reaches the durable coordinator immediately; never retry inside pub.
+    env:
+      PUB_MAX_HTTP_RETRIES: '1'
     # Gated on the native build: don't publish a version to pub.dev that
     # doesn't compile / fails its JVM unit tests.
     needs: [resolve-tag, native-build]
@@ -279,5 +272,13 @@ jobs:
       - name: Publish
         # Flutter sets FLUTTER_ROOT for pub's SDK dependency validation.
         # setup-dart has already registered the temporary pub.dev credential.
+        # Only the original tag-push event uploads; see workflow_dispatch above.
         timeout-minutes: 2
+        if: github.event_name == 'push'
         run: flutter pub publish --force
+
+      - name: Validate publish (dry run)
+        # Manual dispatch inspects the tag without uploading.
+        timeout-minutes: 2
+        if: github.event_name != 'push'
+        run: flutter pub publish --dry-run

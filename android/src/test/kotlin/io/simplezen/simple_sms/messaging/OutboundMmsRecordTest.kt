@@ -21,6 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.shadows.ShadowLooper
@@ -51,6 +52,28 @@ class OutboundMmsRecordTest {
     }
 
     @Test
+    fun successfulSendRecordsTheMmscMessageIdWithItsResult() {
+        // In the same write as the box, so the delivery report finds the row
+        // exactly when it is sent (UNFY-110).
+        verifyOutcome(
+            Activity.RESULT_OK,
+            Telephony.Mms.MESSAGE_BOX_SENT,
+            sendConf = MmsDeliveryReportsTest.sendConf(messageId = "mid-9001"),
+            expectedMessageId = "mid-9001",
+        )
+    }
+
+    @Test
+    fun failedSendRecordsNoMessageId() {
+        verifyOutcome(
+            SmsManager.MMS_ERROR_IO_ERROR,
+            Telephony.Mms.MESSAGE_BOX_FAILED,
+            sendConf = MmsDeliveryReportsTest.sendConf(messageId = "mid-9001"),
+            expectedMessageId = null,
+        )
+    }
+
+    @Test
     fun mmsResultDoesNotConsumeAnSmsRequestWithTheSameNumericId() {
         verifyOutcome(Activity.RESULT_OK, Telephony.Mms.MESSAGE_BOX_SENT, concurrentSms = true)
     }
@@ -63,9 +86,20 @@ class OutboundMmsRecordTest {
         markPersistedSendFailed(context, Uri.parse("content://mms/9001"))
         assertEquals(Telephony.Mms.MESSAGE_BOX_FAILED, provider.row.getAsInteger("msg_box"))
         assertEquals(1, provider.updates)
+        // Watchers of content://mms hear of it (UNFY-110).
+        assertTrue(
+            Uri.parse("content://mms/9001") in
+                Shadows.shadowOf(context.contentResolver).notifiedUris.map { it.uri },
+        )
     }
 
-    private fun verifyOutcome(resultCode: Int, expectedBox: Int, concurrentSms: Boolean = false) {
+    private fun verifyOutcome(
+        resultCode: Int,
+        expectedBox: Int,
+        concurrentSms: Boolean = false,
+        sendConf: ByteArray? = null,
+        expectedMessageId: String? = null,
+    ) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val provider = MmsRecordProvider()
         ShadowContentResolver.registerProviderInternal("mms", provider)
@@ -94,14 +128,21 @@ class OutboundMmsRecordTest {
                 Intent(SENTMMS_ACTION)
                     .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
                     .putExtra("messageID", 9001)
-                    .putExtra("uri", "content://mms/9001"),
+                    .putExtra("uri", "content://mms/9001")
+                    .putExtra(SmsManager.EXTRA_MMS_DATA, sendConf),
                 null, null, null, resultCode, null, null,
             )
             ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
             assertEquals(expectedBox, provider.row.getAsInteger("msg_box"))
             assertFalse("a send result never writes the delivery status", "st" in provider.writtenKeys)
+            assertEquals(expectedMessageId, provider.row.getAsString("m_id"))
             assertEquals(1, provider.updates)
+            assertTrue(
+                "watchers of content://mms hear of the result (UNFY-110)",
+                Uri.parse("content://mms/9001") in
+                    Shadows.shadowOf(context.contentResolver).notifiedUris.map { it.uri },
+            )
             assertEquals(1, result.successes.size)
             val returned = JSONObject(result.successes.single() as String)
             assertEquals(9001, returned.getInt("_id"))

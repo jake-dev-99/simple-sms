@@ -41,11 +41,11 @@ enum MessageDeliveryState {
   sent,
 
   /// Delivered (inbound rows are delivered-by-definition; outbound rows with
-  /// a delivery-ind, or an SMS delivery report of `complete`, are promoted
-  /// here).
+  /// a delivery report saying the recipient got them — SMS `complete`, MMS
+  /// `retrieved` or `forwarded` — are promoted here).
   delivered,
 
-  /// The send failed (SMS `failed` type; MMS `msg_box = failed`), or an SMS
+  /// The send failed (SMS `failed` type; MMS `msg_box = failed`), or a
   /// delivery report said the recipient never received it.
   failed,
 
@@ -245,7 +245,7 @@ class NormalizedMessage {
       threadId: mms.threadId,
       channel: SmsMmsType.mms,
       direction: _mmsDirection(mms.type),
-      deliveryState: _mmsDeliveryState(mms.type, mms.messageBox),
+      deliveryState: _mmsDeliveryState(mms.type, mms.messageBox, mms.status),
       body: body,
       sender: sender,
       recipients: recipients,
@@ -399,14 +399,33 @@ MessageDirection _mmsDirection(MmsMessageType? type) {
   }
 }
 
-MessageDeliveryState _mmsDeliveryState(MmsMessageType? type, MessageBox? box) {
+MessageDeliveryState _mmsDeliveryState(
+  MmsMessageType? type,
+  MessageBox? box,
+  AndroidMessageStatus? status,
+) {
   // The PDU `m_type` is the immutable header (`SEND_REQ` for every outbound
   // MMS) and can't represent a send failure — that only shows in `msg_box`.
   // So a failed box overrides the type-derived state (UNFY-178).
   if (box == MessageBox.failed) return MessageDeliveryState.failed;
-  // SEND_REQ describes the PDU, while msg_box records the send outcome.
+  // SEND_REQ describes the PDU, while msg_box records the send outcome and
+  // `st` its recipients' delivery reports (UNFY-110): `failed` means no
+  // recipient will get it. Without a verdict the row stays sent.
   if (box == MessageBox.sent && type == MmsMessageType.sendRequest) {
-    return MessageDeliveryState.sent;
+    return switch (status) {
+      AndroidMessageStatus.retrieved ||
+      AndroidMessageStatus.forwarded =>
+        MessageDeliveryState.delivered,
+      AndroidMessageStatus.expired ||
+      AndroidMessageStatus.rejected ||
+      AndroidMessageStatus.unreachable =>
+        MessageDeliveryState.failed,
+      AndroidMessageStatus.deferred ||
+      AndroidMessageStatus.unrecognized ||
+      AndroidMessageStatus.indeterminate ||
+      null =>
+        MessageDeliveryState.sent,
+    };
   }
   switch (type) {
     case MmsMessageType.sendRequest:

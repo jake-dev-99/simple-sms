@@ -124,8 +124,8 @@ class AndroidMessaging {
   /// - `SEND_ACK_FAILED`: the provider threw while recording the result or
   ///   reading the row back, ignored the write that records the result (the
   ///   app lost the default-SMS role or its `WRITE_SMS` app-op), or returned
-  ///   no cursor to check whether it did; `details['cause']` describes the
-  ///   failure. A write that did not land is retried at the next engine start
+  ///   no cursor to check whether it did or to read the row back;
+  ///   `details['cause']` describes the failure. A write that did not land is retried at the next engine start
   ///   and as the next send starts.
   ///
   /// For both, `details['sent']` is the carrier result: `true` means the

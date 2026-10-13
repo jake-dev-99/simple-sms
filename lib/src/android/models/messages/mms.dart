@@ -46,7 +46,8 @@ class Mms {
   /// Message type classification
   final MmsMessageType? type;
 
-  /// Delivery/processing status
+  /// Delivery/processing status (`st`). On a sent MMS, its recipients'
+  /// delivery verdict, recorded from their M-Delivery.ind reports (UNFY-110).
   final AndroidMessageStatus? status;
 
   /// Message priority level

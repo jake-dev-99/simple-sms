@@ -1,12 +1,18 @@
 package io.simplezen.simple_sms.mms.sending
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import io.simplezen.simple_sms.mms.MMSPart
+import io.simplezen.simple_sms.mms.codec.PduHeaders
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -22,6 +28,28 @@ class TransactionTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private fun newTransaction() = Transaction(context, Settings())
+
+    @Test
+    fun buildPdu_requestsADeliveryReport() {
+        // The MMSC then reports when each recipient got the MMS (UNFY-110).
+        newTransaction()
+        val part = MMSPart().apply {
+            Name = "text"
+            MimeType = "text/plain"
+            Data = "hi".toByteArray()
+        }
+        val req = Transaction.buildPdu(context, null, arrayOf("+15555550100"), null, listOf(part))
+        assertEquals(PduHeaders.VALUE_YES, req.deliveryReport)
+        assertEquals(PduHeaders.VALUE_NO, req.readReport)
+    }
+
+    @Test
+    fun mmsSentResultPendingIntent_isMutable_soThePlatformCanAttachTheSendConf() {
+        val pendingIntent = mmsSentResultPendingIntent(context, 1, Intent("test").setPackage(context.packageName))
+        val flags = shadowOf(pendingIntent).flags
+        assertEquals(PendingIntent.FLAG_MUTABLE, flags and PendingIntent.FLAG_MUTABLE)
+        assertEquals(0, flags and PendingIntent.FLAG_IMMUTABLE)
+    }
 
     @Test
     fun splitByLength_chunksWithoutCounter() {

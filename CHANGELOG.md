@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
+
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.
 
@@ -23,6 +25,22 @@ return typed results.
 
 ### Added
 
+- **Native SMS draft writes (UNFY-213, ADR-0016).** `AndroidDraftAction`
+  saves (`saveSmsDraft`) or discards (`discardSmsDraft`) the single
+  `MESSAGE_TYPE_DRAFT` row of an existing thread on a new
+  `io.simplezen.simple_sms/drafts` channel, registered on every engine and run
+  on a background task queue. A save updates the thread's newest draft in
+  place, deletes any other draft rows, or inserts one, and resolves to the
+  draft's native `_id`. An optional `subscriptionId` stores the draft on the
+  conversation's SIM. A discard resolves to `DraftDiscardResult.discarded`
+  or `alreadyAbsent`. Both require the default-SMS role and read the thread's
+  drafts back before resolving. Draft writes and deletes are serialized
+  across engines, so a thread delete can't race a draft save. A write that can't be verified throws
+  `DraftWriteFailedException` carrying a `DraftWriteFailureReason`
+  (`notDefaultSmsApp`, `threadNotFound`, `draftWriteFailed`,
+  `draftWriteIncomplete`, `verifyFailed`, `invalidArgument`). SMS text drafts
+  only.
+
 - **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart. An indexed SQLite registry in Android's no-backup directory avoids whole-registry XML rewrites and prevents cloud backup/device transfer from restoring device-specific row IDs. Metadata contains no message content or recipient addresses; the exact provider `date` is retained only to verify row generation, never to discover or match a logical send. Unreleased XML metadata is not imported because it lacks a verified generation and device-local provenance.
   Correlated sends and recovery require `ReadSms` for provider-generation verification. Recording an uncorrelated send clears prior identity at its URI. Recovery prunes absent or generation-changed rows, preserving a job's surviving attempts in recorded order; provider unavailability fails without pruning identities.
   All recipient rows from one native MMS request share an attempt identity. Each surviving row of the latest attempt returns itself as `latestMessageUri`; rows from earlier retries return a surviving row of the latest attempt. Consumers comparing `latestMessageUri` with the requested URI therefore retain every current recipient row.
@@ -34,8 +52,27 @@ return typed results.
   `details['sent']` is `null` (unknown). The row is marked failed; a carrier
   success that arrives later still moves it to sent.
 
+- **MMS delivery reports (UNFY-110).** Outgoing MMS now request a delivery
+  report, as SMS already do. The MMSC's message id from the send confirmation
+  is saved as the row's `m_id` with its SENT result. Each recipient's
+  M-Delivery.ind is matched to the row by that id. The message's verdict is
+  saved as the row's `st`, once every recipient reported: `retrieved` when all
+  got it, and the first failure (`expired`, `rejected` or `unreachable`) when
+  none will. A group MMS that some recipients got and some never will has no
+  verdict, so a resend never reaches anyone twice.
+  `NormalizedMessage.deliveryState` maps a sent MMS's `st` to `delivered` or
+  `failed`. With no verdict, the MMS stays `sent`.
+
 ### Changed
 
+- **Migrates to built-in Kotlin (UNFY-174).** The Android build no longer
+  applies the Kotlin Gradle Plugin. Updates the minimum supported SDK version
+  to Flutter 3.44/Dart 3.12.
+- **A send whose row can't be read back is `SEND_ACK_FAILED` (UNFY-284).**
+  When the provider returns no cursor on the read-back after a send result,
+  the row may still exist, so `sendMessage` fails with `SEND_ACK_FAILED`
+  (`sent` carries the carrier outcome) instead of `MESSAGE_ROW_MISSING`, which
+  stays for a row that is really gone.
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`
   answers only once every part has reported its carrier result, rather than
   as soon as any part reports a failure: failed if any part failed, with the
@@ -109,6 +146,15 @@ return typed results.
 - **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
   object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it
   too, instead of resolving to an empty map.
+- **Conversation-list MMS previews fail loudly on unrecoverable errors
+  (UNFY-253).** `listConversations` and `getConversationByThread` load the
+  latest MMS parts in batches of up to 500 ids. A batch that fails as
+  `unavailable` or `transientFailure` still leaves an empty preview; any
+  other error, including `permissionDenied` and `invalidQuery`, now throws
+  instead of returning the list with empty previews.
+- **Contact lookup by address trims and percent-encodes it (UNFY-253).**
+  An address with `+`, `#`, spaces or `@` now reaches the contacts filter
+  intact, and a blank address returns null without a query.
 
 ## 0.5.1
 
