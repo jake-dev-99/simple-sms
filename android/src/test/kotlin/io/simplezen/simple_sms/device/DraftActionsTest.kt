@@ -243,6 +243,21 @@ class DraftActionsTest {
         assertTrue(text, text.contains("java.lang.IllegalStateException") && text.contains("Caused by: java.lang.RuntimeException"))
     }
 
+    /** Purpose: a thread deleted while the save ran leaves no orphaned draft and reports the thread gone. */
+    @Test
+    fun save_threadDeletedDuringSave_removesTheDraftAndIsThreadNotFound() {
+        sms.afterWrite = { threads.listed.remove(5L) }
+
+        val result = save("5", "hi")
+
+        assertEquals(listOf("THREAD_NOT_FOUND"), result.errors)
+        assertTrue(sms.rows.isEmpty())
+        assertEquals(
+            ProviderWrite("content://sms", "_id = ? AND thread_id = ? AND type = ?", listOf("100", "5", "3")),
+            sms.deletes.single(),
+        )
+    }
+
     /** Purpose: a write that can't be read back is unverified. */
     @Test
     fun save_unreadableReadBack_isVerifyFailed() {

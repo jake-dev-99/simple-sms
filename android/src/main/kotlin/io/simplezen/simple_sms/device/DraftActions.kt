@@ -137,14 +137,21 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             )
             return
         }
-        val readBack = try {
-            draftsIn(threadId)
+        // The thread is re-checked too: a thread deleted while the save ran
+        // (the destructive channel runs on its own queue) would leave the
+        // draft outside every conversation.
+        val (readBack, stillListed) = try {
+            draftsIn(threadId) to threadListed(threadId)
         } catch (e: Exception) {
             result.error(
                 "VERIFY_FAILED",
                 "Saved draft $draftId of thread $threadId but could not read it back: ${e.javaClass.name}",
                 bodySafeTrace(e),
             )
+            return
+        }
+        if (!stillListed) {
+            removeOrphanedDraft(result, draftId, threadId)
             return
         }
         if (!isDraftSaved(readBack, draftId, body)) {
@@ -158,6 +165,29 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         }
         Log.d(TAG, "Saved draft $draftId of thread $threadId")
         result.success(draftId.toString())
+    }
+
+    /**
+     * Delete draft [draftId], left behind by a save whose thread [threadId]
+     * was deleted meanwhile, and report the thread as not found.
+     */
+    private fun removeOrphanedDraft(result: MethodChannel.Result, draftId: Long, threadId: Long) {
+        try {
+            context.contentResolver.delete(
+                SMS_URI,
+                DRAFT_BY_ID,
+                arrayOf(draftId.toString(), threadId.toString(), DRAFT_TYPE.toString()),
+            )
+        } catch (e: Exception) {
+            result.error(
+                "DRAFT_WRITE_FAILED",
+                "Thread $threadId was deleted during the save; its orphaned draft $draftId " +
+                    "could not be removed: ${e.javaClass.name}",
+                bodySafeTrace(e),
+            )
+            return
+        }
+        result.error("THREAD_NOT_FOUND", "Thread $threadId was deleted during the save; the draft was removed", null)
     }
 
     /**
