@@ -6,27 +6,29 @@ import '../android/models/enums/sms_mms_enums.dart';
 import '../android/models/messages/outbound_message.dart';
 
 /// Single source of truth for the Dart-side method channels this plugin
-/// speaks to. Three channels cover the full surface area:
+/// speaks to. Four channels cover the full surface area:
 ///
 /// * `io.simplezen.simple_sms/messaging` — outbound send.
 /// * `io.simplezen.simple_sms/actions` — non-destructive actions
 ///   (mark-read, launch-contact).
 /// * `io.simplezen.simple_sms/destructive_actions` — thread / message
 ///   deletion.
+/// * `io.simplezen.simple_sms/drafts` — native SMS draft save / discard.
 ///
-/// Inbound messaging lives on a fourth channel
+/// Inbound messaging lives on a fifth channel
 /// (`io.simplezen.simple_sms/inbound_messaging`) that `AndroidMessaging`
 /// owns directly because its handler lifecycle is tied to the messaging
 /// singleton.
 ///
 /// Keeping every channel literal here (and every `invokeMethod` shape)
 /// makes the channel inventory auditable in one file rather than
-/// scattered across three tiny shims.
+/// scattered across tiny shims.
 class _Channels {
   static const messaging = MethodChannel('io.simplezen.simple_sms/messaging');
   static const actions = MethodChannel('io.simplezen.simple_sms/actions');
   static const destructiveActions =
       MethodChannel('io.simplezen.simple_sms/destructive_actions');
+  static const drafts = MethodChannel('io.simplezen.simple_sms/drafts');
 }
 
 /// Outbound send interop.
@@ -142,4 +144,23 @@ class DestructiveActionsInterop {
         'messageId': messageId,
         'channel': channel.name,
       });
+}
+
+/// Native SMS draft writes (ADR-0016).
+class DraftsInterop {
+  static const methodChannel = _Channels.drafts;
+
+  /// Save [body] as thread [threadId]'s draft. Returns the raw verified wire
+  /// value (the draft's `_id`), untyped so `AndroidDraftAction` validates it;
+  /// a save that could not be verified throws `PlatformException`.
+  static Future<Object?> saveSmsDraft(String threadId, String body) =>
+      methodChannel.invokeMethod<Object?>('saveSmsDraft', {
+        'threadId': threadId,
+        'body': body,
+      });
+
+  /// Discard thread [threadId]'s draft. Returns the raw verified outcome wire
+  /// value (`DraftDiscardResult.wireName`).
+  static Future<Object?> discardSmsDraft(String threadId) =>
+      methodChannel.invokeMethod<Object?>('discardSmsDraft', threadId);
 }

@@ -28,8 +28,9 @@ import org.robolectric.annotation.Config
  * with no Activity, such as flutter_local_notifications' notification-action
  * dispatcher — so notification actions work without opening the app: "Mark
  * Read" writes native read-state (UNFY-241) and an inline "Reply" sends
- * (UNFY-306). The destructive channel stays off that path and runs on a
- * background task queue, each channel has a single registration owner, and
+ * (UNFY-306) — and the hub can write native drafts from any engine (ADR-0016)
+ * on a background task queue. The destructive channel stays off that path and
+ * runs on a background task queue, each channel has a single registration owner, and
  * no engine registers a send-status receiver: the manifest-declared one
  * takes every result (UNFY-299).
  */
@@ -57,7 +58,7 @@ class EngineChannelRegistrationTest {
             handler: BinaryMessenger.BinaryMessageHandler?,
         ) = setMessageHandler(channel, handler, null)
 
-        /** The destructive channel runs on a background task queue (UNFY-244). */
+        /** The destructive and drafts channels run on a background task queue. */
         override fun makeBackgroundTaskQueue(
             options: BinaryMessenger.TaskQueueOptions,
         ): BinaryMessenger.TaskQueue = object : BinaryMessenger.TaskQueue {}
@@ -120,15 +121,46 @@ class EngineChannelRegistrationTest {
         }
 
     @Test
-    fun engineAttachRegistersTheActionsAndMessagingChannels() {
+    fun engineAttachRegistersTheActionsMessagingAndDraftsChannels() {
         val messenger = RecordingMessenger()
 
         attachedForTest(messenger)
 
         assertEquals(
-            setOf(SimpleSmsPlugin.ACTIONS_CHANNEL, SimpleSmsPlugin.MESSAGING_CHANNEL),
+            setOf(
+                SimpleSmsPlugin.ACTIONS_CHANNEL,
+                SimpleSmsPlugin.MESSAGING_CHANNEL,
+                SimpleSmsPlugin.DRAFTS_CHANNEL,
+            ),
             messenger.handlers.keys,
         )
+    }
+
+    @Test
+    fun draftWritesReachDraftActionsWithoutAnActivity() {
+        val messenger = RecordingMessenger()
+        attachedForTest(messenger)
+
+        // No arguments: DraftActions answers with its own validation error,
+        // which proves the call reached the handler instead of failing with
+        // MissingPluginException.
+        val code = messenger.invokeExpectingError(
+            SimpleSmsPlugin.DRAFTS_CHANNEL,
+            MethodCall("discardSmsDraft", null),
+        )
+
+        assertEquals("INVALID_ARGUMENT", code)
+    }
+
+    /** Draft writes and their read-backs are blocking provider I/O (UNFY-213). */
+    @Test
+    fun draftsChannelRunsOnABackgroundTaskQueue() {
+        val messenger = RecordingMessenger()
+
+        attachedForTest(messenger)
+
+        assertNotNull(messenger.taskQueues[SimpleSmsPlugin.DRAFTS_CHANNEL])
+        assertNull(messenger.taskQueues[SimpleSmsPlugin.ACTIONS_CHANNEL])
     }
 
     @Test

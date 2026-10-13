@@ -1,8 +1,7 @@
-import 'package:flutter/services.dart';
-
 import '../../interop/channels.dart';
 import '../models/enums/delete_result.dart';
 import '../models/enums/sms_mms_enums.dart';
+import 'verified_write.dart';
 
 /// Destructive operations for messages and conversations.
 ///
@@ -42,26 +41,17 @@ class AndroidDestructiveAction {
   /// Run a native delete and translate its reply into the typed contract.
   static Future<DeleteResult> _verified(
     Future<Object?> Function() invoke,
-  ) async {
-    final Object? reply;
-    try {
-      reply = await invoke();
-    } on PlatformException catch (e) {
-      final reason = DeleteFailureReason.tryFromCode(e.code);
-      if (reason == null) {
-        // Not a delete failure code (e.g. a new native code or an engine
-        // channel error): never guess a reason, but keep what native sent.
-        throw StateError(
-          'Unrecognized delete error code from native: "${e.code}" '
-          '(${e.message}) ${e.details ?? ''}',
-        );
-      }
-      throw DeleteFailedException(
-        reason,
-        message: e.message,
-        details: e.details,
-      );
-    }
-    return DeleteResult.fromWire(reply);
-  }
+  ) async => DeleteResult.fromWire(
+    await invokeVerifiedWrite(
+      operation: 'delete',
+      invoke: invoke,
+      reasonFor: DeleteFailureReason.tryFromCode,
+      failure:
+          (reason, e) => DeleteFailedException(
+            reason,
+            message: e.message,
+            details: e.details,
+          ),
+    ),
+  );
 }
