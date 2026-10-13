@@ -11,6 +11,7 @@ import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import io.simplezen.simple_sms.mms.codec.DeliveryInd
 import io.simplezen.simple_sms.mms.codec.NotificationInd
 import io.simplezen.simple_sms.mms.codec.PduParser
 import io.simplezen.simple_sms.mms.codec.RetrieveConf
@@ -85,6 +86,10 @@ internal fun classifyWapPushAction(action: String?): WapAction = when (action) {
  *      RetrieveConf from the MMSC.
  *   4. SmsManager broadcasts the result; [MmsDownloadReceiver] picks
  *      it up and persists the message via [InboundMmsPersister].
+ *
+ * A `DeliveryInd` PDU on the same push is the MMSC's delivery report for an
+ * MMS this app sent; it is recorded on that MMS's row
+ * ([recordMmsDeliveryReport], UNFY-110).
  *
  * Receiver hardening (audit defects S1 #7, #10, #11, #12, #15):
  *   - Each WAP_PUSH gets a unique PendingIntent requestCode derived
@@ -163,10 +168,17 @@ class InboundMmsHandler() : BroadcastReceiver() {
             return
         }
 
-        val notification = PduParser(pdu, true).parse()
-        if (notification !is NotificationInd) {
-            Log.e(TAG, "Failed to parse MMS NotificationInd PDU")
-            return
+        val notification = when (val parsed = PduParser(pdu, true).parse()) {
+            is NotificationInd -> parsed
+            is DeliveryInd -> {
+                // The report for an MMS this app sent (UNFY-110).
+                recordMmsDeliveryReport(context, parsed)
+                return
+            }
+            else -> {
+                Log.e(TAG, "Failed to parse MMS WAP push as a NotificationInd or DeliveryInd (type ${parsed?.messageType})")
+                return
+            }
         }
 
         Log.d(TAG, "Received MMS notification, size=${notification.messageSize}")

@@ -414,6 +414,7 @@ internal fun markPersistedSendFailed(context: Context, uri: Uri) {
     check(context.contentResolver.update(uri, values, null, null) == 1) {
         "Failed to mark persisted message as failed: $uri"
     }
+    announceMmsRowUpdate(context, uri)
 }
 
 /** SMS types of a row still on its way out. */
@@ -488,10 +489,20 @@ internal val MMS_RESULT_BOXES = MMS_OUTBOX_BOXES + Telephony.Mms.MESSAGE_BOX_FAI
  * STATUS is a delivery status, which a send result never writes (UNFY-293):
  * an SMS's is left for the delivery report, and an MMS's `st` holds
  * X-Mms-Status values that only a delivery indication supplies.
+ * A successful MMS also records the MMSC's message id ([mmsMessageId]) as
+ * `m_id`, which its delivery indication names (UNFY-110).
  * NB: provider-write semantics — verify on a real device (esp. Samsung MMS
  * msg_box) before relying on it.
+ *
+ * @param mmsMessageId an MMS's message id from its SendConf
+ *   ([mmsMessageIdFromSendConf]); null for an SMS, or when the MMSC sent none.
  */
-internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int): RowWrite {
+internal fun sendResultWrite(
+    messageUri: Uri,
+    eventType: String,
+    resultCode: Int,
+    mmsMessageId: String? = null,
+): RowWrite {
     val isMms = eventType == SENTMMS_ACTION
     val values: Map<String, Long> = when {
         isMms && resultCode != Activity.RESULT_OK -> mapOf(failedBox(isMms = true))
@@ -518,6 +529,11 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
         resultCode != Activity.RESULT_OK -> SEND_FAILURE_SELECTION to SEND_FAILURE_ARGS
         else -> SENT_RESULT_SELECTION to SENT_RESULT_ARGS
     }
+    val textValues = if (isMms && resultCode == Activity.RESULT_OK && mmsMessageId != null) {
+        mapOf(Telephony.Mms.MESSAGE_ID to mmsMessageId)
+    } else {
+        emptyMap()
+    }
     return RowWrite(
         messageUri.toString(),
         RowWriteKind.SEND_RESULT,
@@ -526,6 +542,7 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
         args.toList(),
         // A carrier failure is final (see above).
         final = resultCode != Activity.RESULT_OK,
+        textValues = textValues,
     )
 }
 
@@ -533,6 +550,7 @@ internal fun sendResultWrite(messageUri: Uri, eventType: String, resultCode: Int
  * Purpose: records a SENT result on its row ([sendResultWrite]). A write the
  * provider ignored, or failed, is owed and retried ([OwedRowWrites], UNFY-335).
  *
+ * @param mmsMessageId an MMS's message id from its SendConf, or null.
  * @returns how the write went.
  * @throws Exception the provider's failure, once the write is owed.
  */
@@ -543,8 +561,9 @@ internal fun recordSendResult(
     eventType: String,
     statusString: String,
     resultCode: Int,
+    mmsMessageId: String?,
 ): RowWriteOutcome {
-    val outcome = recordRowWrite(context, sendResultWrite(messageUri, eventType, resultCode))
+    val outcome = recordRowWrite(context, sendResultWrite(messageUri, eventType, resultCode, mmsMessageId))
     if (resultCode != Activity.RESULT_OK) {
         Log.w(
             TAG,
@@ -568,7 +587,9 @@ internal fun markOutboxRowFailed(context: Context, uri: Uri): Int {
     val (selection, args) =
         if (isMms) inSelection(Telephony.Mms.MESSAGE_BOX, MMS_OUTBOX_BOXES)
         else inSelection(Telephony.Sms.TYPE, SMS_OUTBOX_TYPES)
-    return context.contentResolver.update(uri, noResultFailedValues(isMms), selection, args)
+    val updated = context.contentResolver.update(uri, noResultFailedValues(isMms), selection, args)
+    if (updated > 0) announceMmsRowUpdate(context, uri)
+    return updated
 }
 
 /** How long a send may wait for its SENT result before it settles as [ERR_SEND_RESULT_TIMEOUT]. */
@@ -900,7 +921,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      * app lost the default-SMS role or its WRITE_SMS app-op), whose row would
      * read back unchanged, or one that can't be read back to tell; the write
      * is retried later (UNFY-335). The reply itself is sent once, outside any
-     * catch.
+     * catch. [mmsMessageId] is an MMS's message id from its SendConf, or null.
      */
     internal fun onSendResult(
             messageId: Int,
@@ -908,6 +929,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             eventType: String,
             statusString: String,
             resultCode: Int,
+            mmsMessageId: String?,
     ): Boolean {
         val pending = channelResultMap[messageUri] ?: return false
         val outcome = CarrierOutcome(eventType, resultCode, statusString, sent = resultCode == Activity.RESULT_OK)
@@ -915,7 +937,7 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
         // skips owned sends, can't fail the row between the two.
         val persistFailure: Exception? =
                 try {
-                    when (recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode)) {
+                    when (recordSendResult(context, messageId, messageUri, eventType, statusString, resultCode, mmsMessageId)) {
                         RowWriteOutcome.IGNORED -> RowWriteIgnoredException(messageUri)
                         RowWriteOutcome.UNREADABLE -> RowWriteUnreadableException(messageUri)
                         RowWriteOutcome.WRITTEN, RowWriteOutcome.NOT_APPLICABLE -> null

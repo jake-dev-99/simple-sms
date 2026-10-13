@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -24,19 +25,22 @@ internal enum class RowWriteKind {
     /** A SENT result ([sendResultWrite]). */
     SEND_RESULT,
 
-    /** An SMS delivery status ([persistSmsDeliveryStatus]). */
+    /** A delivery status: an SMS's ([persistSmsDeliveryStatus]) or an MMS's ([persistMmsDeliveryStatus]). */
     DELIVERY_STATUS,
 }
 
 /**
- * One guarded write to a message row: the row at [uri] takes [values] only
- * while it still matches [selection] (UNFY-335). Every send-status write sets
- * integer columns, so [values] are integers, which keeps a write that did not
- * land simple to persist ([OwedRowWrites]).
+ * One guarded write to a message row: the row at [uri] takes [values] and
+ * [textValues] only while it still matches [selection] (UNFY-335). Both are
+ * plain maps, which keeps a write that did not land simple to persist
+ * ([OwedRowWrites]).
  *
  * @param uri the message row, `content://sms/<id>` or `content://mms/<id>`.
  * @param kind what it records.
- * @param values the columns to set, and their values.
+ * @param values the integer columns to set, and their values.
+ * @param textValues the text columns to set, and their values: an MMS's
+ *   carrier message id (UNFY-110). Empty for every other write, including
+ *   any owed before text columns existed.
  * @param selection the guard the row must still match.
  * @param selectionArgs the guard's arguments.
  * @param final whether it records an outcome nothing later may replace: a
@@ -55,8 +59,12 @@ internal data class RowWrite(
     val final: Boolean = false,
     val tied: Boolean = false,
     val owedAtMillis: Long = 0,
+    val textValues: Map<String, String> = emptyMap(),
 ) {
-    fun contentValues(): ContentValues = ContentValues().apply { values.forEach { (column, value) -> put(column, value) } }
+    fun contentValues(): ContentValues = ContentValues().apply {
+        values.forEach { (column, value) -> put(column, value) }
+        textValues.forEach { (column, value) -> put(column, value) }
+    }
 }
 
 /** How a [RowWrite] went ([applyRowWrite]). */
@@ -107,18 +115,45 @@ internal class RowWriteUnreadableException(messageUri: Uri) : IllegalStateExcept
  * The SMS provider ignores, rather than refuses, writes from an app without
  * write access (the default-SMS role and its WRITE_SMS app-op), so when no
  * row took the write, the row is read back through `simple_query`: still
- * matching the guard means the write was ignored.
+ * matching the guard means the write was ignored. An MMS row that took the
+ * write is announced to observers of `content://mms` ([announceMmsRowUpdate]).
  *
  * @returns how the write went.
  * @throws Exception the provider's failure to write or read.
  */
 internal fun applyRowWrite(context: Context, write: RowWrite): RowWriteOutcome {
     val args = write.selectionArgs.toTypedArray()
-    val updated = context.contentResolver.update(Uri.parse(write.uri), write.contentValues(), write.selection, args)
-    if (updated > 0) return RowWriteOutcome.WRITTEN
+    val uri = Uri.parse(write.uri)
+    val updated = context.contentResolver.update(uri, write.contentValues(), write.selection, args)
+    if (updated > 0) {
+        announceMmsRowUpdate(context, uri)
+        return RowWriteOutcome.WRITTEN
+    }
     val matching = ContentQuery.queryOrNull(context, write.uri, arrayOf("_id"), write.selection, args)
         ?: return RowWriteOutcome.UNREADABLE
     return if (matching.isEmpty()) RowWriteOutcome.NOT_APPLICABLE else RowWriteOutcome.IGNORED
+}
+
+/**
+ * Purpose: announces a status this app wrote to the MMS row at [uri] to
+ * observers of `content://mms` (the change stream consumers watch), as an
+ * update of that row. The MMS provider announces an update only on
+ * `content://mms-sms/`, so they would never hear of it, and an open thread
+ * would not show it (UNFY-110). Every row-level MMS status write of this app
+ * calls it; the SMS provider announces its own rows, so an SMS [uri] is
+ * left alone.
+ *
+ * @returns nothing.
+ * @throws nothing; the write has landed either way, so a refused
+ *   announcement is only logged.
+ */
+internal fun announceMmsRowUpdate(context: Context, uri: Uri) {
+    if (uri.authority != Telephony.Mms.CONTENT_URI.authority) return
+    try {
+        context.contentResolver.notifyChange(uri, null, ContentResolver.NOTIFY_UPDATE)
+    } catch (e: SecurityException) {
+        Log.e(ROW_WRITES_TAG, "Could not announce the status written to $uri", e)
+    }
 }
 
 /**
@@ -324,6 +359,23 @@ internal class OwedRowWrites(
                 if (file.exists()) delete(file)
             }
         }
+    }
+
+    /**
+     * Purpose: the MMS rows owing a send result that records [messageId] as
+     * their `m_id` (UNFY-110). Until it lands, a delivery report naming that
+     * id finds no row by it, and waits for it instead
+     * ([waitsForSendResult]).
+     *
+     * @returns their URIs.
+     * @throws nothing; an unreadable write is left for [retry] to drop.
+     */
+    fun rowsOwingMmsMessageId(messageId: String): Set<Uri> = synchronized(LOCK) {
+        entries().mapNotNull { (_, write) ->
+            write?.takeIf {
+                it.kind == RowWriteKind.SEND_RESULT && it.textValues[Telephony.Mms.MESSAGE_ID] == messageId
+            }?.uri?.let(Uri::parse)
+        }.toSet()
     }
 
     /**

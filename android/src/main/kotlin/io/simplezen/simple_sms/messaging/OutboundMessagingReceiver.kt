@@ -222,6 +222,9 @@ internal fun smsSentStatusString(resultCode: Int): String {
  * - SMS delivery reports record the message's delivery status, from every
  *   part's report so far ([SmsPartLedger]), on the row named by the intent
  *   data (UNFY-293, UNFY-180).
+ * - An MMS SENT result carries the MMSC's SendConf, whose message id is
+ *   recorded with the result so the MMS delivery report can find the row
+ *   ([recordMmsDeliveryReport], UNFY-110).
  */
 class OutboundMessagingReceiver : BroadcastReceiver() {
 
@@ -238,13 +241,22 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         when (eventType) {
             DELIVEREDSMS_ACTION -> onDeliveryReport(context, intent)
             SENTSMS_ACTION ->
-                onSentResult(context, intent, eventType, smsSentStatusString(currentResultCode), currentResultCode)
+                onSentResult(context, intent, eventType, smsSentStatusString(currentResultCode), currentResultCode, null)
             SENTMMS_ACTION ->
                 // The platform has finished reading the send file whatever the
                 // result, so it goes even if handling the result fails
                 // (UNFY-311).
                 try {
-                    onSentResult(context, intent, eventType, getMmsSentStatusString(currentResultCode), currentResultCode)
+                    // A failed send has no SendConf worth reading.
+                    val mmsMessageId = if (currentResultCode == Activity.RESULT_OK) {
+                        mmsMessageIdFromSendConf(intent.getByteArrayExtra(SmsManager.EXTRA_MMS_DATA))
+                    } else {
+                        null
+                    }
+                    onSentResult(
+                        context, intent, eventType, getMmsSentStatusString(currentResultCode), currentResultCode,
+                        mmsMessageId,
+                    )
                 } finally {
                     deleteMmsSendFile(context, intent.getStringExtra(MmsSentReceiver.EXTRA_FILE_PATH))
                 }
@@ -252,13 +264,14 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         }
     }
 
-    /** Hands a SENT result to [SendResultRouter]. */
+    /** Hands a SENT result, with an MMS's SendConf message id, to [SendResultRouter]. */
     private fun onSentResult(
         context: Context,
         intent: Intent,
         eventType: String,
         statusString: String,
         resultCode: Int,
+        mmsMessageId: String?,
     ) {
         val messageId = intent.getIntExtra("messageID", -1)
         if (messageId == -1) {
@@ -271,7 +284,9 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
             return
         }
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
-        SendResultRouter.dispatch(context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef())
+        SendResultRouter.dispatch(
+            context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef(), mmsMessageId,
+        )
     }
 
     /**

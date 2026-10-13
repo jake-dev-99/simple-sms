@@ -27,6 +27,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Parcelable
@@ -36,6 +37,7 @@ import android.telephony.SmsMessage
 import android.text.TextUtils
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.FileProvider
 import io.simplezen.simple_sms.mms.ContentType
 import io.simplezen.simple_sms.mms.InvalidHeaderValueException
@@ -65,6 +67,19 @@ internal fun bindMmsSentIntent(intent: Intent, persistedUri: Uri): Uri {
     intent.putExtra("messageID", id.toInt())
     intent.putExtra("uri", recordUri.toString())
     return recordUri
+}
+
+/**
+ * The PendingIntent an MMS send hands the platform for its SENT result.
+ * Mutable so the platform can attach the MMSC's SendConf
+ * (`SmsManager.EXTRA_MMS_DATA`): an immutable PendingIntent drops every
+ * fill-in. The SendConf's message id links the MMS's delivery report to its
+ * row (UNFY-110). Mutable is the default before Android 12 (S), which has no
+ * flag for it.
+ */
+internal fun mmsSentResultPendingIntent(context: Context, requestCode: Int, intent: Intent): PendingIntent {
+    val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+    return PendingIntent.getBroadcast(context, requestCode, intent, PendingIntent.FLAG_CANCEL_CURRENT or mutable)
 }
 
 /**
@@ -568,10 +583,8 @@ class Transaction(private val context: Context, settings: Settings) {
 
                     intent.putExtra(MmsSentReceiver.EXTRA_CONTENT_URI, messageUri.toString())
                     intent.putExtra(MmsSentReceiver.EXTRA_FILE_PATH, mSendFile.path)
-                    // Android 12+ requires FLAG_IMMUTABLE / FLAG_MUTABLE (see SMS-side note).
-                    val pendingIntent = PendingIntent.getBroadcast(
+                    val pendingIntent = mmsSentResultPendingIntent(
                         context, ContentUris.parseId(requireNotNull(messageUri)).toInt(), intent,
-                        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                     )
 
                     // Hand MmsService a content:// URI it can actually resolve
@@ -650,7 +663,8 @@ class Transaction(private val context: Context, settings: Settings) {
             }
         }
 
-        private fun buildPdu(
+        @VisibleForTesting
+        internal fun buildPdu(
             context: Context,
             fromAddress: String?,
             recipients: Array<String>?,
@@ -697,8 +711,9 @@ class Transaction(private val context: Context, settings: Settings) {
             try {
                 // Priority
                 req.setPriority(DEFAULT_PRIORITY)
-                // Delivery report
-                req.setDeliveryReport(PduHeaders.VALUE_NO)
+                // Delivery report: requested, as for every SMS, so the MMSC
+                // reports when the recipient got it (UNFY-110).
+                req.setDeliveryReport(PduHeaders.VALUE_YES)
                 // Read report
                 req.setReadReport(PduHeaders.VALUE_NO)
             } catch (e: InvalidHeaderValueException) {

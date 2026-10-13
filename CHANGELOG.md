@@ -34,6 +34,17 @@ return typed results.
   `details['sent']` is `null` (unknown). The row is marked failed; a carrier
   success that arrives later still moves it to sent.
 
+- **MMS delivery reports (UNFY-110).** Outgoing MMS now request a delivery
+  report, as SMS already do. The MMSC's message id from the send confirmation
+  is saved as the row's `m_id` with its SENT result. Each recipient's
+  M-Delivery.ind is matched to the row by that id. The message's verdict is
+  saved as the row's `st`, once every recipient reported: `retrieved` when all
+  got it, and the first failure (`expired`, `rejected` or `unreachable`) when
+  none will. A group MMS that some recipients got and some never will has no
+  verdict, so a resend never reaches anyone twice.
+  `NormalizedMessage.deliveryState` maps a sent MMS's `st` to `delivered` or
+  `failed`. With no verdict, the MMS stays `sent`.
+
 ### Changed
 
 - **A multipart SMS settles from every part (UNFY-180).** `sendMessage`

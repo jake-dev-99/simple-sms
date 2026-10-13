@@ -33,9 +33,10 @@ import org.robolectric.annotation.Config
  * The `SendReq` here mirrors `buildPdu`'s output structure — From insert-token,
  * To, Subject, Date, a multipart body whose part 0 is the SMIL document (per
  * `buildPdu`'s `body.addPart(0, smilPart)`), Message-Class personal, Expiry,
- * Priority, and delivery/read report = No. The two normally-volatile fields
- * (transaction-id, which `SendReq()` time-generates, and Date) are **pinned**
- * so `make()` is deterministic and the golden below is stable.
+ * Priority, delivery report = Yes (UNFY-110) and read report = No. The two
+ * normally-volatile fields (transaction-id, which `SendReq()` time-generates,
+ * and Date) are **pinned** so `make()` is deterministic and the golden below
+ * is stable.
  *
  * Two complementary assertions:
  *  - **byte-exact** vs [GOLDEN_HEX] — the reproduce-identically contract;
@@ -99,7 +100,7 @@ class PduComposeGoldenTest {
         req.setMessageClass(PduHeaders.MESSAGE_CLASS_PERSONAL_STR.toByteArray())
         req.setExpiry(604_800L) // 7 days, buildPdu's DEFAULT_EXPIRY_TIME
         req.setPriority(PduHeaders.PRIORITY_NORMAL)
-        req.setDeliveryReport(PduHeaders.VALUE_NO)
+        req.setDeliveryReport(PduHeaders.VALUE_YES)
         req.setReadReport(PduHeaders.VALUE_NO)
         return req
     }
@@ -186,7 +187,7 @@ class PduComposeGoldenTest {
             "8C8098542D474F4C44454E2D303031008D9285046553F1008901819718EA" +
                 "2B31353535353535303130302F545950453D504C4D4E009718EA2B313535" +
                 "35353535303131312F545950453D504C4D4E009610EA676F6C64656E2D63" +
-                "6F6D706F7365008A8088058103093A808F8186819081841BB38A3C736D69" +
+                "6F6D706F7365008A8088058103093A808F8186809081841BB38A3C736D69" +
                 "6C3E00896170706C69636174696F6E2F736D696C00032F511B6170706C69" +
                 "636174696F6E2F736D696C0085736D696C2E786D6C00C0223C736D696C3E" +
                 "008E736D696C2E786D6C003C736D696C3E3C626F64793E3C7061723E3C74" +

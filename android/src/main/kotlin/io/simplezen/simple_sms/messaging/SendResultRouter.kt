@@ -43,6 +43,8 @@ internal object SendResultRouter {
      * ([isStaleUntrackedSmsResult]).
      *
      * @param part the SMS part reporting, from its intent.
+     * @param mmsMessageId an MMS's message id from its SendConf
+     *   ([mmsMessageIdFromSendConf]); null for an SMS, or when there is none.
      * @returns nothing.
      * @throws nothing; failures are logged.
      */
@@ -54,6 +56,7 @@ internal object SendResultRouter {
         statusString: String,
         resultCode: Int,
         part: SmsPartRef?,
+        mmsMessageId: String?,
     ) {
         if (eventType == SENTSMS_ACTION && isStaleUntrackedSmsResult(context, part, messageId.toLong())) {
             Log.i(TAG, "SENT result for $messageUri from a send made before parts were tracked; ignored")
@@ -65,9 +68,9 @@ internal object SendResultRouter {
             resultCode
         }
         val settledStatus = if (settledCode == resultCode) statusString else smsSentStatusString(settledCode)
-        if (handlers.any { it.onSendResult(messageId, messageUri, eventType, settledStatus, settledCode) }) return
+        if (handlers.any { it.onSendResult(messageId, messageUri, eventType, settledStatus, settledCode, mmsMessageId) }) return
         try {
-            recordSendResult(context, messageId, messageUri, eventType, settledStatus, settledCode)
+            recordSendResult(context, messageId, messageUri, eventType, settledStatus, settledCode, mmsMessageId)
         } catch (e: Exception) {
             Log.e(TAG, "Failed recording unowned $eventType result for $messageUri", e)
         }
