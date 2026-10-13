@@ -16,9 +16,8 @@ import '../models/people/contactables.dart';
 /// LookupService keeps its public API for backward-compat — every
 /// method on this class is reached via [LookupService] delegation.
 ///
-/// **Future work — `SimpleQuery` injection.** Documented at
-/// [AttachmentExtractor]: deferred until a plugin-wide DI pass
-/// flips every `SimpleQuery.instance` callsite at once.
+/// **Testing.** Through the `SimpleQueryPlatform` seam documented at
+/// [AttachmentExtractor]; no `SimpleQuery` injection needed.
 
 // File-private content URIs. Single-site source of truth so future
 // AOSP provider URI changes are one edit.
@@ -64,11 +63,23 @@ class ContactLookup {
   /// Looks up a contactable (lightweight contact info) by phone number
   /// or email. Uses the Android contacts filter URI to match the
   /// address against phone numbers or email addresses.
+  ///
+  /// The address is percent-encoded as a single path segment, as AOSP does
+  /// with `Uri.encode`, so `+`, `#`, `/`, `%`, or spaces cannot split or
+  /// truncate the URI; the provider reads it back decoded. Surrounding
+  /// whitespace is trimmed first, so it never becomes part of the match. A
+  /// blank
+  /// (empty or whitespace-only) address identifies no contact, so it is
+  /// answered with null without a query; an empty one would also drop the
+  /// filter segment from the URI.
   Future<Contactable?> lookupContactableByAddress(String address) async {
-    final isEmail = address.contains('@');
+    final trimmed = address.trim();
+    if (trimmed.isEmpty) return null;
+    final isEmail = trimmed.contains('@');
+    final segment = Uri.encodeComponent(trimmed);
     final uri = isEmail
-        ? '$_contactsEmailFilterUri/$address'
-        : '$_contactsPhoneFilterUri/$address';
+        ? '$_contactsEmailFilterUri/$segment'
+        : '$_contactsPhoneFilterUri/$segment';
     final response = await SimpleQuery.instance.query(
       QueryRequest(
         domain: QueryDomain.platformSpecific,

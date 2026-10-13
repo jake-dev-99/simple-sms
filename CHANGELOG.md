@@ -114,6 +114,15 @@ return typed results.
 - **`sendMessage` throws a `FormatException` for an answer that isn't a JSON
   object (UNFY-335)**, instead of a `TypeError`; no answer at all throws it
   too, instead of resolving to an empty map.
+- **Conversation-list MMS previews fail loudly on unrecoverable errors
+  (UNFY-253).** `listConversations` and `getConversationByThread` load the
+  latest MMS parts in batches of up to 500 ids. A batch that fails as
+  `unavailable` or `transientFailure` still leaves an empty preview; any
+  other error, including `permissionDenied` and `invalidQuery`, now throws
+  instead of returning the list with empty previews.
+- **Contact lookup by address trims and percent-encodes it (UNFY-253).**
+  An address with `+`, `#`, spaces or `@` now reaches the contacts filter
+  intact, and a blank address returns null without a query.
 
 ## 0.5.1
 

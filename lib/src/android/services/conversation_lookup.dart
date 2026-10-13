@@ -119,8 +119,10 @@ class ConversationLookup {
   /// follow-up lookups. Set to `false` to avoid the extra round-trips when
   /// only the flat conversation row is needed. A thread whose follow-up
   /// lookups find a provider unavailable is returned unenriched instead of
-  /// failing the list; any other error, or an unavailable conversations
-  /// provider, throws (UNFY-299).
+  /// failing the list (UNFY-299). A latest-MMS parts batch that fails as
+  /// `unavailable` or `transientFailure` leaves those MMS with empty parts
+  /// (UNFY-250). Any other error, or an unavailable conversations provider,
+  /// throws.
   Future<List<AndroidSimpleConversation>> listConversations({
     ConversationFilter? filter,
     ConversationSort? sort,
@@ -175,9 +177,9 @@ class ConversationLookup {
       if (!enrich) return bare;
 
       final enriched = await Future.wait(bare.map(_enrichOrBare));
-      // Hydrate every thread's latest-MMS parts in ONE batched query rather
-      // than one `listMmsParts` per thread (UNFY-250 perf) so the MMS body
-      // resolves for the conversation-list preview at parity with SMS.
+      // Hydrate every thread's latest-MMS parts in batched `mid IN` queries
+      // rather than one `listMmsParts` per thread (UNFY-250 perf) so the MMS
+      // body resolves for the conversation-list preview at parity with SMS.
       await _hydrateLatestMmsParts(enriched);
       return enriched;
     } catch (e, s) {
@@ -196,18 +198,26 @@ class ConversationLookup {
     }
   }
 
-  /// Attaches each conversation's latest-MMS parts, fetched in a single batched
-  /// query ([AttachmentExtractor.listMmsPartsForMessages]). The bare
-  /// `content://mms` list query doesn't join the part table, so without this
-  /// the MMS body is empty for the conversation-list preview. Best-effort: a
-  /// batch failure leaves parts null (empty preview) rather than failing the
-  /// whole list (UNFY-250).
+  /// Attaches each conversation's latest-MMS parts, fetched in batched
+  /// `mid IN (…)` queries ([AttachmentExtractor.listMmsPartsForMessages]).
+  /// The bare `content://mms` list query doesn't join the part table, so
+  /// without this the MMS body is empty for the conversation-list preview. A
+  /// latest MMS with no part rows gets an empty list, the same as its bare
+  /// row.
+  ///
+  /// Best-effort for provider failures only: a [SimpleQueryError] whose code
+  /// is in [_toleratedPartsFailures] is logged with its stack and leaves each
+  /// latest MMS with the empty parts list its bare row carries (empty preview)
+  /// rather than failing the whole list (UNFY-250). `invalidQuery` (e.g. an
+  /// OEM schema without `mid`), `notSupported`, `permissionDenied`, and every
+  /// other error propagate. Relies on `simple_query` mapping native failures
+  /// to [SimpleQueryError] per its `ERROR_MAPPING.md` (UNFY-284).
   Future<void> _hydrateLatestMmsParts(
     List<AndroidSimpleConversation> conversations,
   ) async {
     final latestMmsIds = <int>[
       for (final c in conversations)
-        if (c.latestMms != null) c.latestMms!.id,
+        if (c.latestMms case final latestMms?) latestMms.id,
     ];
     if (latestMmsIds.isEmpty) return;
     try {
@@ -216,16 +226,28 @@ class ConversationLookup {
       for (final c in conversations) {
         final latestMms = c.latestMms;
         if (latestMms != null) {
-          latestMms.parts = partsByMid[latestMms.id];
+          latestMms.parts = partsByMid[latestMms.id] ?? const [];
         }
       }
-    } catch (e) {
+    } on SimpleQueryError catch (e, s) {
+      if (!_toleratedPartsFailures.contains(e.code)) rethrow;
       debugPrint(
         '[diag][simple-sms] batch latest-MMS parts hydration failed '
-        '(${latestMmsIds.length} ids): $e',
+        '(${latestMmsIds.length} ids): $e\n$s',
       );
     }
   }
+
+  /// Provider-failure codes the latest-MMS parts hydration tolerates: the
+  /// provider is busy or missing — conditions the empty preview honestly
+  /// reflects, unlike a malformed query. `permissionDenied` is deliberately
+  /// absent: as in AOSP Messaging, whose parts load (`SyncMessagesAction`)
+  /// lets `SecurityException` propagate, missing SMS access is surfaced to
+  /// the caller rather than shown as an empty preview.
+  static const Set<SimpleQueryErrorCode> _toleratedPartsFailures = {
+    SimpleQueryErrorCode.transientFailure,
+    SimpleQueryErrorCode.unavailable,
+  };
 
   /// Fetches a single conversation by thread id. Returns null if not found.
   ///
