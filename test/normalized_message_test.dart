@@ -41,6 +41,7 @@ Mms buildMms({
   List<MmsPart> parts = const <MmsPart>[],
   MmsMessageType? type,
   MessageBox? messageBox,
+  AndroidMessageStatus? status,
   bool read = false,
   int simSlot = 0,
   int? subscriptionId,
@@ -58,6 +59,7 @@ Mms buildMms({
       simSlot: simSlot,
       type: type,
       messageBox: messageBox,
+      status: status,
       subscriptionId: subscriptionId,
       subject: subject,
       date: date ?? DateTime.fromMillisecondsSinceEpoch(2000),
@@ -275,6 +277,47 @@ void main() {
         messageBox: MessageBox.outbox,
       ));
       expect(m.deliveryState, MessageDeliveryState.sending);
+    });
+
+    test('a sent MMS takes its delivery report verdict from st (UNFY-110)',
+        () {
+      MessageDeliveryState state(MessageBox box, AndroidMessageStatus? st) =>
+          NormalizedMessage.fromMms(buildMms(
+            type: MmsMessageType.sendRequest,
+            messageBox: box,
+            status: st,
+          )).deliveryState;
+
+      for (final st in [
+        AndroidMessageStatus.retrieved,
+        AndroidMessageStatus.forwarded,
+      ]) {
+        expect(state(MessageBox.sent, st), MessageDeliveryState.delivered,
+            reason: '$st');
+      }
+      for (final st in [
+        AndroidMessageStatus.expired,
+        AndroidMessageStatus.rejected,
+        AndroidMessageStatus.unreachable,
+      ]) {
+        expect(state(MessageBox.sent, st), MessageDeliveryState.failed,
+            reason: '$st');
+      }
+      // No report (the carrier sent none), or one without a verdict.
+      for (final st in [
+        null,
+        AndroidMessageStatus.deferred,
+        AndroidMessageStatus.indeterminate,
+        AndroidMessageStatus.unrecognized,
+      ]) {
+        expect(state(MessageBox.sent, st), MessageDeliveryState.sent,
+            reason: '$st');
+      }
+      // The send outcome outranks st off the sent box.
+      expect(state(MessageBox.outbox, AndroidMessageStatus.retrieved),
+          MessageDeliveryState.sending);
+      expect(state(MessageBox.failed, AndroidMessageStatus.retrieved),
+          MessageDeliveryState.failed);
     });
   });
 

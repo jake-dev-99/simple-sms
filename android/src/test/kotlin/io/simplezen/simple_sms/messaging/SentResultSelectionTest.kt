@@ -13,6 +13,7 @@ import android.telephony.SmsManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.messaging.DeliveryReportSelectionTest.SqliteSmsProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -155,6 +156,37 @@ class SentResultSelectionTest {
         assertEquals(Telephony.Mms.MESSAGE_BOX_INBOX, mms.box(3))
         assertEquals(Telephony.Mms.MESSAGE_BOX_FAILED, mms.box(4))
         assertEquals(Telephony.Mms.MESSAGE_BOX_INBOX, mms.box(5))
+    }
+
+    @Test
+    fun mmsSuccess_recordsTheMmscMessageIdWithItsResult() {
+        // The id links the MMS's delivery report to its row (UNFY-110).
+        mms.insert(id = 1, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, date = 0)
+        mms.insert(id = 2, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, date = 0)
+        mms.insert(id = 3, box = Telephony.Mms.MESSAGE_BOX_OUTBOX, date = 0)
+        mms.insert(id = 4, box = Telephony.Mms.MESSAGE_BOX_INBOX, date = 0)
+
+        mmsResult(1, Activity.RESULT_OK, mmsMessageId = "mid-1")
+        mmsResult(2, Activity.RESULT_OK, mmsMessageId = null)
+        mmsResult(3, SmsManager.MMS_ERROR_IO_ERROR, mmsMessageId = "mid-3")
+        mmsResult(4, Activity.RESULT_OK, mmsMessageId = "mid-4")
+
+        assertEquals("mid-1", mms.messageId(1))
+        assertEquals(Telephony.Mms.MESSAGE_BOX_SENT, mms.box(2))
+        assertNull(mms.messageId(2))
+        assertNull("a failed send records no id", mms.messageId(3))
+        assertNull("a row the guard spares takes no id", mms.messageId(4))
+    }
+
+    @Test
+    fun aSendResultWrite_carriesTheMessageIdOnlyForASuccessfulMms() {
+        val mmsUri = ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, 1)
+        assertEquals(
+            mapOf(Telephony.Mms.MESSAGE_ID to "mid-1"),
+            sendResultWrite(mmsUri, SENTMMS_ACTION, Activity.RESULT_OK, "mid-1").textValues,
+        )
+        assertTrue(sendResultWrite(mmsUri, SENTMMS_ACTION, SmsManager.MMS_ERROR_IO_ERROR, "mid-1").textValues.isEmpty())
+        assertTrue(sendResultWrite(smsUri(1), SENTSMS_ACTION, Activity.RESULT_OK, "mid-1").textValues.isEmpty())
     }
 
     @Test
@@ -339,7 +371,7 @@ class SentResultSelectionTest {
         val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
             execSQL(
                 "CREATE TABLE pdu (_id INTEGER PRIMARY KEY, msg_box INTEGER, creator TEXT, date INTEGER, " +
-                    "read INTEGER, seen INTEGER, date_sent INTEGER)",
+                    "read INTEGER, seen INTEGER, date_sent INTEGER, m_id TEXT)",
             )
         }
 
@@ -354,6 +386,9 @@ class SentResultSelectionTest {
 
         fun box(id: Long): Int? = db.rawQuery("SELECT msg_box FROM pdu WHERE _id = ?", arrayOf(id.toString()))
             .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getInt(0) else null }
+
+        fun messageId(id: Long): String? = db.rawQuery("SELECT m_id FROM pdu WHERE _id = ?", arrayOf(id.toString()))
+            .use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null }
 
         override fun onCreate(): Boolean = true
 
@@ -377,13 +412,14 @@ class SentResultSelectionTest {
 
     private fun smsUri(id: Long): Uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, id)
 
-    private fun mmsResult(id: Long, resultCode: Int) = recordSendResult(
+    private fun mmsResult(id: Long, resultCode: Int, mmsMessageId: String? = null) = recordSendResult(
         context,
         id.toInt(),
         ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, id),
         SENTMMS_ACTION,
         "test",
         resultCode,
+        mmsMessageId,
     )
 
     private fun result(id: Long, resultCode: Int) = recordSendResult(
@@ -393,5 +429,6 @@ class SentResultSelectionTest {
         SENTSMS_ACTION,
         "test",
         resultCode,
+        null,
     )
 }

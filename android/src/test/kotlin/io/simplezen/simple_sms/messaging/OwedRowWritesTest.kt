@@ -16,6 +16,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
+import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
@@ -342,6 +343,27 @@ class OwedRowWritesTest {
         assertTrue(owed().rows().isEmpty())
         assertEquals(0, owed().retry(context))
         assertTrue(directory.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun aWriteOwedBeforeTextColumns_stillDecodes_andTextColumnsArePersisted() {
+        // A write owed by an app version without text columns (UNFY-110).
+        val earlier = Json.decodeFromString(
+            RowWrite.serializer(),
+            """{"uri":"content://sms/1","kind":"SEND_RESULT","values":{"type":2},""" +
+                """"selection":"type = ?","selectionArgs":["4"],"owedAtMillis":5}""",
+        )
+        assertEquals(emptyMap<String, String>(), earlier.textValues)
+        assertEquals(statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT).copy(owedAtMillis = 5), earlier)
+
+        val withText = statusWrite(1, Telephony.Sms.MESSAGE_TYPE_SENT).copy(textValues = mapOf("m_id" to "mid-1"))
+        assertEquals(
+            withText,
+            Json.decodeFromString(RowWrite.serializer(), Json.encodeToString(RowWrite.serializer(), withText)),
+        )
+        val values = withText.contentValues()
+        assertEquals("mid-1", values.getAsString("m_id"))
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT.toLong(), values.getAsLong(Telephony.Sms.TYPE))
     }
 
     private fun statusWrite(id: Long, type: Int) = RowWrite(
