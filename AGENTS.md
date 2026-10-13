@@ -51,7 +51,7 @@ come from Android's platform MMS stack, not bundled carrier XML.
 Single-package plugin (not federated — the four sister repos above are
 each their own published package; "federation" here describes the
 inter-package layering contract, not Flutter's federated-plugin
-mechanism). Dart `^3.7.0`, Flutter `>=3.27.0`.
+mechanism). Dart `^3.12.0`, Flutter `>=3.44.0`.
 
 ## Build · test · verify
 

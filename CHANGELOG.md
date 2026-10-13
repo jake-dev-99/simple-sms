@@ -38,6 +38,9 @@ return typed results.
 
 ### Changed
 
+- **Migrates to built-in Kotlin (UNFY-174).** The Android build no longer
+  applies the Kotlin Gradle Plugin. Updates the minimum supported SDK version
+  to Flutter 3.44/Dart 3.12.
 - **A send whose row can't be read back is `SEND_ACK_FAILED` (UNFY-284).**
   When the provider returns no cursor on the read-back after a send result,
   the row may still exist, so `sendMessage` fails with `SEND_ACK_FAILED`
