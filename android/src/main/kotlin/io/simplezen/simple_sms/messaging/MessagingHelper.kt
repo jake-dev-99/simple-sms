@@ -108,12 +108,23 @@ internal fun formatNumber(context: Context, number: String): String? {
     }.getOrNull()
 }
 
-internal fun compareNumbers(context : Context, numVals : Set<String>, searchNum : String): Boolean {
+/**
+ * Whether [searchNum] is the same phone number as any of [numVals]: on
+ * Android 12 (S) and later read in [region] (an ISO country; the network's
+ * when null), before that by [PhoneNumberUtils.compare].
+ */
+internal fun compareNumbers(
+    context: Context,
+    numVals: Set<String>,
+    searchNum: String,
+    region: String? = null,
+): Boolean {
     val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+    val country = (region ?: telephonyManager.networkCountryIso).uppercase()
 
     val matched: List<Boolean> = numVals.map { num ->
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PhoneNumberUtils.areSamePhoneNumber(num, searchNum, telephonyManager.networkCountryIso.uppercase())
+            PhoneNumberUtils.areSamePhoneNumber(num, searchNum, country)
         } else {
             PhoneNumberUtils.compare(context, num, searchNum)
         }

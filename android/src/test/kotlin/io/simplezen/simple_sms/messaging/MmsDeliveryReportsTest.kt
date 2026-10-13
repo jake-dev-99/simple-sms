@@ -9,6 +9,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.Telephony
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
 import io.simplezen.simple_sms.mms.codec.DeliveryInd
@@ -25,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadow.api.Shadow
 import org.robolectric.annotation.Config
 
 /**
@@ -69,21 +71,23 @@ class MmsDeliveryReportsTest {
 
     @Test
     fun addresses_matchAcrossTheFormatsAnMmscAndTheRowUse() {
-        assertTrue(isSameMmsAddress(context, "+15550000001", "5550000001"))
-        assertTrue(isSameMmsAddress(context, "Someone@Example.com", "someone@example.com"))
-        assertFalse(isSameMmsAddress(context, "+15550000001", "+15550000002"))
+        assertTrue(isSameMmsAddress(context, null, "+15550000001", "5550000001"))
+        assertTrue(isSameMmsAddress(context, null, "Someone@Example.com", "someone@example.com"))
+        assertFalse(isSameMmsAddress(context, null, "+15550000001", "+15550000002"))
         // A local short form is not a full number that ends with it.
-        assertFalse(isSameMmsAddress(context, "0000001", "+15550000001"))
+        assertFalse(isSameMmsAddress(context, null, "0000001", "+15550000001"))
+        // A national number reads in the region given, not the network's.
+        assertFalse(isSameMmsAddress(context, "MX", "+15550000001", "5550000001"))
     }
 
     @Test
     fun reportingRecipient_isTheOnlyOne_orTheOneMatch() {
-        assertEquals("5550000001", reportingRecipient(context, "unparseable", listOf("5550000001")))
-        assertEquals("5550000001", reportingRecipient(context, null, listOf("5550000001")))
+        assertEquals("5550000001", reportingRecipient(context, null, "unparseable", listOf("5550000001")))
+        assertEquals("5550000001", reportingRecipient(context, null, null, listOf("5550000001")))
         val group = listOf("+15550000001", "+15550000002")
-        assertEquals("+15550000002", reportingRecipient(context, "+15550000002", group))
-        assertNull(reportingRecipient(context, "+15550000003", group))
-        assertNull(reportingRecipient(context, null, group))
+        assertEquals("+15550000002", reportingRecipient(context, null, "+15550000002", group))
+        assertNull(reportingRecipient(context, null, "+15550000003", group))
+        assertNull(reportingRecipient(context, null, null, group))
     }
 
     @Test
@@ -205,6 +209,36 @@ class MmsDeliveryReportsTest {
     }
 
     @Test
+    fun group_abroad_matchesRecipientsInTheSimsHomeCountry() {
+        // Roaming in Mexico on a US SIM (subscription 2): the recipients were
+        // written as US national numbers.
+        val telephony = context.getSystemService(TelephonyManager::class.java)
+        shadowOf(telephony).setNetworkCountryIso("mx")
+        val usSim = Shadow.newInstanceOf(TelephonyManager::class.java)
+        shadowOf(usSim).setSimCountryIso("us")
+        shadowOf(telephony).setTelephonyManagerForSubscriptionId(2, usSim)
+        mms.sent(id = 1, messageId = "mid-1", recipients = listOf("5550000001", "5550000002"), subscriptionId = 2)
+
+        push(deliveryInd("mid-1", "+15550000001/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED))
+        push(deliveryInd("mid-1", "+15550000002/TYPE=PLMN", PduHeaders.STATUS_RETRIEVED))
+
+        assertEquals(PduHeaders.STATUS_RETRIEVED, mms.status(1))
+    }
+
+    @Test
+    fun mmsRecipientRegion_isTheSimsHomeCountry_elseNone() {
+        val telephony = context.getSystemService(TelephonyManager::class.java)
+        val sim = Shadow.newInstanceOf(TelephonyManager::class.java)
+        shadowOf(sim).setSimCountryIso("us")
+        shadowOf(sim).setNetworkCountryIso("mx")
+        shadowOf(telephony).setTelephonyManagerForSubscriptionId(3, sim)
+
+        assertEquals("US", mmsRecipientRegion(context, 3))
+        assertNull(mmsRecipientRegion(context, null))
+        assertNull(mmsRecipientRegion(context, SubscriptionManager.INVALID_SUBSCRIPTION_ID))
+    }
+
+    @Test
     fun group_reportForNoRecipient_isIgnored() {
         mms.sent(id = 1, messageId = "mid-1", recipients = listOf("+15550000001", "+15550000002"))
 
@@ -285,7 +319,7 @@ class MmsDeliveryReportsTest {
         private val db: SQLiteDatabase = SQLiteDatabase.create(null).apply {
             execSQL(
                 "CREATE TABLE pdu (_id INTEGER PRIMARY KEY, m_id TEXT, m_type INTEGER, msg_box INTEGER, " +
-                    "st INTEGER, date INTEGER, read INTEGER, seen INTEGER, date_sent INTEGER)",
+                    "st INTEGER, date INTEGER, read INTEGER, seen INTEGER, date_sent INTEGER, sub_id INTEGER)",
             )
             execSQL("CREATE TABLE addr (_id INTEGER PRIMARY KEY, msg_id INTEGER, address TEXT, type INTEGER)")
         }
@@ -293,9 +327,10 @@ class MmsDeliveryReportsTest {
         /** Whether writes are ignored, as for an app without the default-SMS role. */
         var ignoreWrites = false
 
-        fun row(id: Long, messageId: String?, type: Int, box: Int) {
+        fun row(id: Long, messageId: String?, type: Int, box: Int, subscriptionId: Int? = null) {
             db.insertOrThrow("pdu", null, ContentValues().apply {
                 put("_id", id)
+                put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId)
                 put(Telephony.Mms.MESSAGE_ID, messageId)
                 put(Telephony.Mms.MESSAGE_TYPE, type)
                 put(Telephony.Mms.MESSAGE_BOX, box)
@@ -314,8 +349,14 @@ class MmsDeliveryReportsTest {
             cc?.let { addr(it, PduHeaders.CC) }
         }
 
-        fun sent(id: Long, messageId: String, recipients: List<String>, cc: String? = null) {
-            row(id, messageId, PduHeaders.MESSAGE_TYPE_SEND_REQ, Telephony.Mms.MESSAGE_BOX_SENT)
+        fun sent(
+            id: Long,
+            messageId: String,
+            recipients: List<String>,
+            cc: String? = null,
+            subscriptionId: Int? = null,
+        ) {
+            row(id, messageId, PduHeaders.MESSAGE_TYPE_SEND_REQ, Telephony.Mms.MESSAGE_BOX_SENT, subscriptionId)
             recipients(id, recipients, cc)
         }
 

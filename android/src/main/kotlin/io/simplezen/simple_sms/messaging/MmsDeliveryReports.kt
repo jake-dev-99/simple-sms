@@ -4,6 +4,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
+import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import io.simplezen.simple_query.ContentQuery
 import io.simplezen.simple_sms.mms.codec.DeliveryInd
@@ -129,23 +131,41 @@ internal fun persistMmsDeliveryStatus(
 }
 
 /**
+ * The country an MMS's recipients are written in, as an ISO code: its SIM's
+ * home country, since the sender wrote them there (abroad, the network's
+ * country is another); else the country that SIM is on. The device's
+ * network country ([compareNumbers]'s default) when this returns null: the
+ * row names no subscription, or its SIM reports neither.
+ */
+internal fun mmsRecipientRegion(context: Context, subscriptionId: Int?): String? {
+    val telephony = context.getSystemService(TelephonyManager::class.java) ?: return null
+    val sim = subscriptionId?.takeIf(SubscriptionManager::isValidSubscriptionId)?.let(telephony::createForSubscriptionId)
+        ?: return null
+    return listOf(sim.simCountryIso, sim.networkCountryIso).firstOrNull { !it.isNullOrBlank() }?.uppercase()
+}
+
+/**
  * Whether two MMS addresses name the same recipient: an email address by
- * case-insensitive equality, a phone number by [compareNumbers], the
- * plugin's country-aware rule. The parser already drops an address's
+ * case-insensitive equality, a phone number by [compareNumbers], read in
+ * [region] ([mmsRecipientRegion]). The parser already drops an address's
  * `/TYPE=` suffix.
  */
-internal fun isSameMmsAddress(context: Context, a: String, b: String): Boolean =
-    if ('@' in a || '@' in b) a.trim().equals(b.trim(), ignoreCase = true) else compareNumbers(context, setOf(a), b)
+internal fun isSameMmsAddress(context: Context, region: String?, a: String, b: String): Boolean =
+    if ('@' in a || '@' in b) {
+        a.trim().equals(b.trim(), ignoreCase = true)
+    } else {
+        compareNumbers(context, setOf(a), b, region)
+    }
 
 /**
  * The recipient of [recipients] a report from [reported] is for: the only
  * recipient of a one-recipient MMS, whose report can be no one else's; else
  * the one recipient whose address matches. `null` when none or several match.
  */
-internal fun reportingRecipient(context: Context, reported: String?, recipients: List<String>): String? {
+internal fun reportingRecipient(context: Context, region: String?, reported: String?, recipients: List<String>): String? {
     if (recipients.size == 1) return recipients.single()
     if (reported == null) return null
-    return recipients.filter { isSameMmsAddress(context, reported, it) }.singleOrNull()
+    return recipients.filter { isSameMmsAddress(context, region, reported, it) }.singleOrNull()
 }
 
 /** The MMS address types a sent message's recipients are stored with. */
@@ -153,12 +173,12 @@ private val MMS_RECIPIENT_ADDRESS_TYPES = setOf(PduHeaders.TO, PduHeaders.CC, Pd
 
 /**
  * The recipients of the MMS at [rowId], read from its `addr` rows (the same
- * table the Dart lookup reads), each once ([isSameMmsAddress]); `null` when
- * the provider returned no cursor.
+ * table the Dart lookup reads), each once ([isSameMmsAddress] in [region]);
+ * `null` when the provider returned no cursor.
  *
  * @throws Exception the provider's failure.
  */
-private fun mmsRecipients(context: Context, rowId: Long): List<String>? {
+private fun mmsRecipients(context: Context, rowId: Long, region: String?): List<String>? {
     val rows = ContentQuery.queryOrNull(
         context,
         "content://mms/$rowId/addr",
@@ -170,7 +190,7 @@ private fun mmsRecipients(context: Context, rowId: Long): List<String>? {
         .filter { it.isNotBlank() }
         // One recipient stored twice, in two formats, is one recipient: its
         // one report must match one address ([reportingRecipient]).
-        .forEach { address -> if (recipients.none { isSameMmsAddress(context, it, address) }) recipients += address }
+        .forEach { address -> if (recipients.none { isSameMmsAddress(context, region, it, address) }) recipients += address }
     return recipients
 }
 
@@ -201,7 +221,7 @@ internal fun recordMmsDeliveryReport(context: Context, report: DeliveryInd) {
         ContentQuery.queryOrNull(
             context,
             Telephony.Mms.CONTENT_URI.toString(),
-            arrayOf(Telephony.Mms._ID),
+            arrayOf(Telephony.Mms._ID, Telephony.Mms.SUBSCRIPTION_ID),
             "${Telephony.Mms.MESSAGE_ID} = ? AND ${Telephony.Mms.MESSAGE_TYPE} = ?",
             arrayOf(messageId, PduHeaders.MESSAGE_TYPE_SEND_REQ.toString()),
         )
@@ -213,37 +233,48 @@ internal fun recordMmsDeliveryReport(context: Context, report: DeliveryInd) {
         Log.e(TAG, "The provider returned no cursor for delivery report $messageId; ignored")
         return
     }
-    val rowIds = linkedSetOf<Long>()
+    // Each row's id, and its SIM subscription when recorded.
+    val rowSubscriptions = linkedMapOf<Long, Int?>()
     for (row in rows) {
         val rowId = row[Telephony.Mms._ID] as? Long
         if (rowId == null) {
             Log.e(TAG, "MMS row for delivery report $messageId has no integer _id: $row")
             continue
         }
-        rowIds += rowId
+        rowSubscriptions[rowId] = (row[Telephony.Mms.SUBSCRIPTION_ID] as? Long)?.toInt()
     }
     // A row whose SENT result is still owed holds no m_id yet: its verdict
     // waits for that write ([OwedRowWrites.waitsForSendResult]). One MMSC id
     // names one message, so a row that carries it owes no such write.
-    if (rowIds.isEmpty()) {
-        OwedRowWrites.forApp(context).rowsOwingMmsMessageId(messageId).forEach { rowIds += ContentUris.parseId(it) }
+    if (rowSubscriptions.isEmpty()) {
+        OwedRowWrites.forApp(context).rowsOwingMmsMessageId(messageId).forEach {
+            rowSubscriptions[ContentUris.parseId(it)] = null
+        }
     }
-    if (rowIds.isEmpty()) {
+    if (rowSubscriptions.isEmpty()) {
         Log.i(TAG, "No sent MMS carries $messageId; its delivery report is ignored")
         return
     }
     val reported = report.to?.firstOrNull()?.string
-    for (rowId in rowIds) {
-        recordRowDeliveryReport(context, rowId, messageId, reported, status)
+    for ((rowId, subscriptionId) in rowSubscriptions) {
+        recordRowDeliveryReport(context, rowId, subscriptionId, messageId, reported, status)
     }
 }
 
 // Adds [reported]'s verdict to the row's others ([MmsDeliveryLedger]) and
 // records the message's verdict once there is one.
-private fun recordRowDeliveryReport(context: Context, rowId: Long, messageId: String, reported: String?, status: Int) {
+private fun recordRowDeliveryReport(
+    context: Context,
+    rowId: Long,
+    subscriptionId: Int?,
+    messageId: String,
+    reported: String?,
+    status: Int,
+) {
     val messageUri = ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, rowId)
+    val region = mmsRecipientRegion(context, subscriptionId)
     val recipients = try {
-        mmsRecipients(context, rowId)
+        mmsRecipients(context, rowId, region)
     } catch (e: Exception) {
         Log.e(TAG, "Could not read the recipients of $messageUri for delivery report $messageId", e)
         return
@@ -252,7 +283,7 @@ private fun recordRowDeliveryReport(context: Context, rowId: Long, messageId: St
         Log.e(TAG, "No recipients readable for $messageUri; delivery report $messageId ignored")
         return
     }
-    val recipient = reportingRecipient(context, reported, recipients) ?: run {
+    val recipient = reportingRecipient(context, region, reported, recipients) ?: run {
         Log.w(TAG, "Delivery report $messageId names no single recipient of $messageUri ($reported); ignored")
         return
     }
