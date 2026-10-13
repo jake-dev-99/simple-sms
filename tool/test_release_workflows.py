@@ -120,6 +120,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(uses['publish'], ['./.github/actions/' + RESOLVE_ACTION])
         native = next(step for step in jobs['native-build']['steps'] if RESOLVE_ACTION in step.get('uses', ''))
         self.assertEqual(native['with'], {'directory': 'simple-sms'})
+        # Resolve before anything that compiles or uploads.
+        for name, before in (('native-build', 'Compile native side (debug APK)'), ('publish', 'Publish')):
+            names = [step.get('name') for step in jobs[name]['steps']]
+            self.assertLess(names.index('Resolve published dependencies'), names.index(before), name)
 
     def test_deploy_native_build_does_not_check_out_sibling_repositories(self):
         for job in ('native-build', 'publish'):

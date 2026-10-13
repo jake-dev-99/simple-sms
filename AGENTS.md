@@ -84,9 +84,10 @@ Android project, and root/example dependency manifests — now runs the native b
 unit tests on **every PR that touches the native side** (UNFY-162). The *full*
 APK build still also runs **at tag time** as the pre-publish gate in `deploy.yml`
 (matching `verify.yml`'s own header), against the sibling plugin versions
-published on pub.dev, the graph consumers of that tag receive (UNFY-154). CI enforces this now, but the local native
-gate above is still the fast way to catch a break before pushing any `android/`
-change — don't wait for CI to tell you.
+published on pub.dev, the graph consumers of that tag receive (UNFY-154). CI
+enforces this now, but the local native gate above is still the fast way to
+catch a break before pushing any `android/` change — don't wait for CI to tell
+you.
 
 ## Conventions that have teeth
 

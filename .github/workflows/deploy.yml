@@ -17,6 +17,7 @@ on:
   # Manual dispatch remains for inspection/validation. Pub.dev automated upload
   # requires the original tag-push event: recover through Cut Release resume or
   # Re-run failed jobs on that original run. Never move/delete a package tag.
+  # Tags cut before UNFY-154 lack .github/actions/ and cannot be dispatched.
   workflow_dispatch:
     inputs:
       tag:
