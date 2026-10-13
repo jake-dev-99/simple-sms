@@ -230,6 +230,19 @@ class DraftActionsTest {
         invalid.messages.forEach { assertTrue(it, !it.contains("secret")) }
     }
 
+    /** Purpose: a provider exception that echoes the submitted values never carries them to Dart. */
+    @Test
+    fun save_providerExceptionEchoingTheBody_isRedacted() {
+        sms.writeFailure = IllegalStateException("insert failed: body=my secret", RuntimeException("body=my secret"))
+
+        val result = save("5", "my secret")
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        val text = result.messages.single()
+        assertTrue(text, !text.contains("secret"))
+        assertTrue(text, text.contains("java.lang.IllegalStateException") && text.contains("Caused by: java.lang.RuntimeException"))
+    }
+
     /** Purpose: a write that can't be read back is unverified. */
     @Test
     fun save_unreadableReadBack_isVerifyFailed() {

@@ -11,6 +11,8 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_permissions_android.PermissionDeniedException
 import io.simplezen.simple_permissions_android.PermissionGuards
+import java.util.Collections
+import java.util.IdentityHashMap
 
 /**
  * Native SMS draft writes (ADR-0016, UNFY-213): save or discard the single
@@ -112,8 +114,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             result.error(
                 "DRAFT_WRITE_FAILED",
-                "Could not read thread $threadId before saving its draft; nothing was written: ${e.message}",
-                e.stackTraceToString(),
+                "Could not read thread $threadId before saving its draft; nothing was written: ${e.javaClass.name}",
+                bodySafeTrace(e),
             )
             return
         }
@@ -122,8 +124,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             result.error(
                 "DRAFT_WRITE_FAILED",
-                "Failed to save the draft of thread $threadId: ${e.message}",
-                e.stackTraceToString(),
+                "Failed to save the draft of thread $threadId: ${e.javaClass.name}",
+                bodySafeTrace(e),
             )
             return
         }
@@ -140,8 +142,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             result.error(
                 "VERIFY_FAILED",
-                "Saved draft $draftId of thread $threadId but could not read it back: ${e.message}",
-                e.stackTraceToString(),
+                "Saved draft $draftId of thread $threadId but could not read it back: ${e.javaClass.name}",
+                bodySafeTrace(e),
             )
             return
         }
@@ -234,8 +236,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             result.error(
                 "DRAFT_WRITE_FAILED",
-                "Failed to discard the draft of thread $threadId: ${e.message}",
-                e.stackTraceToString(),
+                "Failed to discard the draft of thread $threadId: ${e.javaClass.name}",
+                bodySafeTrace(e),
             )
             return
         }
@@ -244,8 +246,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             result.error(
                 "VERIFY_FAILED",
-                "Deleted $deletedRows draft rows of thread $threadId but could not read it back: ${e.message}",
-                e.stackTraceToString(),
+                "Deleted $deletedRows draft rows of thread $threadId but could not read it back: ${e.javaClass.name}",
+                bodySafeTrace(e),
             )
             return
         }
@@ -258,6 +260,18 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                 "Thread $threadId still holds draft rows ${remaining.map { it.id }}",
                 null,
             )
+        }
+    }
+
+    /**
+     * [e]'s exception types and stack frames, down its cause chain, without
+     * messages: a provider may echo the submitted values, so the draft body,
+     * in its exception text. Each cause is visited once, so a cyclic chain ends.
+     */
+    private fun bodySafeTrace(e: Throwable): String {
+        val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
+        return generateSequence(e) { it.cause }.takeWhile { seen.add(it) }.joinToString("\nCaused by: ") { cause ->
+            (listOf(cause.javaClass.name) + cause.stackTrace.map { "\tat $it" }).joinToString("\n")
         }
     }
 
