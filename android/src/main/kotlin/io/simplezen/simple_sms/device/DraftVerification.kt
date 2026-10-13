@@ -1,7 +1,15 @@
 package io.simplezen.simple_sms.device
 
 /** One native SMS draft row (`type = MESSAGE_TYPE_DRAFT`) as read back from the provider. */
-data class SmsDraftRow(val id: Long, val body: String?, val date: Long?)
+data class SmsDraftRow(val id: Long, val body: String?, val date: Long?, val subscriptionId: Long? = null)
+
+/**
+ * What a save writes: the draft [body] and, when the caller names one, the
+ * [subscriptionId] (SIM) the conversation uses. Without one the provider
+ * stamps the default SMS subscription on insert and an update keeps the
+ * row's own.
+ */
+data class SmsDraftContent(val body: String, val subscriptionId: Int? = null)
 
 /**
  * The draft row a save keeps when the thread already holds drafts: the newest
@@ -15,13 +23,18 @@ fun draftToKeep(drafts: List<SmsDraftRow>): SmsDraftRow? =
     drafts.maxWithOrNull(compareBy<SmsDraftRow>({ it.date ?: Long.MIN_VALUE }, { it.id }))
 
 /**
- * Whether the [readBack] of the thread's drafts confirms a save of [body] as
- * row [draftId]: that row is the thread's only draft and holds exactly [body].
- * Anything else — an extra draft the provider kept or another app added, a
- * missing row, a different body — is unverified.
+ * Whether the [readBack] of the thread's drafts confirms a save of [content]
+ * as row [draftId]: that row is the thread's only draft, holds exactly the
+ * body, and carries the subscription when one was named. Anything else — an
+ * extra draft the provider kept or another app added, a missing row, a
+ * different body or subscription — is unverified.
  */
-fun isDraftSaved(readBack: List<SmsDraftRow>, draftId: Long, body: String): Boolean =
-    readBack.singleOrNull()?.let { it.id == draftId && it.body == body } ?: false
+fun isDraftSaved(readBack: List<SmsDraftRow>, draftId: Long, content: SmsDraftContent): Boolean =
+    readBack.singleOrNull()?.let { row ->
+        row.id == draftId &&
+            row.body == content.body &&
+            (content.subscriptionId == null || row.subscriptionId == content.subscriptionId.toLong())
+    } ?: false
 
 /** Verified outcome of discarding a thread's SMS draft. */
 enum class DraftDiscardOutcome {

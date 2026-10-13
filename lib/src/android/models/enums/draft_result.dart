@@ -52,8 +52,8 @@ enum DraftWriteFailureReason {
   /// The write ran but the thread's drafts couldn't be read back.
   verifyFailed('VERIFY_FAILED'),
 
-  /// The thread id is not a positive numeric provider id, or the body is
-  /// missing or blank.
+  /// The thread id is not a positive numeric provider id, the body is
+  /// missing or blank, or the subscription id is not an int.
   invalidArgument('INVALID_ARGUMENT');
 
   const DraftWriteFailureReason(this.code);

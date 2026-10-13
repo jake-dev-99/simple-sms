@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -225,9 +226,9 @@ class DraftActionsTest {
         val result = save("5", "my secret")
 
         assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
-        result.messages.forEach { assertTrue(it, !it.contains("secret")) }
+        result.messages.forEach { assertFalse(it, it.contains("secret")) }
         val invalid = invoke(MethodCall("saveSmsDraft", mapOf("threadId" to "x", "body" to "my secret")))
-        invalid.messages.forEach { assertTrue(it, !it.contains("secret")) }
+        invalid.messages.forEach { assertFalse(it, it.contains("secret")) }
     }
 
     /** Purpose: a provider exception that echoes the submitted values never carries them to Dart. */
@@ -239,7 +240,7 @@ class DraftActionsTest {
 
         assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
         val text = result.messages.single()
-        assertTrue(text, !text.contains("secret"))
+        assertFalse(text, text.contains("secret"))
         assertTrue(text, text.contains("java.lang.IllegalStateException") && text.contains("Caused by: java.lang.RuntimeException"))
     }
 
@@ -258,12 +259,57 @@ class DraftActionsTest {
         )
     }
 
+    /** Purpose: an orphaned draft the provider keeps is reported, never claimed removed. */
+    @Test
+    fun save_threadDeletedDuringSave_orphanSurvivesCleanup_isDraftWriteFailed() {
+        sms.afterWrite = {
+            threads.listed.remove(5L)
+            sms.ignoreDeletes = true
+        }
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), save("5", "hi").errors)
+        assertEquals(1, sms.rows.size)
+    }
+
     /** Purpose: a write that can't be read back is unverified. */
     @Test
     fun save_unreadableReadBack_isVerifyFailed() {
         sms.queryFailureAfterWrite = IllegalStateException("provider died")
 
         assertEquals(listOf("VERIFY_FAILED"), save("5", "hi").errors)
+    }
+
+    /** Purpose: a named subscription is stored on insert and verified on read-back. */
+    @Test
+    fun save_withSubscription_insertsItOnTheDraft() {
+        val result = invoke(MethodCall("saveSmsDraft", mapOf("threadId" to "5", "body" to "hi", "subscriptionId" to 2)))
+
+        assertEquals(1, result.successes.size)
+        assertEquals(2L, sms.rows.single().subId)
+        assertEquals(2, sms.inserted.single().getAsInteger("sub_id"))
+    }
+
+    /** Purpose: an update moves the kept draft to a named subscription and keeps its own when none is named. */
+    @Test
+    fun save_update_setsANamedSubscriptionOnly() {
+        sms.rows += SmsRow(id = 4, threadId = 5, type = 3, body = "old", date = 10, subId = 1)
+
+        invoke(MethodCall("saveSmsDraft", mapOf("threadId" to "5", "body" to "a", "subscriptionId" to 2)))
+        assertEquals(2L, sms.rows.single().subId)
+
+        save("5", "b")
+        assertEquals(2L, sms.rows.single().subId)
+        assertFalse(sms.updatedValues.last().containsKey("sub_id"))
+    }
+
+    /** Purpose: a provider that stores another subscription than the one named leaves the save unverified. */
+    @Test
+    fun save_subscriptionNotStored_isIncomplete() {
+        sms.afterWrite = { sms.rows.replaceAll { it.copy(subId = DEFAULT_SUB_ID) } }
+
+        val result = invoke(MethodCall("saveSmsDraft", mapOf("threadId" to "5", "body" to "hi", "subscriptionId" to 2)))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
     }
 
     /** Purpose: reject ids that match no provider row, and missing or blank bodies, before any I/O. */
@@ -277,6 +323,8 @@ class DraftActionsTest {
             mapOf("threadId" to "0", "body" to "hi"),
             mapOf("threadId" to "abc", "body" to "hi"),
             mapOf("threadId" to 5, "body" to "hi"),
+            mapOf("threadId" to "5", "body" to "hi", "subscriptionId" to "2"),
+            mapOf("threadId" to "5", "body" to "hi", "subscriptionId" to 2L),
         )) {
             val result = invoke(MethodCall("saveSmsDraft", arguments))
 
@@ -365,7 +413,17 @@ class DraftActionsTest {
 }
 
 /** Purpose: one `content://sms` row, holding only the columns draft writes touch. */
-private data class SmsRow(val id: Long, val threadId: Long, val type: Int, val body: String?, val date: Long? = 1L)
+private data class SmsRow(
+    val id: Long,
+    val threadId: Long,
+    val type: Int,
+    val body: String?,
+    val date: Long? = 1L,
+    val subId: Long? = 1L,
+)
+
+/** The subscription the fake provider stamps on an insert that names none. */
+private const val DEFAULT_SUB_ID = 1L
 
 /** Purpose: snapshot one write's target and filter. */
 private data class ProviderWrite(val uri: String, val selection: String?, val arguments: List<String>?)
@@ -408,9 +466,9 @@ private class FakeSmsProvider : ContentProvider() {
         queries++
         if (nullCursor) return null
         assertEquals("content://sms", uri.toString())
-        assertEquals(listOf("_id", "body", "date"), projection?.toList())
-        return MatrixCursor(arrayOf("_id", "body", "date")).apply {
-            matching(uri, selection, selectionArgs).forEach { addRow(arrayOf(it.id, it.body, it.date)) }
+        assertEquals(listOf("_id", "body", "date", "sub_id"), projection?.toList())
+        return MatrixCursor(arrayOf("_id", "body", "date", "sub_id")).apply {
+            matching(uri, selection, selectionArgs).forEach { addRow(arrayOf(it.id, it.body, it.date, it.subId)) }
         }
     }
 
@@ -426,6 +484,8 @@ private class FakeSmsProvider : ContentProvider() {
             type = values.getAsInteger("type"),
             body = values.getAsString("body"),
             date = values.getAsLong("date"),
+            // AOSP stamps the default SMS subscription when none is given.
+            subId = values.getAsLong("sub_id") ?: DEFAULT_SUB_ID,
         )
         Uri.parse("content://sms/$id")
     }
@@ -438,7 +498,11 @@ private class FakeSmsProvider : ContentProvider() {
             updatedValues += ContentValues(values)
             val targets = matching(uri, selection, selectionArgs)
             targets.forEach { row ->
-                rows[rows.indexOf(row)] = row.copy(body = values!!.getAsString("body"), date = values.getAsLong("date"))
+                rows[rows.indexOf(row)] = row.copy(
+                    body = values!!.getAsString("body"),
+                    date = values.getAsLong("date"),
+                    subId = values.getAsLong("sub_id") ?: row.subId,
+                )
             }
             targets.size
         }

@@ -163,6 +163,9 @@ row. These methods write that row. Like deletes, they require the
 // Thread IDs are native thread IDs; the thread must already exist.
 final draftId = await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'See you at 6');
 
+// On a multi-SIM device, store the draft on the conversation's SIM.
+await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'See you at 6', subscriptionId: 2);
+
 // discarded, or alreadyAbsent when the thread had no draft.
 final result = await AndroidDraftAction.discardSmsDraft('123');
 ```

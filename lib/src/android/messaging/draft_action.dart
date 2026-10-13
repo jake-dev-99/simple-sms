@@ -24,12 +24,19 @@ class AndroidDraftAction {
   /// [body] must not be blank — use [discardSmsDraft] to clear a draft. A
   /// thread that is not on the device fails with
   /// [DraftWriteFailureReason.threadNotFound].
+  ///
+  /// [subscriptionId] is the SIM the conversation uses — the `subscriptionId`
+  /// of a `SimCard` from `simple_telephony_native`, as for
+  /// `OutboundMessage.subscriptionId`. When given, the draft is stored on it.
+  /// When null, a new draft gets the system default SMS SIM and an existing
+  /// draft keeps its own.
   static Future<String> saveSmsDraft({
     required String threadId,
     required String body,
+    int? subscriptionId,
   }) async {
     final reply = await _verified(
-      () => DraftsInterop.saveSmsDraft(threadId, body),
+      () => DraftsInterop.saveSmsDraft(threadId, body, subscriptionId),
     );
     if (reply is String && (int.tryParse(reply) ?? 0) > 0) return reply;
     throw StateError('Unrecognized draft save result from native: "$reply"');

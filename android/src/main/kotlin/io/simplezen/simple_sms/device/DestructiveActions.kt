@@ -20,7 +20,8 @@ import io.simplezen.simple_permissions_android.PermissionGuards
  * only messages that arrived during the delete remain); otherwise it fails
  * with a code the Dart side mirrors as `DeleteFailureReason`. The delete plus
  * its read-backs are blocking provider I/O, so the plugin registers this
- * handler on a background task queue rather than the platform main thread.
+ * handler on a background task queue rather than the platform main thread,
+ * and each delete holds [ProviderWriteLock] so no draft save interleaves.
  */
 class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler {
     companion object {
@@ -45,13 +46,15 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                     )
                     return
                 }
-                verifiedDelete(
-                    result,
-                    target = "thread $threadId",
-                    mark = { threadSnapshot(threadId) },
-                    delete = { deleteThread(threadId) },
-                    readBack = { snapshot -> readBackThread(threadId, snapshot) },
-                )
+                synchronized(ProviderWriteLock) {
+                    verifiedDelete(
+                        result,
+                        target = "thread $threadId",
+                        mark = { threadSnapshot(threadId) },
+                        delete = { deleteThread(threadId) },
+                        readBack = { snapshot -> readBackThread(threadId, snapshot) },
+                    )
+                }
             }
             "deleteMessage" -> {
                 val args = call.arguments as? Map<*, *>
@@ -72,15 +75,19 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 // A single message has no later arrivals to tell apart, so it
                 // needs no snapshot: any row at its URI survived.
                 val messageUri = ContentUris.withAppendedId(table.contentUri(), messageId)
-                verifiedDelete(
-                    result,
-                    target = "${table.name} message $messageId",
-                    mark = {},
-                    delete = { context.contentResolver.delete(messageUri, null, null) },
-                    readBack = {
-                        DeleteReadBack(survivingRows = queryRows(context, messageUri, arrayOf(BaseColumns._ID)).size)
-                    },
-                )
+                // Deleting a thread's last message removes the thread, so this
+                // holds the lock a draft save takes too.
+                synchronized(ProviderWriteLock) {
+                    verifiedDelete(
+                        result,
+                        target = "${table.name} message $messageId",
+                        mark = {},
+                        delete = { context.contentResolver.delete(messageUri, null, null) },
+                        readBack = {
+                            DeleteReadBack(survivingRows = queryRows(context, messageUri, arrayOf(BaseColumns._ID)).size)
+                        },
+                    )
+                }
             }
             else -> result.notImplemented()
         }

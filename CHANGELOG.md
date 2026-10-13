@@ -29,9 +29,11 @@ return typed results.
   `io.simplezen.simple_sms/drafts` channel, registered on every engine and run
   on a background task queue. A save updates the thread's newest draft in
   place, deletes any other draft rows, or inserts one, and resolves to the
-  draft's native `_id`. A discard resolves to `DraftDiscardResult.discarded`
+  draft's native `_id`. An optional `subscriptionId` stores the draft on the
+  conversation's SIM. A discard resolves to `DraftDiscardResult.discarded`
   or `alreadyAbsent`. Both require the default-SMS role and read the thread's
-  drafts back before resolving. A write that can't be verified throws
+  drafts back before resolving. Draft writes and deletes are serialized
+  across engines, so a thread delete can't race a draft save. A write that can't be verified throws
   `DraftWriteFailedException` carrying a `DraftWriteFailureReason`
   (`notDefaultSmsApp`, `threadNotFound`, `draftWriteFailed`,
   `draftWriteIncomplete`, `verifyFailed`, `invalidArgument`). SMS text drafts

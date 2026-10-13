@@ -32,13 +32,26 @@ class DraftVerificationTest {
     fun isDraftSaved_requiresTheOnlyDraftWithTheSavedBody() {
         val saved = SmsDraftRow(id = 7, body = "see you", date = 1)
 
-        assertTrue(isDraftSaved(listOf(saved), draftId = 7, body = "see you"))
-        assertFalse(isDraftSaved(emptyList(), draftId = 7, body = "see you"))
-        assertFalse(isDraftSaved(listOf(saved), draftId = 8, body = "see you"))
-        assertFalse(isDraftSaved(listOf(saved), draftId = 7, body = "see you "))
-        assertFalse(isDraftSaved(listOf(saved.copy(body = null)), draftId = 7, body = "see you"))
+        assertTrue(isDraftSaved(listOf(saved), draftId = 7, content = SmsDraftContent("see you")))
+        assertFalse(isDraftSaved(emptyList(), draftId = 7, content = SmsDraftContent("see you")))
+        assertFalse(isDraftSaved(listOf(saved), draftId = 8, content = SmsDraftContent("see you")))
+        assertFalse(isDraftSaved(listOf(saved), draftId = 7, content = SmsDraftContent("see you ")))
+        assertFalse(isDraftSaved(listOf(saved.copy(body = null)), draftId = 7, content = SmsDraftContent("see you")))
         assertFalse(
-            isDraftSaved(listOf(saved, SmsDraftRow(id = 9, body = "x", date = 2)), draftId = 7, body = "see you"),
+            isDraftSaved(listOf(saved, SmsDraftRow(id = 9, body = "x", date = 2)), draftId = 7, content = SmsDraftContent("see you")),
+        )
+    }
+
+    /** Purpose: a named subscription must be the saved row's; none named accepts the provider's. */
+    @Test
+    fun isDraftSaved_checksANamedSubscription() {
+        val saved = SmsDraftRow(id = 7, body = "hi", date = 1, subscriptionId = 2)
+
+        assertTrue(isDraftSaved(listOf(saved), draftId = 7, content = SmsDraftContent("hi", subscriptionId = 2)))
+        assertTrue(isDraftSaved(listOf(saved), draftId = 7, content = SmsDraftContent("hi")))
+        assertFalse(isDraftSaved(listOf(saved), draftId = 7, content = SmsDraftContent("hi", subscriptionId = 1)))
+        assertFalse(
+            isDraftSaved(listOf(saved.copy(subscriptionId = null)), draftId = 7, content = SmsDraftContent("hi", 2)),
         )
     }
 

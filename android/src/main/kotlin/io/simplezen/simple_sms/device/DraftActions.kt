@@ -20,11 +20,11 @@ import java.util.IdentityHashMap
  *
  * Each write requires the default-SMS role and is read back: a save succeeds
  * with the draft's native `_id` only when that row is the thread's one draft
- * and holds the saved body; a discard succeeds with `"discarded"` or
+ * and holds the saved body (and the named subscription); a discard succeeds with `"discarded"` or
  * `"alreadyAbsent"` only when no draft remains. Otherwise it fails with a code
  * the Dart side mirrors as `DraftWriteFailureReason`. The writes and their
  * read-backs are blocking provider I/O, so the plugin registers this handler
- * on a background task queue.
+ * on a background task queue; each holds [ProviderWriteLock] throughout.
  *
  * SMS text drafts only; MMS drafts (attachments) are UNFY-281.
  */
@@ -50,7 +50,12 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         private const val DRAFTS = "${Telephony.Sms.TYPE} = ?"
         private const val DRAFTS_EXCEPT = "${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms._ID} != ?"
 
-        private val DRAFT_PROJECTION = arrayOf(Telephony.Sms._ID, Telephony.Sms.BODY, Telephony.Sms.DATE)
+        private val DRAFT_PROJECTION = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+            Telephony.Sms.SUBSCRIPTION_ID,
+        )
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -60,7 +65,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                 val threadId = positiveRowId(args?.get("threadId"))
                 val rawBody = args?.get("body")
                 val body = (rawBody as? String)?.takeIf { it.isNotBlank() }
-                if (threadId == null || body == null) {
+                val rawSubscriptionId = args?.get("subscriptionId")
+                if (threadId == null || body == null || (rawSubscriptionId != null && rawSubscriptionId !is Int)) {
                     // The body is message content: name its state, never log it.
                     val bodyState = when {
                         rawBody !is String -> "missing"
@@ -69,13 +75,16 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                     }
                     result.error(
                         "INVALID_ARGUMENT",
-                        "saveSmsDraft requires a positive numeric threadId + a non-blank body; " +
-                            "got threadId=${args?.get("threadId")} body=$bodyState",
+                        "saveSmsDraft requires a positive numeric threadId, a non-blank body " +
+                            "and an int subscriptionId when given; got threadId=${args?.get("threadId")} " +
+                            "body=$bodyState subscriptionId=$rawSubscriptionId",
                         null,
                     )
                     return
                 }
-                saveDraft(result, threadId, body)
+                synchronized(ProviderWriteLock) {
+                    saveDraft(result, threadId, SmsDraftContent(body, rawSubscriptionId as Int?))
+                }
             }
             "discardSmsDraft" -> {
                 val threadId = positiveRowId(call.arguments)
@@ -87,20 +96,20 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                     )
                     return
                 }
-                discardDraft(result, threadId)
+                synchronized(ProviderWriteLock) { discardDraft(result, threadId) }
             }
             else -> result.notImplemented()
         }
     }
 
     /**
-     * Save [body] as [threadId]'s draft: update the thread's newest draft in
-     * place and delete any others, or insert one when it has none.
+     * Save [content] as [threadId]'s draft: update the thread's newest draft
+     * in place and delete any others, or insert one when it has none.
      *
      * The thread must already be listed — a draft row whose `thread_id` names
      * no thread would be orphaned outside every conversation.
      */
-    private fun saveDraft(result: MethodChannel.Result, threadId: Long, body: String) {
+    private fun saveDraft(result: MethodChannel.Result, threadId: Long, content: SmsDraftContent) {
         val drafts = try {
             PermissionGuards.requireRoleHeld(context, RoleManager.ROLE_SMS)
             if (!threadListed(threadId)) {
@@ -120,7 +129,7 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             return
         }
         val draftId = try {
-            writeDraft(threadId, body, drafts)
+            writeDraft(threadId, content, drafts)
         } catch (e: Exception) {
             result.error(
                 "DRAFT_WRITE_FAILED",
@@ -154,11 +163,12 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             removeOrphanedDraft(result, draftId, threadId)
             return
         }
-        if (!isDraftSaved(readBack, draftId, body)) {
+        if (!isDraftSaved(readBack, draftId, content)) {
             result.error(
                 "DRAFT_WRITE_INCOMPLETE",
-                "Thread $threadId does not hold exactly saved draft $draftId; read back " +
-                    "${readBack.size} draft row(s) ${readBack.map { it.id }}",
+                "Thread $threadId does not hold exactly saved draft $draftId " +
+                    "(subscription ${content.subscriptionId ?: "unnamed"}); read back draft rows " +
+                    "${readBack.map { "${it.id} (subscription ${it.subscriptionId})" }}",
                 null,
             )
             return
@@ -169,29 +179,39 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
 
     /**
      * Delete draft [draftId], left behind by a save whose thread [threadId]
-     * was deleted meanwhile, and report the thread as not found.
+     * was removed meanwhile by a writer outside [ProviderWriteLock], confirm
+     * it is gone, and report the thread as not found.
      */
     private fun removeOrphanedDraft(result: MethodChannel.Result, draftId: Long, threadId: Long) {
-        try {
+        val remains = try {
             context.contentResolver.delete(
                 SMS_URI,
                 DRAFT_BY_ID,
                 arrayOf(draftId.toString(), threadId.toString(), DRAFT_TYPE.toString()),
             )
+            draftsIn(threadId).any { it.id == draftId }
         } catch (e: Exception) {
             result.error(
                 "DRAFT_WRITE_FAILED",
-                "Thread $threadId was deleted during the save; its orphaned draft $draftId " +
+                "Thread $threadId was removed during the save; its orphaned draft $draftId " +
                     "could not be removed: ${e.javaClass.name}",
                 bodySafeTrace(e),
             )
             return
         }
-        result.error("THREAD_NOT_FOUND", "Thread $threadId was deleted during the save; the draft was removed", null)
+        if (remains) {
+            result.error(
+                "DRAFT_WRITE_FAILED",
+                "Thread $threadId was removed during the save; its orphaned draft $draftId remains",
+                null,
+            )
+            return
+        }
+        result.error("THREAD_NOT_FOUND", "Thread $threadId was removed during the save; the draft was removed", null)
     }
 
     /**
-     * Write [body] as [threadId]'s draft given its current [drafts]; returns
+     * Write [content] as [threadId]'s draft given its current [drafts]; returns
      * the draft's `_id`, or null when the provider returned no row id.
      *
      * Updates the newest draft in place, or inserts one when the thread has
@@ -199,10 +219,10 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
      * held other drafts, deletes every draft but this one in a single call.
      * The read-back confirms the outcome.
      */
-    private fun writeDraft(threadId: Long, body: String, drafts: List<SmsDraftRow>): Long? {
+    private fun writeDraft(threadId: Long, content: SmsDraftContent, drafts: List<SmsDraftRow>): Long? {
         val now = System.currentTimeMillis()
-        val draftId = draftToKeep(drafts)?.id?.takeIf { updateDraft(it, threadId, body, now) }
-            ?: insertDraft(threadId, body, now)
+        val draftId = draftToKeep(drafts)?.id?.takeIf { updateDraft(it, threadId, content, now) }
+            ?: insertDraft(threadId, content, now)
             ?: return null
         if (drafts.any { it.id != draftId }) {
             context.contentResolver.delete(
@@ -215,19 +235,19 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
     }
 
     /** Update draft [draftId] of [threadId] in place; false when no such draft remains. */
-    private fun updateDraft(draftId: Long, threadId: Long, body: String, now: Long): Boolean =
+    private fun updateDraft(draftId: Long, threadId: Long, content: SmsDraftContent, now: Long): Boolean =
         context.contentResolver.update(
             SMS_URI,
-            draftValues(body, now),
+            draftValues(content, now),
             DRAFT_BY_ID,
             arrayOf(draftId.toString(), threadId.toString(), DRAFT_TYPE.toString()),
         ) > 0
 
     /** Insert [threadId]'s draft; returns its `_id`, or null when the provider returned no row URI. */
-    private fun insertDraft(threadId: Long, body: String, now: Long): Long? {
+    private fun insertDraft(threadId: Long, content: SmsDraftContent, now: Long): Long? {
         val uri = context.contentResolver.insert(
             SMS_URI,
-            draftValues(body, now).apply {
+            draftValues(content, now).apply {
                 put(Telephony.Sms.THREAD_ID, threadId)
                 put(Telephony.Sms.TYPE, DRAFT_TYPE)
             },
@@ -236,15 +256,17 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
     }
 
     /**
-     * A draft's body and date, and its read + seen flags: a draft is never
-     * unread or unseen, so it must not count toward the conversation's unread
-     * state or notifications — including a kept draft another app left unread.
+     * A draft's body, date and named subscription, and its read + seen flags:
+     * a draft is never unread or unseen, so it must not count toward the
+     * conversation's unread state or notifications — including a kept draft
+     * another app left unread.
      */
-    private fun draftValues(body: String, now: Long) = ContentValues().apply {
-        put(Telephony.Sms.BODY, body)
+    private fun draftValues(content: SmsDraftContent, now: Long) = ContentValues().apply {
+        put(Telephony.Sms.BODY, content.body)
         put(Telephony.Sms.DATE, now)
         put(Telephony.Sms.READ, 1)
         put(Telephony.Sms.SEEN, 1)
+        content.subscriptionId?.let { put(Telephony.Sms.SUBSCRIPTION_ID, it) }
     }
 
     /**
@@ -322,6 +344,11 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                     ?: throw IllegalStateException("Missing ${Telephony.Sms._ID} from $SMS_URI"),
                 body = row[Telephony.Sms.BODY] as? String,
                 date = providerLong(row[Telephony.Sms.DATE], Telephony.Sms.DATE, SMS_URI),
+                subscriptionId = providerLong(
+                    row[Telephony.Sms.SUBSCRIPTION_ID],
+                    Telephony.Sms.SUBSCRIPTION_ID,
+                    SMS_URI,
+                ),
             )
         }
 

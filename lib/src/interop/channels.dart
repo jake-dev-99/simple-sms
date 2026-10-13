@@ -150,14 +150,19 @@ class DestructiveActionsInterop {
 class DraftsInterop {
   static const methodChannel = _Channels.drafts;
 
-  /// Save [body] as thread [threadId]'s draft. Returns the raw verified wire
-  /// value (the draft's `_id`), untyped so `AndroidDraftAction` validates it;
-  /// a save that could not be verified throws `PlatformException`.
-  static Future<Object?> saveSmsDraft(String threadId, String body) =>
-      methodChannel.invokeMethod<Object?>('saveSmsDraft', {
-        'threadId': threadId,
-        'body': body,
-      });
+  /// Save [body] as thread [threadId]'s draft, on [subscriptionId] when
+  /// given. Returns the raw verified wire value (the draft's `_id`), untyped
+  /// so `AndroidDraftAction` validates it; a save that could not be verified
+  /// throws `PlatformException`.
+  static Future<Object?> saveSmsDraft(
+    String threadId,
+    String body,
+    int? subscriptionId,
+  ) => methodChannel.invokeMethod<Object?>('saveSmsDraft', {
+    'threadId': threadId,
+    'body': body,
+    'subscriptionId': subscriptionId,
+  });
 
   /// Discard thread [threadId]'s draft. Returns the raw verified outcome wire
   /// value (`DraftDiscardResult.wireName`).

@@ -29,7 +29,25 @@ void main() {
       reply(() async => '42');
       await AndroidDraftAction.saveSmsDraft(threadId: '5', body: 'see you');
       expect(calls.single.method, 'saveSmsDraft');
-      expect(calls.single.arguments, {'threadId': '5', 'body': 'see you'});
+      expect(calls.single.arguments, {
+        'threadId': '5',
+        'body': 'see you',
+        'subscriptionId': null,
+      });
+    });
+
+    test('forwards the subscription when given', () async {
+      reply(() async => '42');
+      await AndroidDraftAction.saveSmsDraft(
+        threadId: '5',
+        body: 'hi',
+        subscriptionId: 2,
+      );
+      expect(calls.single.arguments, {
+        'threadId': '5',
+        'body': 'hi',
+        'subscriptionId': 2,
+      });
     });
 
     test('resolves to the native draft id', () async {
