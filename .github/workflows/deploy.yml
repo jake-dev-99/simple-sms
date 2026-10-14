@@ -110,7 +110,20 @@ jobs:
       - name: Select committed packaging SDK
         id: release-sdk
         working-directory: simple-sms
-        run: python3 tool/release_toolchain.py --deploy
+        env:
+          INPUT_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          script=tool/release_toolchain.py
+          mode=--deploy
+          if [ "$INPUT_EVENT_NAME" = "workflow_dispatch" ]; then
+            tooling="$(mktemp -d "$RUNNER_TEMP/release-tooling.XXXXXX")"
+            git archive "$GITHUB_SHA" tool | tar -x -C "$tooling"
+            python3 -m pip install -r "$tooling/tool/release-requirements.txt"
+            script="$tooling/tool/release_toolchain.py"
+            mode=--inspect
+          fi
+          echo "RELEASE_TOOLCHAIN_SCRIPT=$script" >> "$GITHUB_ENV"
+          python3 "$script" "$mode" --source-root "$GITHUB_WORKSPACE"
 
       - name: Install committed packaging SDK
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -120,7 +133,7 @@ jobs:
 
       - name: Verify installed packaging SDK
         working-directory: simple-sms
-        run: python3 tool/release_toolchain.py --verify
+        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$GITHUB_WORKSPACE"
 
       - name: Set up JDK 21 (Temurin)
         # Provision JDK 21 explicitly instead of leaning on the runner's
@@ -240,7 +253,20 @@ jobs:
 
       - name: Select committed packaging SDK
         id: release-sdk
-        run: python3 tool/release_toolchain.py --deploy
+        env:
+          INPUT_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          script=tool/release_toolchain.py
+          mode=--deploy
+          if [ "$INPUT_EVENT_NAME" = "workflow_dispatch" ]; then
+            tooling="$(mktemp -d "$RUNNER_TEMP/release-tooling.XXXXXX")"
+            git archive "$GITHUB_SHA" tool | tar -x -C "$tooling"
+            python3 -m pip install -r "$tooling/tool/release-requirements.txt"
+            script="$tooling/tool/release_toolchain.py"
+            mode=--inspect
+          fi
+          echo "RELEASE_TOOLCHAIN_SCRIPT=$script" >> "$GITHUB_ENV"
+          python3 "$script" "$mode" --source-root "$GITHUB_WORKSPACE"
 
       - name: Install committed packaging SDK
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -249,7 +275,7 @@ jobs:
           flutter-version: ${{ steps.release-sdk.outputs.current_version }}
 
       - name: Verify installed packaging SDK
-        run: python3 tool/release_toolchain.py --verify
+        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$GITHUB_WORKSPACE"
 
       - name: Verify pubspec version matches tag
         env:
