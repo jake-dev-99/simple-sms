@@ -16,10 +16,17 @@ pluginManagement {
     }
 }
 
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies {
+        // Load the compiler before AGP's transitive KGP and Flutter's plugin (UNFY-174).
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
+    }
+}
+
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    id("com.android.application") version "9.4.1" apply false
     // START: FlutterFire Configuration
     id("com.google.firebase.crashlytics") version "3.0.3" apply false
     // END: FlutterFire Configuration

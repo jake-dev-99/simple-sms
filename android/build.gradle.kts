@@ -7,17 +7,6 @@ import org.gradle.kotlin.dsl.implementation
 group = "io.simplezen.simple_sms"
 version = "1.0-SNAPSHOT"
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath("com.android.tools.build:gradle:8.9.2")
-    }
-}
-
 rootProject.allprojects {
     repositories {
         google()
@@ -27,7 +16,7 @@ rootProject.allprojects {
 
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
     // id("dev.flutter.flutter-gradle-plugin")
 }
 
