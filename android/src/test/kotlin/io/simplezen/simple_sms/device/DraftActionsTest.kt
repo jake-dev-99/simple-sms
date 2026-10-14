@@ -468,7 +468,9 @@ private class FakeSmsProvider : ContentProvider() {
         assertEquals("content://sms", uri.toString())
         assertEquals(listOf("_id", "body", "date", "sub_id"), projection?.toList())
         return MatrixCursor(arrayOf("_id", "body", "date", "sub_id")).apply {
-            matching(uri, selection, selectionArgs).forEach { addRow(arrayOf(it.id, it.body, it.date, it.subId)) }
+            matching(uri, selection, selectionArgs).forEach {
+                addRow(arrayOf<Any?>(it.id, it.body, it.date, it.subId))
+            }
         }
     }
 
