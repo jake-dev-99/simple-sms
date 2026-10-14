@@ -107,9 +107,20 @@ jobs:
         working-directory: simple-sms
         run: ./scripts/verify_mms_migration.sh
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - name: Select committed packaging SDK
+        id: release-sdk
+        working-directory: simple-sms
+        run: python3 tool/release_toolchain.py --deploy
+
+      - name: Install committed packaging SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          flutter-version: ${{ steps.release-sdk.outputs.current_version }}
+
+      - name: Verify installed packaging SDK
+        working-directory: simple-sms
+        run: python3 tool/release_toolchain.py --verify
 
       - name: Set up JDK 21 (Temurin)
         # Provision JDK 21 explicitly instead of leaning on the runner's
@@ -227,9 +238,18 @@ jobs:
       - name: Configure pub.dev OIDC authentication
         uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - name: Select committed packaging SDK
+        id: release-sdk
+        run: python3 tool/release_toolchain.py --deploy
+
+      - name: Install committed packaging SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          flutter-version: ${{ steps.release-sdk.outputs.current_version }}
+
+      - name: Verify installed packaging SDK
+        run: python3 tool/release_toolchain.py --verify
 
       - name: Verify pubspec version matches tag
         env:
@@ -243,7 +263,12 @@ jobs:
           fi
 
       - name: Resolve published dependencies
-        uses: ./.github/actions/resolve-published-dependencies
+        # The native job already resolves/tests the example. Publication starts
+        # from a fresh package checkout, matching frozen archive preparation.
+        run: |
+          set -euo pipefail
+          rm -f pubspec_overrides.yaml example/pubspec_overrides.yaml
+          flutter pub get --no-example
 
       - name: Publish
         # Flutter sets FLUTTER_ROOT for pub's SDK dependency validation.

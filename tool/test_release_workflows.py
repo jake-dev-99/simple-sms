@@ -117,7 +117,10 @@ class WorkflowTest(unittest.TestCase):
                 for name in ('native-build', 'publish')}
         # Local action paths resolve from the workspace root, not a checkout `path:`.
         self.assertEqual(uses['native-build'], ['./simple-sms/.github/actions/' + RESOLVE_ACTION])
-        self.assertEqual(uses['publish'], ['./.github/actions/' + RESOLVE_ACTION])
+        self.assertEqual(uses['publish'], [])
+        publish_resolution = next(step for step in jobs['publish']['steps']
+                                  if step.get('name') == 'Resolve published dependencies')
+        self.assertIn('flutter pub get --no-example', publish_resolution['run'])
         native = next(step for step in jobs['native-build']['steps'] if RESOLVE_ACTION in step.get('uses', ''))
         self.assertEqual(native['with'], {'directory': 'simple-sms'})
         # Resolve before anything that compiles or uploads.
@@ -150,6 +153,32 @@ echo "$PWD $*" >> "''' + str(self.root / 'calls') + '''"
         # Root without its example, then the example, both against hosted packages.
         self.assertEqual((self.root / 'calls').read_text().splitlines(),
                          [str(package.resolve()) + ' pub get --no-example', str(example.resolve()) + ' pub get'])
+
+    # Purpose: Keep example-generated artifacts out of the publication checkout.
+    # /**
+    #  * @param self The workflow fixture with a controlled hosted-resolution SDK.
+    #  * @returns None; asserts publication resolves the package without its example.
+    #  * @throws AssertionError if Deploy packaging creates extra example files.
+    #  */
+    def test_publish_resolution_does_not_generate_example_artifacts(self):
+        package = self.root / 'publication'
+        example = package / 'example'
+        example.mkdir(parents=True)
+        (package / 'pubspec_overrides.yaml').write_text('dependency_overrides: {}\n')
+        (example / 'pubspec_overrides.yaml').write_text('dependency_overrides: {}\n')
+        self.fake('flutter', '#!/usr/bin/env bash\n'
+                  'if [ "$PWD" = "' + str(example.resolve()) + '" ]; then touch GeneratedPluginRegistrant.swift; fi\n')
+        step = next(value for value in workflow('deploy.yml')['jobs']['publish']['steps']
+                    if value.get('name') == 'Resolve published dependencies')
+        if 'uses' in step:
+            result = self.action_step(RESOLVE_ACTION, package)
+        else:
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', step['run']],
+                                    cwd=package, env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((example / 'GeneratedPluginRegistrant.swift').exists())
+        self.assertFalse((package / 'pubspec_overrides.yaml').exists())
+        self.assertFalse((example / 'pubspec_overrides.yaml').exists())
 
     def test_resolve_action_tolerates_missing_override_files(self):
         package = self.root / 'package'
