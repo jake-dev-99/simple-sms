@@ -112,6 +112,8 @@ jobs:
         working-directory: simple-sms
         env:
           INPUT_EVENT_NAME: ${{ github.event_name }}
+          INSPECT_TAG: ${{ needs.resolve-tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           script=tool/release_toolchain.py
           mode=--deploy
@@ -124,7 +126,7 @@ jobs:
             mode=--inspect
           fi
           echo "RELEASE_TOOLCHAIN_SCRIPT=$script" >> "$GITHUB_ENV"
-          python3 "$script" "$mode" --source-root "$GITHUB_WORKSPACE"
+          python3 "$script" "$mode" --source-root "$PWD"
 
       - name: Install committed packaging SDK
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -134,7 +136,7 @@ jobs:
 
       - name: Verify installed packaging SDK
         working-directory: simple-sms
-        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$GITHUB_WORKSPACE"
+        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$PWD"
 
       - name: Set up JDK 21 (Temurin)
         # Provision JDK 21 explicitly instead of leaning on the runner's
@@ -233,6 +235,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           ref: ${{ needs.resolve-tag.outputs.ref }}
           fetch-depth: 0  # full history for the ancestry check
 
@@ -256,6 +259,8 @@ jobs:
         id: release-sdk
         env:
           INPUT_EVENT_NAME: ${{ github.event_name }}
+          INSPECT_TAG: ${{ needs.resolve-tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           script=tool/release_toolchain.py
           mode=--deploy
@@ -268,7 +273,7 @@ jobs:
             mode=--inspect
           fi
           echo "RELEASE_TOOLCHAIN_SCRIPT=$script" >> "$GITHUB_ENV"
-          python3 "$script" "$mode" --source-root "$GITHUB_WORKSPACE"
+          python3 "$script" "$mode" --source-root "$PWD"
 
       - name: Install committed packaging SDK
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
@@ -277,7 +282,7 @@ jobs:
           flutter-version: ${{ steps.release-sdk.outputs.current_version }}
 
       - name: Verify installed packaging SDK
-        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$GITHUB_WORKSPACE"
+        run: python3 "$RELEASE_TOOLCHAIN_SCRIPT" --verify --source-root "$PWD"
 
       - name: Verify pubspec version matches tag
         env:
