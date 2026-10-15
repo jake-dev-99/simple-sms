@@ -50,6 +50,9 @@ class OutboundSendDeletionTest {
         assertThrows(IllegalStateException::class.java) { deletion.delete("thread", "content://sms/70") }
         assertEquals(listOf("content://sms/70", "content://sms/2"), provider.deletes)
         assertTrue(provider.rows.containsKey("content://sms/40"))
+        val surviving = store.lookup(listOf("content://sms/2", "content://sms/40"))
+        assertEquals("content://sms/40", surviving["content://sms/2"]?.get("latestMessageUri"))
+        assertEquals("content://sms/40", surviving["content://sms/40"]?.get("latestMessageUri"))
         assertEquals(listOf("content://sms/70"), deletion.pending(0, 64).filter { it["confirmed"] == true }.map { it["messageUri"] })
     }
 
@@ -153,6 +156,26 @@ class OutboundSendDeletionTest {
         assertEquals(listOf("content://sms/2"), provider.deletes)
     }
 
+    @Test fun reusedRequestedRowDoesNotAdoptOrFenceTheOldSend() {
+        record(1); record(2)
+        provider.rows["content://sms/1"] = 2000L
+        deletion.delete("thread", "content://sms/1")
+        assertEquals(mapOf("content://sms/2" to 1000L), provider.rows)
+        assertEquals(listOf("content://sms/1"), provider.deletes)
+        store.withAttempt("job" to 1) { /* The old send was not deleted. */ }
+        assertFalse(deletion.pending(0, 64).single().containsKey("clientCorrelationId"))
+    }
+
+    @Test fun missingRequestedRowStillResumesItsFencedPartialDeletion() {
+        record(1); record(2); record(3)
+        provider.refuse = "content://sms/2"
+        assertThrows(IllegalStateException::class.java) { deletion.delete("thread", "content://sms/1") }
+        provider.refuse = null
+        deletion.delete("thread", "content://sms/1")
+        assertTrue(provider.rows.isEmpty())
+        assertTrue(deletion.pending(0, 64).all { it["jobDeletionComplete"] == true })
+    }
+
     @Test fun nullDatedUncorrelatedMessageHasADurableReceipt() {
         provider.rows["content://mms/7"] = null
         deletion.delete("thread", "content://mms/7")
@@ -169,12 +192,14 @@ class OutboundSendDeletionTest {
         assertTrue(provider.deletes.isEmpty())
     }
 
-    @Test fun legacyV1ReaderCanOpenSurvivingCorrelationsAfterReceiptWrites() {
+    @Test fun legacyV1ReaderFailsClosedAfterADeletionFenceWithoutLosingMetadata() {
         record(1, "deleted"); record(2, "surviving")
         deletion.delete("thread", "content://sms/1")
-        // The 0.6 registry accepts exactly v1 and ignores additive tables.
+        // The 0.6 registry checks exactly v1 before creating a provider row.
         database { db ->
-            check(db.version == 1) { "Legacy registry cannot open this schema" }
+            assertThrows(IllegalStateException::class.java) {
+                check(db.version == 1) { "Legacy registry cannot honor deletion fences" }
+            }
             db.rawQuery("SELECT token FROM correlations WHERE uri=?", arrayOf("content://sms/2")).use {
                 assertTrue(it.moveToFirst())
                 assertEquals("surviving", it.getString(0))
@@ -187,16 +212,27 @@ class OutboundSendDeletionTest {
         assertTrue(restarted.pending(0, 64).isEmpty())
     }
 
-    @Test fun unreleasedV2DatabaseNormalizesWithoutLosingReceiptIdentity() {
+    @Test fun fencedV1DatabaseUpgradesBeforeRetryAndRetainsReceiptIdentity() {
         record(1)
         deletion.delete("thread", "content://sms/1")
         val before = deletion.pending(0, 64).single()
-        database { it.version = 2 }
+        database { it.version = 1 }
+        assertThrows(IllegalStateException::class.java) {
+            store.withAttempt("job" to 1) { fail("Deleted job reached provider creation") }
+        }
         val after = OutboundSendDeletion(context).pending(0, 64).single()
         assertEquals(before, after)
-        database { assertEquals(1, it.version) }
+        database { assertEquals(2, it.version) }
         OutboundSendDeletion(context).acknowledge((after["id"] as Number).toLong())
         assertTrue(deletion.pending(0, 64).isEmpty())
+    }
+
+    @Test fun schemaMigrationIsReversibleBeforeAnyDeletionFence() {
+        record(1)
+        database { it.version = 2 }
+        assertTrue(deletion.pending(0, 64).isEmpty())
+        database { assertEquals(1, it.version) }
+        assertTrue(store.lookup(listOf("content://sms/1")).isNotEmpty())
     }
 
     @Test fun methodHandlerReturnsReceiptsAndAcknowledgesTheSameIdentity() {

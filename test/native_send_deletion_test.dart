@@ -31,6 +31,48 @@ void main() {
   });
 
   test(
+    'deletion accepts and canonicalizes supported SMS and MMS box aliases',
+    () async {
+      final received = <String>[];
+      messenger.setMockMethodCallHandler(
+        DestructiveActionsInterop.methodChannel,
+        (call) async {
+          received.add((call.arguments as Map)['messageUri'] as String);
+          return null;
+        },
+      );
+      for (final table in ['sms', 'mms']) {
+        for (final box in [
+          'inbox',
+          'outbox',
+          'sent',
+          'drafts',
+          'failed',
+          'queued',
+        ]) {
+          await api.delete(scope: 'c', messageUri: 'content://$table/$box/7');
+          expect(received.last, 'content://$table/7');
+        }
+      }
+      for (final uri in [
+        'content://sms/unknown/7',
+        'content://sms/sent/0',
+        'content://mms/inbox/-1',
+        'content://sms/sent/7?x=1',
+        'content://sms/sent/7#x',
+        'content://contacts/7',
+        'content://sms/9223372036854775808',
+      ]) {
+        await expectLater(
+          api.delete(scope: 'c', messageUri: uri),
+          throwsArgumentError,
+        );
+      }
+      expect(received, hasLength(12));
+    },
+  );
+
+  test(
     'receipt pages validate identities and retain unconfirmed entries',
     () async {
       messenger.setMockMethodCallHandler(

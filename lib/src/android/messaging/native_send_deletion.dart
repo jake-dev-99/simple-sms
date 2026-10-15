@@ -82,14 +82,13 @@ class AndroidSendDeletion implements NativeSendDeletion {
     required String scope,
     required String messageUri,
   }) async {
-    if (scope.trim().isEmpty ||
-        scope.length > 256 ||
-        !_isMessageUri(messageUri)) {
+    final canonicalUri = _canonicalDeletionUri(messageUri);
+    if (scope.trim().isEmpty || scope.length > 256 || canonicalUri == null) {
       throw ArgumentError('Invalid logical-send deletion identity');
     }
     await _invoke('deleteMessageAttempts', {
       'scope': scope,
-      'messageUri': messageUri,
+      'messageUri': canonicalUri,
     });
   }
 
@@ -146,3 +145,19 @@ class AndroidSendDeletion implements NativeSendDeletion {
 
 bool _isMessageUri(String value) =>
     RegExp(r'^content://(sms|mms)/[1-9][0-9]*$').hasMatch(value);
+
+// Delete accepts the same box aliases as the native correlation registry;
+// receipts still require canonical table-qualified identities.
+String? _canonicalDeletionUri(String value) {
+  final match = RegExp(
+    r'^content://(sms|mms)/(?:inbox/|outbox/|sent/|drafts/|failed/|queued/)?([0-9]+)$',
+  ).firstMatch(value);
+  if (match == null) return null;
+  final id = BigInt.tryParse(match.group(2)!);
+  if (id == null ||
+      id <= BigInt.zero ||
+      id > BigInt.parse('9223372036854775807')) {
+    return null;
+  }
+  return 'content://${match.group(1)}/$id';
+}

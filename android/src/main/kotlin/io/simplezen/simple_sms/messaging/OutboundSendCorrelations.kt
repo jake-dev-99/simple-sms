@@ -251,17 +251,23 @@ internal class OutboundSendCorrelations(private val context: Context) {
                     db.version = 1
                 }
                 check(db.version == 1 || db.version == 2) { "Unsupported outbound correlation database version" }
-                // UNFY-346: these are additive side tables. Keep the correlation
-                // format at v1 so a rollback can still open its unchanged rows;
-                // old builds ignore these tables and never drop receipt state.
+                // Additive metadata remains readable without transforming rows.
                 db.execSQL("CREATE TABLE IF NOT EXISTS deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                     "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
                     "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
-                // Earlier local UNFY-346 builds used v2 for the same additive
-                // tables. Normalize that format without dropping any metadata.
-                if (db.version == 2) db.version = 1
+                // Reversible before the first fence: v1 readers can open the
+                // unchanged correlation format. Once a send is deleted, v2 is a
+                // safety barrier: 0.6 rejects it before creating any provider row.
+                // Never downgrade a fenced store, including older local builds
+                // that incorrectly stamped fences v1. No metadata is discarded.
+                fun stampDeletionBarrier() {
+                    val fenced = db.rawQuery("SELECT 1 FROM deleted_sends LIMIT 1", null).use { it.moveToFirst() }
+                    db.version = if (fenced) 2 else 1
+                }
+                stampDeletionBarrier()
                 val result = action(db)
+                stampDeletionBarrier()
                 db.setTransactionSuccessful()
                 result
             } finally {
