@@ -61,6 +61,49 @@ class LogicalSendDeletionTest {
         assertEquals(setOf("content://sms/200", "content://mms/100"), rows.keys)
     }
 
+    /** Purpose: MMS date rewrites do not change an AUTOINCREMENT provider identity. */
+    @Test fun rewrittenMmsDateRetainsOwnershipAndDeletesTheSamePdu() {
+        record("content://mms/100")
+        rows.getValue("content://mms/100").put("date", 2000L)
+        assertEquals("job", store.lookup(listOf("content://mms/100"))["content://mms/100"]?.get("clientCorrelationId"))
+        assertEquals(true, delete("content://mms/100").receipt()["complete"])
+        assertEquals(listOf("content://mms/100"), deletes)
+        assertTrue(rows.isEmpty())
+    }
+
+    /** Purpose: an MMS timestamp update between read and delete must not retain the PDU. */
+    @Test fun mmsDateChangingDuringConditionalDeleteStillDeletesThePdu() {
+        record("content://mms/100")
+        beforeDelete = { rows.getValue("content://mms/100").put("date", 2000L) }
+        assertEquals(true, delete("content://mms/100").receipt()["complete"])
+        assertTrue(rows.isEmpty())
+    }
+
+    /** Purpose: MMS identity and deletion do not depend on optional or mutable dates. */
+    @Test fun mmsWithoutDateCanBeRecordedAndDeleted() {
+        row("content://mms/100")
+        rows.getValue("content://mms/100").putNull("date")
+        store.record(Uri.parse("content://mms/100"), "job")
+        assertEquals(true, delete("content://mms/100").receipt()["complete"])
+        assertTrue(rows.isEmpty())
+    }
+
+    /** Purpose: upgrade published schema-1 MMS correlations without losing their job ownership. */
+    @Test fun schemaOneMmsDatesMigrateToStableRowIds() {
+        record("content://mms/100")
+        database { db ->
+            db.execSQL("DROP TABLE send_deletion_rows")
+            db.execSQL("DROP TABLE send_deletions")
+            db.execSQL("UPDATE correlations SET generation='1000'")
+            db.version = 1
+        }
+        rows.getValue("content://mms/100").put("date", 2000L)
+        assertEquals("job", store.lookup(listOf("content://mms/100"))["content://mms/100"]?.get("clientCorrelationId"))
+        assertEquals(true, delete("content://mms/100").receipt()["complete"])
+        assertEquals(mapOf("content://mms/100" to "100"), pending().single()["confirmedGenerations"])
+        assertTrue(rows.isEmpty())
+    }
+
     /** Purpose: partial provider failure preserves latest and confirmations survive reopening until acknowledged. */
     @Test fun partialFailureResumesAndReceiptsSurviveUntilAcknowledged() {
         for (id in 100..102) record("content://sms/$id")
@@ -82,6 +125,21 @@ class LogicalSendDeletionTest {
         var handoffs = 0
         assertThrows(IllegalStateException::class.java) { store.withAttempt("job" to 1) { handoffs++ } }
         assertEquals(0, handoffs)
+    }
+
+    /** Purpose: a recovered completion with already-acked rows can retire its empty receipt. */
+    @Test fun completionAfterAcknowledgementAcceptsAnEmptyIdempotentAck() {
+        record("content://sms/100")
+        database { it.execSQL("CREATE TRIGGER fail_completion BEFORE UPDATE OF complete ON send_deletions " +
+            "WHEN NEW.complete=1 BEGIN SELECT RAISE(ABORT, 'injected completion failure'); END") }
+        assertEquals("DELETE_FAILED", delete("content://sms/100").error)
+        acknowledge(listOf("content://sms/100")).requireSuccess()
+        database { it.execSQL("DROP TRIGGER fail_completion") }
+        val receipt = delete("content://sms/100").receipt()
+        assertEquals(true, receipt["complete"])
+        assertEquals(emptyList<String>(), receipt["confirmedMessageUris"])
+        acknowledge(emptyList()).requireSuccess()
+        assertTrue(pending().isEmpty())
     }
 
     /** Purpose: a lost acknowledgement response must not make a successful deletion fail on retry. */
@@ -286,9 +344,15 @@ class LogicalSendDeletionTest {
             if (uri.toString() == refuse) throw IllegalStateException("injected provider failure")
             beforeDelete?.invoke()
             val row = rows[uri.toString()] ?: return 0
-            assertEquals("date = ? AND thread_id = ?", selection)
-            assertEquals(2, args?.size)
-            if (row.getAsString("date") != args!![0] || row.getAsString("thread_id") != args[1]) return 0
+            if (uri.authority == "sms") {
+                assertEquals("date = ? AND thread_id = ?", selection)
+                assertEquals(2, args?.size)
+                if (row.getAsString("date") != args!![0] || row.getAsString("thread_id") != args[1]) return 0
+            } else {
+                assertEquals("thread_id = ?", selection)
+                assertEquals(1, args?.size)
+                if (row.getAsString("thread_id") != args!![0]) return 0
+            }
             rows.remove(uri.toString())
             afterDelete?.invoke()
             return 1

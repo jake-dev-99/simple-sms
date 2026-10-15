@@ -70,7 +70,9 @@ class AndroidDestructiveAction {
 
   /// Acknowledge exact confirmed identities after the host persists them.
   ///
-  /// Idempotent for previously acknowledged identities. Unknown or unconfirmed
+  /// Empty acknowledgements retire completed plans whose rows were already
+  /// acknowledged before an interrupted completion commit. Idempotent for
+  /// previously acknowledged identities. Unknown or unconfirmed
   /// identities fail without dropping any recovery evidence. Cancellation
   /// markers survive acknowledgement so a delayed retry cannot send again.
   static Future<void> acknowledgeSendDeletion({

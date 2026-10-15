@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Use stable MMS row IDs for correlation and deletion despite date rewrites; migrate schema-1 MMS identity markers. Allow empty idempotent acknowledgements after interrupted completion commits (UNFY-346).
+
 - Add bounded logical-send deletion and durable host-acknowledged receipts
   (UNFY-346): delete every retained native attempt, preserve generation/thread
   identity, fence concurrent or delayed retries, and recover partial progress

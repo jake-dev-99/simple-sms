@@ -194,7 +194,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
     // Purpose: invalidate reused or absent rows even if no deletion was observed.
     /**
      * @param db The active metadata transaction.
-     * @param row The stored URI and exact provider date captured before handoff.
+     * @param row The stored URI and occurrence identity captured before handoff.
      * @returns True only while the provider still exposes that recorded generation.
      * @throws IllegalStateException If provider availability or identity is unverifiable.
      * @throws SecurityException If provider access is denied.
@@ -209,7 +209,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
     // Purpose: verify exact row generation through the shared provider-query layer.
     /**
      * @param row The canonical SMS or MMS provider URI.
-     * @returns The provider's raw date discriminator, or null for verified absence.
+     * @returns SMS date or stable MMS _id, or null for verified absence.
      * @throws IllegalStateException If the provider or date discriminator is unavailable.
      * @throws SecurityException If provider access is denied.
      */
@@ -218,6 +218,13 @@ internal class OutboundSendCorrelations(private val context: Context) {
             ?: error("Could not verify outbound correlation row $row")
         check(result.size <= 1) { "Ambiguous outbound provider row" }
         val values = result.firstOrNull() ?: return null
+        val uri = Uri.parse(row)
+        if (uri.authority == "mms") {
+            val id = values[BaseColumns._ID]?.toString()?.toLongOrNull()
+                ?: error("Missing outbound MMS identity: $row")
+            check(id > 0 && id.toString() == uri.lastPathSegment) { "Unexpected outbound MMS identity" }
+            return id.toString()
+        }
         val date = values["date"]?.toString()?.toLongOrNull()
             ?: error("Missing outbound provider generation: $row")
         return date.toString()
@@ -246,6 +253,11 @@ internal class OutboundSendCorrelations(private val context: Context) {
                     db.version = 1
                 }
                 if (db.version == 1) {
+                    // Published schema 1 used mutable MMS dates. AUTOINCREMENT
+                    // PDU IDs are stable: retain ownership while upgrading its
+                    // discriminator, without querying or modifying provider data.
+                    db.execSQL("UPDATE correlations SET generation=substr(uri, length('content://mms/')+1) " +
+                        "WHERE uri LIKE 'content://mms/%'")
                     db.execSQL("CREATE TABLE send_deletions (token TEXT PRIMARY KEY NOT NULL, " +
                         "thread_id TEXT NOT NULL, anchor TEXT NOT NULL, complete INTEGER NOT NULL DEFAULT 0, " +
                         "pending INTEGER NOT NULL DEFAULT 1)")

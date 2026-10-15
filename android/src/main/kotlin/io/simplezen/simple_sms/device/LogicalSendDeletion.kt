@@ -42,7 +42,7 @@ internal class LogicalSendDeletion(private val context: Context) {
                 "acknowledgeSendDeletion" -> {
                     val token = token(args["clientCorrelationId"])
                     val raw = args["messageUris"] as? List<*> ?: throw IllegalArgumentException("messageUris is required")
-                    require(raw.size in 1..64) { "Acknowledge between 1 and 64 confirmations" }
+                    require(raw.size in 0..64) { "Acknowledge at most 64 confirmations" }
                     val uris = raw.map { store.canonical(it as? String ?: throw IllegalArgumentException("Invalid message URI")) }
                     acknowledge(token, uris)
                     result.success(null)
@@ -74,8 +74,11 @@ internal class LogicalSendDeletion(private val context: Context) {
                     val owns = store.transaction { db -> owner(db, row.uri) == token }
                     if (current != null && current.generation == row.generation && owns) {
                         check(current.thread == thread) { "Provider row moved to another thread" }
-                        context.contentResolver.delete(Uri.parse(row.uri), "date = ? AND thread_id = ?",
-                            arrayOf(row.generation, thread))
+                        val uri = Uri.parse(row.uri)
+                        val sms = uri.authority == "sms"
+                        val selection = if (sms) "date = ? AND thread_id = ?" else "thread_id = ?"
+                        val args = if (sms) arrayOf(row.generation, thread) else arrayOf(thread)
+                        context.contentResolver.delete(uri, selection, args)
                         val after = current(row.uri)
                         if (after != null && after.generation == row.generation && after.thread == thread) {
                             throw IncompleteDelete()
@@ -208,14 +211,18 @@ internal class LogicalSendDeletion(private val context: Context) {
             if (it.moveToFirst()) it.getString(0) else null
         }
 
-    /** Purpose: verify raw date generation and thread through the shared query layer. */
+    /** Purpose: verify SMS date or stable MMS row ID, plus thread through the shared query layer. */
     private fun current(uri: String): Current? {
         val result = ContentQuery.queryOrNull(context, uri, arrayOf("_id", "date", "thread_id"))
             ?: error("Cannot verify provider row $uri")
         check(result.size <= 1) { "Ambiguous provider row $uri" }
         val row = result.firstOrNull() ?: return null
         check(row["_id"]?.toString() == Uri.parse(uri).lastPathSegment) { "Unexpected provider row identity" }
-        val generation = row["date"]?.toString()?.toLongOrNull() ?: error("Missing provider generation for $uri")
+        val generation = if (Uri.parse(uri).authority == "mms") {
+            Uri.parse(uri).lastPathSegment!!.toLong()
+        } else {
+            row["date"]?.toString()?.toLongOrNull() ?: error("Missing provider generation for $uri")
+        }
         val thread = row["thread_id"]?.toString()?.toLongOrNull() ?: error("Missing provider thread for $uri")
         check(thread > 0) { "Invalid provider thread for $uri" }
         return Current(generation.toString(), thread.toString())

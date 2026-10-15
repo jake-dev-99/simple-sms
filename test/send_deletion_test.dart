@@ -16,6 +16,20 @@ void main() {
     'confirmedGenerations': {'content://sms/100': '1000'},
     'complete': complete,
   };
+  test('MMS confirmation generation must equal its stable PDU id', () {
+    final wire = {
+      ...receipt(),
+      'messageUri': 'content://mms/100',
+      'confirmedMessageUris': ['content://mms/100'],
+      'confirmedGenerations': {'content://mms/100': '1000'},
+    };
+    expect(() => SendDeletionReceipt.fromWire(wire), throwsFormatException);
+    wire['confirmedGenerations'] = {'content://mms/100': '100'};
+    expect(SendDeletionReceipt.fromWire(wire).confirmedGenerations, {
+      'content://mms/100': '100',
+    });
+  });
+
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
   test(

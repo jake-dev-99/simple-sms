@@ -182,9 +182,13 @@ or recipient numbers. A missing or unrecognized receipt fails validation.
 Repeat `deleteSend` for the same queue identity and native thread to resume a
 partially completed deletion. Replaying confirmations alone never resumes
 provider writes. Preserve newer provider occurrences that reuse a confirmed
-URI: the generation identifies the old occurrence, not a different message
-currently at that URI. An unavailable or null generation fails before creating
-a new deletion plan.
+SMS URI: its generation is the raw SMS date. MMS uses its stable
+AUTOINCREMENT row ID; an MMS date rewrite does not change identity or prevent
+its deletion. Published schema-1 MMS ledger entries migrate to this stable
+identity without touching provider data. An unavailable or null SMS generation
+fails before creating a new deletion plan. An empty acknowledgement can retire
+a completed plan whose confirmations were already acknowledged before an
+interrupted completion commit.
 
 ### Save or discard SMS drafts
 
