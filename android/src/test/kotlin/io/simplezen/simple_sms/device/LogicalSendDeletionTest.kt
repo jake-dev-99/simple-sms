@@ -79,6 +79,17 @@ class LogicalSendDeletionTest {
         assertTrue(rows.isEmpty())
     }
 
+    /** Purpose: a conditional-delete miss after thread movement is not proof of removal. */
+    @Test fun aCapturedMmsMovingThreadsDuringDeleteIsNotConfirmedGone() {
+        record("content://mms/100")
+        beforeDelete = { rows.getValue("content://mms/100").put("thread_id", 8L) }
+        val receipt = delete("content://mms/100").receipt()
+        assertEquals(false, receipt["complete"])
+        assertEquals("DELETE_INCOMPLETE", receipt["failureCode"])
+        assertEquals(emptyList<String>(), receipt["confirmedMessageUris"])
+        assertTrue(rows.containsKey("content://mms/100"))
+    }
+
     /** Purpose: MMS identity and deletion do not depend on optional or mutable dates. */
     @Test fun mmsWithoutDateCanBeRecordedAndDeleted() {
         row("content://mms/100")

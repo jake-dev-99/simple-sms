@@ -80,7 +80,7 @@ internal class LogicalSendDeletion(private val context: Context) {
                         val args = if (sms) arrayOf(row.generation, thread) else arrayOf(thread)
                         context.contentResolver.delete(uri, selection, args)
                         val after = current(row.uri)
-                        if (after != null && after.generation == row.generation && after.thread == thread) {
+                        if (after != null && after.generation == row.generation) {
                             throw IncompleteDelete()
                         }
                     }
