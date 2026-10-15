@@ -59,7 +59,13 @@ abstract interface class NativeSendDeletion {
   /// Fence retries and delete all indexed attempts. Partial failures retain receipts.
   Future<void> delete({required String scope, required String messageUri});
 
-  /// Read at most [limit] plans/receipts in ascending identity order after [after].
+  /// Read at most [limit] outstanding plans/receipts in ascending id order.
+  ///
+  /// [after] is a temporary page cursor for one drain, never a saved watermark.
+  /// Start EVERY new drain with `after: 0`, advance past all returned ids (also
+  /// unconfirmed plans), and stop at a short page. A later drain must start at
+  /// zero because an unconfirmed plan can become confirmed without changing id.
+  /// Only [acknowledge] removes a row; failed handovers remain available.
   Future<List<NativeDeletionReceipt>> pending({int after = 0, int limit = 64});
 
   /// Acknowledge only after the caller's deletion journal has committed.

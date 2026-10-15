@@ -126,6 +126,25 @@ class OutboundSendDeletionTest {
         assertTrue(provider.rows.isEmpty())
     }
 
+    @Test fun eachNewDrainRestartsAtZeroToRecoverPlansConfirmedAfterEarlierPagination() {
+        record(1); record(2)
+        provider.refuse = "content://sms/1"
+        assertThrows(IllegalStateException::class.java) { deletion.delete("thread", "content://sms/2") }
+        val firstDrain = deletion.pending(0, 64)
+        assertEquals(2, firstDrain.size)
+        assertTrue(firstDrain.all { it["confirmed"] == false })
+        val lastPageId = (firstDrain.last()["id"] as Number).toLong()
+        assertTrue(deletion.pending(lastPageId, 64).isEmpty())
+        provider.refuse = null
+        deletion.delete("thread", "content://sms/2")
+        // A fresh recovery traversal never reuses lastPageId as a watermark.
+        val nextDrain = OutboundSendDeletion(context).pending(0, 64)
+        assertEquals(firstDrain.map { it["id"] }, nextDrain.map { it["id"] })
+        assertTrue(nextDrain.all { it["confirmed"] == true })
+        nextDrain.forEach { deletion.acknowledge((it["id"] as Number).toLong()) }
+        assertTrue(deletion.pending(0, 64).isEmpty())
+    }
+
     @Test fun reusedRowIsNeverDeletedAsAnOlderAttempt() {
         record(1); record(2)
         provider.rows["content://sms/1"] = 2000L

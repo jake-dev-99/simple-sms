@@ -1,6 +1,6 @@
 ## 0.7.0 (unreleased)
 
-- Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present.
+- Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present. Every new receipt drain must restart at cursor zero; page cursors are traversal-local because unconfirmed plans retain their id when confirmed.
 
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
 

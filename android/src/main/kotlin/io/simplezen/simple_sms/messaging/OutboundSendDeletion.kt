@@ -84,7 +84,10 @@ internal class OutboundSendDeletion(private val context: Context) {
      * Read/recover one bounded receipt page. Planned rows still present are
      * returned with confirmed=false; absent/reused generations confirm crash
      * recovery without repeating any provider write. Advance after every id,
-     * including unconfirmed rows, to avoid starving newer receipts.
+     * including unconfirmed rows, to avoid starving newer receipts. The cursor
+     * is traversal-local: every NEW drain must start at zero. Confirmation can
+     * change an existing row, so an id is not a durable changes-since watermark.
+     * Only acknowledgment removes a row from subsequent drains.
      */
     fun pending(after: Long, limit: Int): List<Map<String, Any>> = store.locked {
         require(after >= 0 && limit in 1..64) { "Invalid deletion receipt page" }
