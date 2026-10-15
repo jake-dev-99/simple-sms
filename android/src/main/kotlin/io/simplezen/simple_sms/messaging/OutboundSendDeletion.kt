@@ -34,11 +34,18 @@ internal class OutboundSendDeletion(private val context: Context) {
             checkBudget(deadline)
             val plan = store.transaction { db ->
                 val requestedGeneration = generation(uri)
-                val token = db.rawQuery("SELECT token, generation FROM correlations WHERE uri=?", arrayOf(uri)).use {
-                    // An absent target may resume an already-started deletion.
-                    // A reused live URI belongs only to its current generation.
-                    if (it.moveToFirst() && (requestedGeneration == null ||
-                            requestedGeneration == it.getString(1))) it.getString(0) else null
+                val token = db.rawQuery("SELECT token, generation FROM correlations WHERE uri=?", arrayOf(uri)).use { cursor ->
+                    if (!cursor.moveToFirst()) null else {
+                        val candidate = cursor.getString(0)
+                        // Absence resumes only an already-fenced deletion. A
+                        // live reused URI belongs to its current generation.
+                        val matches = if (requestedGeneration != null) {
+                            requestedGeneration == cursor.getString(1)
+                        } else {
+                            db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=?", arrayOf(candidate)).use { it.moveToFirst() }
+                        }
+                        if (matches) candidate else null
+                    }
                 }
                 val targets = if (token == null) {
                     listOf(mapOf("uri" to uri, "generation" to (requestedGeneration ?: "absent")))

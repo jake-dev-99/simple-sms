@@ -176,6 +176,16 @@ class OutboundSendDeletionTest {
         assertTrue(deletion.pending(0, 64).all { it["jobDeletionComplete"] == true })
     }
 
+    @Test fun missingUnfencedRequestedRowCannotDeleteItsHistoricalSend() {
+        record(1); record(2)
+        provider.rows.remove("content://sms/1")
+        deletion.delete("thread", "content://sms/1")
+        assertEquals(mapOf("content://sms/2" to 1000L), provider.rows)
+        assertTrue(provider.deletes.isEmpty())
+        assertFalse(deletion.pending(0, 64).single().containsKey("clientCorrelationId"))
+        store.withAttempt("job" to 1) { /* Historical send is still allowed. */ }
+    }
+
     @Test fun nullDatedUncorrelatedMessageHasADurableReceipt() {
         provider.rows["content://mms/7"] = null
         deletion.delete("thread", "content://mms/7")

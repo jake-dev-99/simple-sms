@@ -1,7 +1,7 @@
 ## 0.7.0 (unreleased)
 
 - Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present. Every new receipt drain must restart at cursor zero; page cursors are traversal-local because unconfirmed plans retain their id when confirmed.
-- Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused row is deleted independently; missing rows can still resume partial deletion.
+- Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused row is deleted independently; a missing row resumes only an already-fenced partial deletion.
 - Preserve correlation metadata across schema migration. Before any deletion fence, the additive schema can return to v1. Once a fence is persisted, stamp v2 atomically so 0.6 fails closed before correlated sends create rows; rolling back after deletion requires a build that understands these fences. Never clear fences or lower that safety barrier to restore an old binary.
 
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
