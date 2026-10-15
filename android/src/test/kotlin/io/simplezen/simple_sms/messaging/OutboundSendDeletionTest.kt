@@ -169,6 +169,24 @@ class OutboundSendDeletionTest {
         assertTrue(provider.deletes.isEmpty())
     }
 
+    @Test fun legacyV1ReaderCanOpenSurvivingCorrelationsAfterReceiptWrites() {
+        record(1, "deleted"); record(2, "surviving")
+        deletion.delete("thread", "content://sms/1")
+        // The 0.6 registry accepts exactly v1 and ignores additive tables.
+        database { db ->
+            check(db.version == 1) { "Legacy registry cannot open this schema" }
+            db.rawQuery("SELECT token FROM correlations WHERE uri=?", arrayOf("content://sms/2")).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("surviving", it.getString(0))
+            }
+        }
+        val restarted = OutboundSendDeletion(context)
+        val receipt = restarted.pending(0, 64).single()
+        assertEquals(true, receipt["confirmed"])
+        restarted.acknowledge((receipt["id"] as Number).toLong())
+        assertTrue(restarted.pending(0, 64).isEmpty())
+    }
+
     @Test fun methodHandlerReturnsReceiptsAndAcknowledgesTheSameIdentity() {
         record(1)
         val handler = io.simplezen.simple_sms.device.DestructiveActions(context)

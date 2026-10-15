@@ -250,14 +250,14 @@ internal class OutboundSendCorrelations(private val context: Context) {
                     db.execSQL("CREATE INDEX correlations_job ON correlations(token, ordinal DESC)")
                     db.version = 1
                 }
-                if (db.version == 1) {
-                    db.execSQL("CREATE TABLE deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
-                    db.execSQL("CREATE TABLE deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                        "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
-                        "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
-                    db.version = 2
-                }
-                check(db.version == 2) { "Unsupported outbound correlation database version" }
+                check(db.version == 1) { "Unsupported outbound correlation database version" }
+                // UNFY-346: these are additive side tables. Keep the correlation
+                // format at v1 so a rollback can still open its unchanged rows;
+                // old builds ignore these tables and never drop receipt state.
+                db.execSQL("CREATE TABLE IF NOT EXISTS deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
+                    "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
                 val result = action(db)
                 db.setTransactionSuccessful()
                 result
