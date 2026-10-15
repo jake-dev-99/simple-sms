@@ -42,7 +42,7 @@ internal class OutboundSendDeletion(private val context: Context) {
                         val matches = if (requestedGeneration != null) {
                             requestedGeneration == cursor.getString(1)
                         } else {
-                            db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=?", arrayOf(candidate)).use { it.moveToFirst() }
+                            db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=? AND complete=0", arrayOf(candidate)).use { it.moveToFirst() }
                         }
                         if (matches) candidate else null
                     }

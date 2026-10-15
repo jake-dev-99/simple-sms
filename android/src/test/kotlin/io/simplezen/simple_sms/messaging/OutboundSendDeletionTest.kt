@@ -186,6 +186,16 @@ class OutboundSendDeletionTest {
         store.withAttempt("job" to 1) { /* Historical send is still allowed. */ }
     }
 
+    @Test fun completedMissingSendDoesNotRecreateItsAcknowledgedReceipts() {
+        record(1); record(2)
+        deletion.delete("thread", "content://sms/1")
+        deletion.pending(0, 64).forEach { deletion.acknowledge((it["id"] as Number).toLong()) }
+        deletion.delete("thread", "content://sms/1")
+        val receipt = deletion.pending(0, 64).single()
+        assertEquals("content://sms/1", receipt["messageUri"])
+        assertFalse(receipt.containsKey("clientCorrelationId"))
+    }
+
     @Test fun nullDatedUncorrelatedMessageHasADurableReceipt() {
         provider.rows["content://mms/7"] = null
         deletion.delete("thread", "content://mms/7")
