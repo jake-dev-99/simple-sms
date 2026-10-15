@@ -187,6 +187,18 @@ class OutboundSendDeletionTest {
         assertTrue(restarted.pending(0, 64).isEmpty())
     }
 
+    @Test fun unreleasedV2DatabaseNormalizesWithoutLosingReceiptIdentity() {
+        record(1)
+        deletion.delete("thread", "content://sms/1")
+        val before = deletion.pending(0, 64).single()
+        database { it.version = 2 }
+        val after = OutboundSendDeletion(context).pending(0, 64).single()
+        assertEquals(before, after)
+        database { assertEquals(1, it.version) }
+        OutboundSendDeletion(context).acknowledge((after["id"] as Number).toLong())
+        assertTrue(deletion.pending(0, 64).isEmpty())
+    }
+
     @Test fun methodHandlerReturnsReceiptsAndAcknowledgesTheSameIdentity() {
         record(1)
         val handler = io.simplezen.simple_sms.device.DestructiveActions(context)
