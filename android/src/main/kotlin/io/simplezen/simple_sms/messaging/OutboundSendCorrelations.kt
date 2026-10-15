@@ -51,7 +51,10 @@ internal class OutboundSendCorrelations(private val context: Context) {
         if (token != null) {
             require(token.isNotBlank()) { "clientCorrelationId must not be blank" }
             require(expectedRows in 1..MAX_RETAINED_ROWS) { "Correlated send must persist at most 64 rows" }
-            transaction { ensureCapacity(it, token to expectedRows) }
+            transaction {
+                requireNotDeleted(it, token)
+                ensureCapacity(it, token to expectedRows)
+            }
         }
         return Attempt(token)
     }
@@ -96,6 +99,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
                 db.delete("correlations", "uri=?", arrayOf(row))
                 return@transaction
             }
+            requireNotDeleted(db, token)
             val generation = generation(row) ?: error("New outbound provider row is missing: $row")
             val history = rows(db, token)
             val ordinal = history.firstOrNull { it.getValue("attempt") == attempt.id }
@@ -168,7 +172,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
      * @returns At most 64 row identities in descending recorded attempt order.
      * @throws IllegalStateException If the database violates the retention contract.
      */
-    private fun rows(db: SQLiteDatabase, token: String): List<Map<String, String>> =
+    internal fun rows(db: SQLiteDatabase, token: String): List<Map<String, String>> =
         db.rawQuery("SELECT uri, attempt, ordinal, generation FROM correlations " +
             "WHERE token=? ORDER BY ordinal DESC, uri DESC LIMIT 65", arrayOf(token)).use { cursor ->
             buildList {
@@ -191,9 +195,21 @@ internal class OutboundSendCorrelations(private val context: Context) {
     private fun verified(db: SQLiteDatabase, row: Map<String, String>): Boolean {
         val uri = row.getValue("uri")
         if (generation(uri) == row.getValue("generation")) return true
-        db.delete("correlations", "uri=?", arrayOf(uri))
+        // A deletion fence retains membership so a stale request can resume
+        // a partially completed delete after lookup/restart (UNFY-346).
+        db.delete("correlations", "uri=? AND token NOT IN (SELECT token FROM deleted_sends)", arrayOf(uri))
         return false
     }
+
+    /** Reject a deleted logical identity before provider creation or handoff. */
+    private fun requireNotDeleted(db: SQLiteDatabase, token: String) {
+        db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=?", arrayOf(token)).use {
+            check(!it.moveToFirst()) { "Logical send was deleted; retry is forbidden" }
+        }
+    }
+
+    /** Share the native initialization lock with deletion, across engines. */
+    internal fun <T> locked(action: () -> T): T = synchronized(lock) { action() }
 
     // Purpose: verify exact row generation through the shared provider-query layer.
     /**
@@ -219,7 +235,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
      * @throws android.database.sqlite.SQLiteException If storage cannot be opened or committed.
      * @throws IllegalStateException If the database format is unsupported.
      */
-    private fun <T> transaction(action: (SQLiteDatabase) -> T): T = synchronized(lock) {
+    internal fun <T> transaction(action: (SQLiteDatabase) -> T): T = synchronized(lock) {
         val file = File(context.noBackupFilesDir, DATABASE_NAME)
         SQLiteDatabase.openOrCreateDatabase(file.path, null) {
             throw SQLiteDatabaseCorruptException("Outbound correlation database is corrupt")
@@ -234,7 +250,14 @@ internal class OutboundSendCorrelations(private val context: Context) {
                     db.execSQL("CREATE INDEX correlations_job ON correlations(token, ordinal DESC)")
                     db.version = 1
                 }
-                check(db.version == 1) { "Unsupported outbound correlation database version" }
+                if (db.version == 1) {
+                    db.execSQL("CREATE TABLE deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
+                    db.execSQL("CREATE TABLE deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                        "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
+                        "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
+                    db.version = 2
+                }
+                check(db.version == 2) { "Unsupported outbound correlation database version" }
                 val result = action(db)
                 db.setTransactionSuccessful()
                 result
@@ -250,7 +273,7 @@ internal class OutboundSendCorrelations(private val context: Context) {
      * @returns The canonical table-qualified URI.
      * @throws IllegalArgumentException If the URI does not identify a positive SMS/MMS row.
      */
-    private fun canonical(raw: String): String {
+    internal fun canonical(raw: String): String {
         val uri = Uri.parse(raw)
         require(uri.scheme == "content" && uri.authority in setOf("sms", "mms")
             && uri.query == null && uri.fragment == null) { "Invalid message URI" }
