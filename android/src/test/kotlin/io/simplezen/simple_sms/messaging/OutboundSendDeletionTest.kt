@@ -196,6 +196,27 @@ class OutboundSendDeletionTest {
         assertFalse(receipt.containsKey("clientCorrelationId"))
     }
 
+    @Test fun completedSendKeepsTheSameUnacknowledgedReceiptsOnRetry() {
+        record(1); record(2)
+        deletion.delete("thread", "content://sms/1")
+        val original = deletion.pending(0, 64)
+        deletion.delete("thread", "content://sms/1")
+        assertEquals(original, deletion.pending(0, 64))
+    }
+
+    @Test fun partialRetryNeverReplaysAcknowledgedIdentitiesOverReusedRows() {
+        record(1); record(2)
+        provider.refuse = "content://sms/2"
+        assertThrows(IllegalStateException::class.java) { deletion.delete("thread", "content://sms/1") }
+        val confirmed = deletion.pending(0, 64).single { it["confirmed"] == true }
+        deletion.acknowledge((confirmed["id"] as Number).toLong())
+        provider.rows["content://sms/1"] = 2000L
+        provider.refuse = null
+        deletion.delete("thread", "content://sms/2")
+        assertEquals(2000L, provider.rows["content://sms/1"])
+        assertEquals(listOf("content://sms/2"), deletion.pending(0, 64).map { it["messageUri"] })
+    }
+
     @Test fun nullDatedUncorrelatedMessageHasADurableReceipt() {
         provider.rows["content://mms/7"] = null
         deletion.delete("thread", "content://mms/7")
@@ -253,6 +274,24 @@ class OutboundSendDeletionTest {
         assertTrue(deletion.pending(0, 64).isEmpty())
         database { assertEquals(1, it.version) }
         assertTrue(store.lookup(listOf("content://sms/1")).isNotEmpty())
+    }
+
+    @Test fun earlierReceiptSchemaAddsAcknowledgmentWithoutChangingIdentities() {
+        record(1)
+        deletion.delete("thread", "content://sms/1")
+        val original = deletion.pending(0, 64).single()
+        database { db ->
+            db.execSQL("ALTER TABLE deletion_rows RENAME TO newer_rows")
+            db.execSQL("CREATE TABLE deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
+                "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
+            db.execSQL("INSERT INTO deletion_rows(id, scope, uri, generation, token, confirmed) " +
+                "SELECT id, scope, uri, generation, token, confirmed FROM newer_rows")
+            db.execSQL("DROP TABLE newer_rows")
+        }
+        assertEquals(original, OutboundSendDeletion(context).pending(0, 64).single())
+        deletion.acknowledge((original["id"] as Number).toLong())
+        assertTrue(OutboundSendDeletion(context).pending(0, 64).isEmpty())
     }
 
     @Test fun methodHandlerReturnsReceiptsAndAcknowledgesTheSameIdentity() {

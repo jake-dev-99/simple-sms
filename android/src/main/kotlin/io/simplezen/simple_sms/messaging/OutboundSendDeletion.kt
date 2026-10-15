@@ -42,7 +42,9 @@ internal class OutboundSendDeletion(private val context: Context) {
                         val matches = if (requestedGeneration != null) {
                             requestedGeneration == cursor.getString(1)
                         } else {
-                            db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=? AND complete=0", arrayOf(candidate)).use { it.moveToFirst() }
+                            db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=? AND (complete=0 OR " +
+                                "EXISTS (SELECT 1 FROM deletion_rows WHERE token=? AND acked=0))",
+                                arrayOf(candidate, candidate)).use { it.moveToFirst() }
                         }
                         if (matches) candidate else null
                     }
@@ -103,7 +105,7 @@ internal class OutboundSendDeletion(private val context: Context) {
     fun pending(after: Long, limit: Int): List<Map<String, Any>> = store.locked {
         require(after >= 0 && limit in 1..64) { "Invalid deletion receipt page" }
         val page = store.transaction { db ->
-            db.rawQuery("SELECT id, scope, uri, generation, confirmed, token FROM deletion_rows WHERE id>? ORDER BY id LIMIT ?",
+            db.rawQuery("SELECT id, scope, uri, generation, confirmed, token FROM deletion_rows WHERE acked=0 AND id>? ORDER BY id LIMIT ?",
                 arrayOf(after.toString(), limit.toString())).use { cursor ->
                 buildList {
                     while (cursor.moveToNext()) add(Planned(cursor.getLong(0), cursor.getString(1),
@@ -129,14 +131,14 @@ internal class OutboundSendDeletion(private val context: Context) {
         }
     }
 
-    /** Remove a receipt only after the caller has durably journaled it. Idempotent. */
+    /** Consume a receipt after journaling, retaining its identity against retry replay. Idempotent. */
     fun acknowledge(id: Long) {
         require(id > 0) { "Invalid deletion receipt id" }
         store.transaction { db ->
             db.rawQuery("SELECT confirmed FROM deletion_rows WHERE id=?", arrayOf(id.toString())).use {
                 check(!it.moveToFirst() || it.getInt(0) == 1) { "Cannot acknowledge an unconfirmed deletion" }
             }
-            db.delete("deletion_rows", "id=?", arrayOf(id.toString()))
+            db.execSQL("UPDATE deletion_rows SET acked=1 WHERE id=?", arrayOf(id))
         }
     }
 

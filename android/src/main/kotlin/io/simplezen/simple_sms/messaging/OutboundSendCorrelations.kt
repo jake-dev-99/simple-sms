@@ -255,7 +255,15 @@ internal class OutboundSendCorrelations(private val context: Context) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                     "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
-                    "confirmed INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
+                    "confirmed INTEGER NOT NULL DEFAULT 0, acked INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
+                val hasAcknowledgment = db.rawQuery("PRAGMA table_info(deletion_rows)", null).use { cursor ->
+                    var found = false
+                    while (cursor.moveToNext()) if (cursor.getString(1) == "acked") found = true
+                    found
+                }
+                if (!hasAcknowledgment) db.execSQL("ALTER TABLE deletion_rows ADD COLUMN acked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS deletion_rows_pending ON deletion_rows(acked, id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS deletion_rows_job ON deletion_rows(token, acked)")
                 // Reversible before the first fence: v1 readers can open the
                 // unchanged correlation format. Once a send is deleted, v2 is a
                 // safety barrier: 0.6 rejects it before creating any provider row.
