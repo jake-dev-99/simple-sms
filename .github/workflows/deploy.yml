@@ -76,6 +76,7 @@ jobs:
     needs: resolve-tag
     runs-on: ubuntu-latest
     permissions:
+      actions: read  # source-matched original Deploy metadata/logs for inspection
       contents: read  # checkout only; least-privilege to match resolve-tag/publish (zizmor)
     # The full native Android compile + JVM (Robolectric) unit tests —
     # the half of the codebase `flutter test` (Dart-only) never touches.
@@ -228,6 +229,7 @@ jobs:
     # doesn't compile / fails its JVM unit tests.
     needs: [resolve-tag, native-build]
     permissions:
+      actions: read  # source-matched original Deploy metadata/logs for inspection
       id-token: write
       contents: read
     runs-on: ubuntu-latest
