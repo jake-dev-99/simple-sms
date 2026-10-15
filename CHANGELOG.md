@@ -1,5 +1,13 @@
 ## Unreleased
 
+- Add bounded logical-send deletion and durable host-acknowledged receipts
+  (UNFY-346): delete every retained native attempt, preserve generation/thread
+  identity, fence concurrent or delayed retries, and recover partial progress
+  without scanning conversation history. Add `deleteSend`,
+  `pendingSendDeletions`, `acknowledgeSendDeletion` and `SendDeletionReceipt`.
+  This additive API requires the next minor release; publication/version
+  stamping remains in the Cut Release workflow.
+
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
 
 Release as a minor bump: `Sms.status` changes type, and destructive deletes

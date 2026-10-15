@@ -186,6 +186,7 @@ internal class AckReadUnreadableException(messageUri: Uri) : IllegalStateExcepti
  * error codes; do not inline new mappings at the call site.
  */
 internal fun mapSendException(e: Throwable): Triple<String, String, Any?> = when (e) {
+    is SendDeletedException -> Triple("SEND_DELETED", e.message.orEmpty(), null)
     is AttachmentUnreadableException -> Triple(
         ERR_ATTACHMENT_UNREADABLE,
         "Cannot read attachment: ${e.attachmentPath}",

@@ -36,6 +36,8 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "deleteSend", "pendingSendDeletions", "acknowledgeSendDeletion" ->
+                LogicalSendDeletion(context).onMethodCall(call, result)
             "deleteThread" -> {
                 val threadId = positiveRowId(call.arguments)
                 if (threadId == null) {
