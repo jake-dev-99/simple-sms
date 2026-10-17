@@ -49,6 +49,67 @@ class LogicalSendDeletionTest {
         }
     }
 
+    /** A reused MMS row ID must never authorize deletion of another PDU. */
+    @Test fun reusedMmsIdentitySurvivesDeletion() {
+        record("content://mms/100")
+        rows.getValue("content://mms/100").put("tr_id", "replacement")
+        assertTrue(store.lookup(listOf("content://mms/100")).isEmpty())
+        assertEquals("INVALID_ARGUMENT", delete("content://mms/100").error)
+        assertTrue(rows.containsKey("content://mms/100"))
+        assertTrue(deletes.isEmpty())
+    }
+
+    /** Conditional MMS writes must reject replacement after the last identity read. */
+    @Test fun mmsReusedDuringDeleteIsPreserved() {
+        record("content://mms/100")
+        beforeDelete = { rows.getValue("content://mms/100").put("tr_id", "replacement") }
+        val receipt = delete("content://mms/100").receipt()
+        assertEquals(true, receipt["complete"])
+        assertEquals("replacement", rows.getValue("content://mms/100").getAsString("tr_id"))
+    }
+
+    /** Missing MMS occurrence proof cannot create a deletion fence or a provider write. */
+    @Test fun missingMmsTransactionFailsClosed() {
+        record("content://mms/100")
+        rows.getValue("content://mms/100").putNull("tr_id")
+        assertEquals("DELETE_FAILED", delete("content://mms/100").error)
+        assertTrue(deletes.isEmpty())
+        assertTrue(pending().isEmpty())
+    }
+
+    /** Older date-based readers must reject transaction-proof stores even after rows are gone. */
+    @Test fun mmsProofPermanentlyFencesOlderReaders() {
+        record("content://mms/100")
+        database { db ->
+            assertThrows(IllegalStateException::class.java) {
+                check(db.version in 1..2) { "Older reader cannot interpret MMS occurrence proof" }
+            }
+        }
+        delete("content://mms/100").receipt()
+        acknowledge(listOf("content://mms/100")).requireSuccess()
+        assertTrue(pending().isEmpty())
+        database { assertEquals(3, it.version) }
+    }
+
+    /** Import old local-build cancellation records before any retry can create a provider row. */
+    @Test fun legacyLogicalDeletionFencesAreImportedWithoutLosingReceipts() {
+        record("content://sms/100")
+        delete("content://sms/100").receipt()
+        database {
+            it.execSQL("DELETE FROM deleted_sends")
+            it.execSQL("DROP TABLE correlation_migrations")
+            it.version = 2
+        }
+        val restarted = OutboundSendCorrelations(context)
+        assertThrows(IllegalStateException::class.java) {
+            restarted.withAttempt("job" to 1) { fail("Old logical deletion fence was lost") }
+        }
+        assertEquals(listOf("content://sms/100"), pending().single()["confirmedMessageUris"])
+        assertThrows(IllegalStateException::class.java) {
+            restarted.withAttempt("job" to 1) { fail("Restart bypassed imported fence") }
+        }
+    }
+
     /** Purpose: stale UI targets must still leave the actual latest attempt until last. */
     @Test fun staleTargetDeletesAllRecordedAttemptsLatestLast() {
         for (id in 100..102) record("content://sms/$id")
@@ -99,20 +160,23 @@ class LogicalSendDeletionTest {
         assertTrue(rows.isEmpty())
     }
 
-    /** Purpose: upgrade published schema-1 MMS correlations without losing their job ownership. */
-    @Test fun schemaOneMmsDatesMigrateToStableRowIds() {
+    /** Legacy date/row-ID proofs must not adopt a replacement PDU during migration. */
+    @Test fun legacyMmsGenerationsFailClosedWithoutRebinding() {
         record("content://mms/100")
         database { db ->
-            db.execSQL("DROP TABLE send_deletion_rows")
-            db.execSQL("DROP TABLE send_deletions")
             db.execSQL("UPDATE correlations SET generation='1000'")
             db.version = 1
         }
-        rows.getValue("content://mms/100").put("date", 2000L)
-        assertEquals("job", store.lookup(listOf("content://mms/100"))["content://mms/100"]?.get("clientCorrelationId"))
-        assertEquals(true, delete("content://mms/100").receipt()["complete"])
-        assertEquals(mapOf("content://mms/100" to "100"), pending().single()["confirmedGenerations"])
-        assertTrue(rows.isEmpty())
+        rows.getValue("content://mms/100").put("tr_id", "replacement")
+        assertThrows(IllegalStateException::class.java) { store.lookup(listOf("content://mms/100")) }
+        assertEquals("DELETE_FAILED", delete("content://mms/100").error)
+        assertTrue(deletes.isEmpty())
+        assertTrue(rows.containsKey("content://mms/100"))
+        database { db ->
+            db.rawQuery("SELECT generation FROM correlations", null).use {
+                assertTrue(it.moveToFirst()); assertEquals("1000", it.getString(0))
+            }
+        }
     }
 
     /** Purpose: partial provider failure preserves latest and confirmations survive reopening until acknowledged. */
@@ -305,6 +369,7 @@ class LogicalSendDeletionTest {
     private fun row(uri: String, thread: Long = 7) {
         rows[uri] = ContentValues().apply {
             put("_id", Uri.parse(uri).lastPathSegment!!.toLong()); put("date", 1000L); put("thread_id", thread)
+            if (Uri.parse(uri).authority == "mms") put("tr_id", "transaction-${Uri.parse(uri).lastPathSegment}")
         }
     }
     /** Purpose: persist a real correlation for the provider occurrence under test. */
@@ -360,9 +425,9 @@ class LogicalSendDeletionTest {
                 assertEquals(2, args?.size)
                 if (row.getAsString("date") != args!![0] || row.getAsString("thread_id") != args[1]) return 0
             } else {
-                assertEquals("thread_id = ?", selection)
-                assertEquals(1, args?.size)
-                if (row.getAsString("thread_id") != args!![0]) return 0
+                assertEquals("tr_id = ? AND thread_id = ?", selection)
+                assertEquals(2, args?.size)
+                if (row.getAsString("tr_id") != args!![0] || row.getAsString("thread_id") != args[1]) return 0
             }
             rows.remove(uri.toString())
             afterDelete?.invoke()

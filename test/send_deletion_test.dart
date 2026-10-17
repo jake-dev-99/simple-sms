@@ -16,19 +16,24 @@ void main() {
     'confirmedGenerations': {'content://sms/100': '1000'},
     'complete': complete,
   };
-  test('MMS confirmation generation must equal its stable PDU id', () {
-    final wire = {
-      ...receipt(),
-      'messageUri': 'content://mms/100',
-      'confirmedMessageUris': ['content://mms/100'],
-      'confirmedGenerations': {'content://mms/100': '1000'},
-    };
-    expect(() => SendDeletionReceipt.fromWire(wire), throwsFormatException);
-    wire['confirmedGenerations'] = {'content://mms/100': '100'};
-    expect(SendDeletionReceipt.fromWire(wire).confirmedGenerations, {
-      'content://mms/100': '100',
-    });
-  });
+  test(
+    'MMS confirmation requires transaction identity rather than a reused row id',
+    () {
+      final wire = {
+        ...receipt(),
+        'messageUri': 'content://mms/100',
+        'confirmedMessageUris': ['content://mms/100'],
+        'confirmedGenerations': {'content://mms/100': '1000'},
+      };
+      expect(() => SendDeletionReceipt.fromWire(wire), throwsFormatException);
+      wire['confirmedGenerations'] = {
+        'content://mms/100': 'mms:transaction-100',
+      };
+      expect(SendDeletionReceipt.fromWire(wire).confirmedGenerations, {
+        'content://mms/100': 'mms:transaction-100',
+      });
+    },
+  );
 
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 

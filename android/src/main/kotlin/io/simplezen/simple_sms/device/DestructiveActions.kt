@@ -11,6 +11,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_permissions_android.PermissionDeniedException
 import io.simplezen.simple_permissions_android.PermissionGuards
+import io.simplezen.simple_sms.messaging.OutboundSendDeletion
 
 /**
  * Irrecoverable thread + message deletion with verified outcomes (UNFY-244).
@@ -38,6 +39,24 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
         when (call.method) {
             "deleteSend", "pendingSendDeletions", "acknowledgeSendDeletion" ->
                 LogicalSendDeletion(context).onMethodCall(call, result)
+            "deleteMessageAttempts" -> deletionResult(result) {
+                val args = call.arguments as? Map<*, *> ?: error("Expected deletion arguments")
+                val scope = args["scope"] as? String ?: error("Missing deletion scope")
+                val uri = args["messageUri"] as? String ?: error("Missing message URI")
+                OutboundSendDeletion(context).delete(scope, uri)
+                null
+            }
+            "pendingMessageDeletions" -> deletionResult(result) {
+                val args = call.arguments as? Map<*, *> ?: error("Expected receipt page arguments")
+                val after = (args["after"] as? Number)?.toLong() ?: error("Missing receipt cursor")
+                val limit = (args["limit"] as? Number)?.toInt() ?: error("Missing receipt limit")
+                OutboundSendDeletion(context).pending(after, limit)
+            }
+            "acknowledgeMessageDeletion" -> deletionResult(result) {
+                val id = (call.arguments as? Number)?.toLong() ?: error("Missing receipt identity")
+                OutboundSendDeletion(context).acknowledge(id)
+                null
+            }
             "deleteThread" -> {
                 val threadId = positiveRowId(call.arguments)
                 if (threadId == null) {
@@ -92,6 +111,18 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
                 }
             }
             else -> result.notImplemented()
+        }
+    }
+
+    /** Report every receipt/storage/provider failure without inventing success. */
+    private fun deletionResult(result: MethodChannel.Result, action: () -> Any?) {
+        try {
+            result.success(action())
+        } catch (e: PermissionDeniedException) {
+            result.error("NOT_DEFAULT_SMS_APP", e.message, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Logical-send deletion or receipt operation failed", e)
+            result.error("DELETE_FAILED", e.message, e.stackTraceToString())
         }
     }
 

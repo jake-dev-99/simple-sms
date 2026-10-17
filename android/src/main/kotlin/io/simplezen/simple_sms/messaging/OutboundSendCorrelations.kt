@@ -101,6 +101,8 @@ internal class OutboundSendCorrelations(private val context: Context) {
             }
             requireNotDeleted(db, token)
             val generation = generation(row) ?: error("New outbound provider row is missing: $row")
+            // Old readers compare MMS dates and cannot interpret transaction identities.
+            if (Uri.parse(row).authority == "mms") db.version = 3
             val history = rows(db, token)
             val ordinal = history.firstOrNull { it.getValue("attempt") == attempt.id }
                 ?.getValue("ordinal")?.toLong()
@@ -149,13 +151,6 @@ internal class OutboundSendCorrelations(private val context: Context) {
         }
     }
 
-    /** Purpose: fence deleted logical jobs before row allocation or radio handoff. */
-    private fun requireNotDeleted(db: SQLiteDatabase, token: String) {
-        db.rawQuery("SELECT 1 FROM send_deletions WHERE token=?", arrayOf(token)).use {
-            if (it.moveToFirst()) throw SendDeletedException()
-        }
-    }
-
     // Purpose: keep live identity retention bounded without silently dropping survivors.
     /**
      * @param db The active indexed transaction.
@@ -201,33 +196,50 @@ internal class OutboundSendCorrelations(private val context: Context) {
      */
     private fun verified(db: SQLiteDatabase, row: Map<String, String>): Boolean {
         val uri = row.getValue("uri")
+        requireKnownGeneration(uri, row.getValue("generation"))
         if (generation(uri) == row.getValue("generation")) return true
-        db.delete("correlations", "uri=?", arrayOf(uri))
+        // A deletion fence retains membership so a stale request can resume
+        // a partially completed delete after lookup/restart (UNFY-346).
+        db.delete("correlations", "uri=? AND token NOT IN (SELECT token FROM deleted_sends)", arrayOf(uri))
         return false
     }
 
-    // Purpose: verify exact row generation through the shared provider-query layer.
-    /**
-     * @param row The canonical SMS or MMS provider URI.
-     * @returns SMS date or stable MMS _id, or null for verified absence.
-     * @throws IllegalStateException If the provider or date discriminator is unavailable.
-     * @throws SecurityException If provider access is denied.
-     */
-    private fun generation(row: String): String? {
-        val result = ContentQuery.queryOrNull(context, row, arrayOf(BaseColumns._ID, "date"))
+    /** Reject a deleted logical identity before provider creation or handoff. */
+    private fun requireNotDeleted(db: SQLiteDatabase, token: String) {
+        db.rawQuery("SELECT 1 FROM deleted_sends WHERE token=?", arrayOf(token)).use {
+            if (it.moveToFirst()) throw SendDeletedException()
+        }
+    }
+
+    /** Share the native initialization lock with deletion, across engines. */
+    internal fun <T> locked(action: () -> T): T = synchronized(lock) { action() }
+
+    /** Read exact occurrence proof; MMS dates and row IDs cannot identify a PDU. */
+    internal fun generation(row: String, allowUndated: Boolean = false): String? {
+        val uri = Uri.parse(row)
+        val column = if (uri.authority == "mms") "tr_id" else "date"
+        val result = ContentQuery.queryOrNull(context, row, arrayOf(BaseColumns._ID, column))
             ?: error("Could not verify outbound correlation row $row")
         check(result.size <= 1) { "Ambiguous outbound provider row" }
         val values = result.firstOrNull() ?: return null
-        val uri = Uri.parse(row)
+        check(values[BaseColumns._ID]?.toString() == uri.lastPathSegment) { "Unexpected provider row identity" }
         if (uri.authority == "mms") {
-            val id = values[BaseColumns._ID]?.toString()?.toLongOrNull()
-                ?: error("Missing outbound MMS identity: $row")
-            check(id > 0 && id.toString() == uri.lastPathSegment) { "Unexpected outbound MMS identity" }
-            return id.toString()
+            val transaction = values["tr_id"] as? String
+            check(!transaction.isNullOrBlank()) { "Missing MMS transaction identity: $row" }
+            return "mms:$transaction"
         }
-        val date = values["date"]?.toString()?.toLongOrNull()
+        check(values.containsKey("date")) { "Provider omitted outbound generation" }
+        if (allowUndated && values["date"] == null) return "null"
+        return values["date"]?.toString()?.toLongOrNull()?.toString()
             ?: error("Missing outbound provider generation: $row")
-        return date.toString()
+    }
+
+    /** Never upgrade an old MMS date/row ID by adopting the current row's identity. */
+    internal fun requireKnownGeneration(uri: String, generation: String) {
+        check(Uri.parse(uri).authority != "mms" ||
+            (generation.startsWith("mms:") && generation.removePrefix("mms:").isNotBlank())) {
+            "Legacy MMS occurrence is unverified; deletion cannot safely continue"
+        }
     }
 
     // Purpose: atomically persist indexed metadata in storage excluded from device backup.
@@ -252,23 +264,50 @@ internal class OutboundSendCorrelations(private val context: Context) {
                     db.execSQL("CREATE INDEX correlations_job ON correlations(token, ordinal DESC)")
                     db.version = 1
                 }
-                if (db.version == 1) {
-                    // Published schema 1 used mutable MMS dates. AUTOINCREMENT
-                    // PDU IDs are stable: retain ownership while upgrading its
-                    // discriminator, without querying or modifying provider data.
-                    db.execSQL("UPDATE correlations SET generation=substr(uri, length('content://mms/')+1) " +
-                        "WHERE uri LIKE 'content://mms/%'")
-                    db.execSQL("CREATE TABLE send_deletions (token TEXT PRIMARY KEY NOT NULL, " +
-                        "thread_id TEXT NOT NULL, anchor TEXT NOT NULL, complete INTEGER NOT NULL DEFAULT 0, " +
-                        "pending INTEGER NOT NULL DEFAULT 1)")
-                    db.execSQL("CREATE INDEX pending_send_deletions ON send_deletions(pending, token)")
-                    db.execSQL("CREATE TABLE send_deletion_rows (token TEXT NOT NULL, uri TEXT NOT NULL, " +
-                        "generation TEXT NOT NULL, ordinal INTEGER NOT NULL, confirmed INTEGER NOT NULL DEFAULT 0, " +
-                        "acked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(token, uri))")
-                    db.version = 2
+                check(db.version in 1..3) { "Unsupported outbound correlation database version" }
+                // Additive metadata remains readable without transforming rows.
+                db.execSQL("CREATE TABLE IF NOT EXISTS deleted_sends (token TEXT PRIMARY KEY NOT NULL, complete INTEGER NOT NULL DEFAULT 0)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS deletion_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "scope TEXT NOT NULL, uri TEXT NOT NULL, generation TEXT NOT NULL, token TEXT, " +
+                    "confirmed INTEGER NOT NULL DEFAULT 0, acked INTEGER NOT NULL DEFAULT 0, UNIQUE(scope, uri, generation))")
+                val hasAcknowledgment = db.rawQuery("PRAGMA table_info(deletion_rows)", null).use { cursor ->
+                    var found = false
+                    while (cursor.moveToNext()) if (cursor.getString(1) == "acked") found = true
+                    found
                 }
-                check(db.version == 2) { "Unsupported outbound correlation database version" }
+                if (!hasAcknowledgment) db.execSQL("ALTER TABLE deletion_rows ADD COLUMN acked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS deletion_rows_pending ON deletion_rows(acked, id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS deletion_rows_job ON deletion_rows(token, acked)")
+                // Version 3 permanently fences readers that cannot understand MMS transaction proof.
+                // Reversible before the first fence: v1 readers can open the
+                // unchanged correlation format. Once a send is deleted, v2 is a
+                // safety barrier: 0.6 rejects it before creating any provider row.
+                // Never downgrade a fenced store, including older local builds
+                // that incorrectly stamped fences v1. No metadata is discarded.
+                fun stampDeletionBarrier() {
+                    val fenced = db.rawQuery("SELECT 1 FROM deleted_sends LIMIT 1", null).use { it.moveToFirst() }
+                    db.version = if (db.version == 3) 3 else if (fenced) 2 else 1
+                }
+                stampDeletionBarrier()
+
+                db.execSQL("CREATE TABLE IF NOT EXISTS send_deletions (token TEXT PRIMARY KEY NOT NULL, " +
+                    "thread_id TEXT NOT NULL, anchor TEXT NOT NULL, complete INTEGER NOT NULL DEFAULT 0, " +
+                    "pending INTEGER NOT NULL DEFAULT 1)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS pending_send_deletions ON send_deletions(pending, token)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS send_deletion_rows (token TEXT NOT NULL, uri TEXT NOT NULL, " +
+                    "generation TEXT NOT NULL, ordinal INTEGER NOT NULL, confirmed INTEGER NOT NULL DEFAULT 0, " +
+                    "acked INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(token, uri))")
+                // Import old local-build fences once; do not scan permanent history on every send.
+                db.execSQL("CREATE TABLE IF NOT EXISTS correlation_migrations (name TEXT PRIMARY KEY NOT NULL)")
+                val imported = db.rawQuery("SELECT 1 FROM correlation_migrations WHERE name='shared_fence'", null)
+                    .use { it.moveToFirst() }
+                if (!imported) {
+                    db.execSQL("INSERT OR IGNORE INTO deleted_sends(token) SELECT token FROM send_deletions")
+                    db.execSQL("INSERT INTO correlation_migrations(name) VALUES('shared_fence')")
+                }
+                stampDeletionBarrier()
                 val result = action(db)
+                stampDeletionBarrier()
                 db.setTransactionSuccessful()
                 result
             } finally {

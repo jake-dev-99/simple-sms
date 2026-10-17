@@ -182,11 +182,13 @@ or recipient numbers. A missing or unrecognized receipt fails validation.
 Repeat `deleteSend` for the same queue identity and native thread to resume a
 partially completed deletion. Replaying confirmations alone never resumes
 provider writes. Preserve newer provider occurrences that reuse a confirmed
-SMS URI: its generation is the raw SMS date. MMS uses its stable
-AUTOINCREMENT row ID; an MMS date rewrite does not change identity or prevent
-its deletion. Published schema-1 MMS ledger entries migrate to this stable
-identity without touching provider data. An unavailable or null SMS generation
-fails before creating a new deletion plan. An empty acknowledgement can retire
+SMS URI: its generation is the raw SMS date. MMS uses an opaque `mms:` proof
+containing the PDU's `tr_id`; neither a date rewrite nor reuse of its row ID
+can authorize deletion of another transaction. Missing transaction proof and
+legacy MMS date/row-ID metadata fail closed without adopting the current PDU.
+Recording transaction identities permanently advances the local registry to
+schema 3, which older readers reject. No legacy metadata is erased.
+An unavailable or null SMS generation fails before creating a new deletion plan. An empty acknowledgement can retire
 a completed plan whose confirmations were already acknowledged before an
 interrupted completion commit.
 

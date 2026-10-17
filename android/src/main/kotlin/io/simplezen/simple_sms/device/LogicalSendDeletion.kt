@@ -70,14 +70,15 @@ internal class LogicalSendDeletion(private val context: Context) {
                 for (row in targets) {
                     if (row.confirmed) continue
                     PermissionGuards.requireRoleHeld(context, RoleManager.ROLE_SMS)
+                    store.requireKnownGeneration(row.uri, row.generation)
                     val current = current(row.uri)
                     val owns = store.transaction { db -> owner(db, row.uri) == token }
                     if (current != null && current.generation == row.generation && owns) {
                         check(current.thread == thread) { "Provider row moved to another thread" }
                         val uri = Uri.parse(row.uri)
                         val sms = uri.authority == "sms"
-                        val selection = if (sms) "date = ? AND thread_id = ?" else "thread_id = ?"
-                        val args = if (sms) arrayOf(row.generation, thread) else arrayOf(thread)
+                        val selection = if (sms) "date = ? AND thread_id = ?" else "tr_id = ? AND thread_id = ?"
+                        val args = arrayOf(if (sms) row.generation else row.generation.removePrefix("mms:"), thread)
                         context.contentResolver.delete(uri, selection, args)
                         val after = current(row.uri)
                         if (after != null && after.generation == row.generation) {
@@ -125,6 +126,7 @@ internal class LogicalSendDeletion(private val context: Context) {
         val history = store.rows(db, token)
         check(history.isNotEmpty()) { "Missing native send history" }
         val verified = history.map { row ->
+            store.requireKnownGeneration(row.getValue("uri"), row.getValue("generation"))
             val live = current(row.getValue("uri"))
             if (live != null && live.generation == row.getValue("generation")) {
                 check(live.thread == thread) { "A send attempt belongs to another thread" }
@@ -138,6 +140,7 @@ internal class LogicalSendDeletion(private val context: Context) {
         db.insertOrThrow("send_deletions", null, ContentValues().apply {
             put("token", token); put("thread_id", thread); put("anchor", anchor)
         })
+        db.execSQL("INSERT OR IGNORE INTO deleted_sends(token) VALUES(?)", arrayOf(token))
         for ((row, absent) in verified) {
             db.insertOrThrow("send_deletion_rows", null, ContentValues().apply {
                 put("token", token); put("uri", row.getValue("uri")); put("generation", row.getValue("generation"))
@@ -200,6 +203,7 @@ internal class LogicalSendDeletion(private val context: Context) {
             buildList {
                 while (cursor.moveToNext()) {
                     check(size < 64) { "Oversized send deletion plan" }
+                    store.requireKnownGeneration(cursor.getString(0), cursor.getString(1))
                     add(Target(cursor.getString(0), cursor.getString(1), cursor.getInt(2) == 1, cursor.getInt(3) == 1))
                 }
             }
@@ -211,15 +215,17 @@ internal class LogicalSendDeletion(private val context: Context) {
             if (it.moveToFirst()) it.getString(0) else null
         }
 
-    /** Purpose: verify SMS date or stable MMS row ID, plus thread through the shared query layer. */
+    /** Purpose: verify SMS date or MMS transaction identity, plus thread through the shared query layer. */
     private fun current(uri: String): Current? {
-        val result = ContentQuery.queryOrNull(context, uri, arrayOf("_id", "date", "thread_id"))
+        val result = ContentQuery.queryOrNull(context, uri, arrayOf("_id", if (Uri.parse(uri).authority == "mms") "tr_id" else "date", "thread_id"))
             ?: error("Cannot verify provider row $uri")
         check(result.size <= 1) { "Ambiguous provider row $uri" }
         val row = result.firstOrNull() ?: return null
         check(row["_id"]?.toString() == Uri.parse(uri).lastPathSegment) { "Unexpected provider row identity" }
         val generation = if (Uri.parse(uri).authority == "mms") {
-            Uri.parse(uri).lastPathSegment!!.toLong()
+            val transaction = row["tr_id"] as? String
+            check(!transaction.isNullOrBlank()) { "Missing MMS transaction identity: $uri" }
+            "mms:$transaction"
         } else {
             row["date"]?.toString()?.toLongOrNull() ?: error("Missing provider generation for $uri")
         }

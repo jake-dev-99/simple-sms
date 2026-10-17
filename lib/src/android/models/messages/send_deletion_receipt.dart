@@ -31,9 +31,8 @@ class SendDeletionReceipt {
   final List<String> confirmedMessageUris;
 
   /// Captured provider generations for exactly [confirmedMessageUris].
-  /// SMS uses raw provider date; MMS uses its stable AUTOINCREMENT row ID,
-  /// because MMS dates can change. Preserve reused SMS generations; changing
-  /// an MMS date does not create a different PDU identity.
+  /// SMS uses raw provider date; MMS uses an opaque `mms:` transaction identity.
+  /// Preserve this proof exactly when journaling a confirmation.
   final Map<String, String> confirmedGenerations;
 
   /// False for an interrupted or partially failed operation; never inferred.
@@ -83,16 +82,13 @@ class SendDeletionReceipt {
     final verifiedGenerations = <String, String>{};
     for (final uri in confirmed) {
       final generation = generations[uri];
+      final mms = Uri.parse(uri).host == 'mms';
       if (generation is! String ||
-          int.tryParse(generation) == null ||
-          int.parse(generation).toString() != generation) {
+          (mms
+              ? !generation.startsWith('mms:') ||
+                    generation.substring(4).trim().isEmpty
+              : int.tryParse(generation)?.toString() != generation)) {
         throw const FormatException('Missing confirmed provider generation');
-      }
-      if (Uri.parse(uri).host == 'mms' &&
-          generation != Uri.parse(uri).pathSegments.single) {
-        throw const FormatException(
-          'MMS confirmation must use the stable row ID',
-        );
       }
       verifiedGenerations[uri] = generation;
     }
