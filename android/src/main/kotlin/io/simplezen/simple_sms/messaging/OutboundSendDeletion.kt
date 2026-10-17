@@ -36,6 +36,15 @@ internal class OutboundSendDeletion(private val context: Context) {
                 val token = db.rawQuery("SELECT token, generation FROM correlations WHERE uri=?", arrayOf(uri)).use { cursor ->
                     if (!cursor.moveToFirst()) null else {
                         val candidate = cursor.getString(0)
+                        if (Uri.parse(uri).authority == "mms") {
+                            // A stored MMS correlation is occurrence proof, never a hint
+                            // that may be discarded to adopt the current replacement PDU.
+                            val storedGeneration = cursor.getString(1)
+                            store.requireKnownGeneration(uri, storedGeneration)
+                            check(requestedGeneration == null || requestedGeneration == storedGeneration) {
+                                "The requested MMS occurrence no longer matches its correlation"
+                            }
+                        }
                         // Absence resumes only an already-fenced deletion. A
                         // live reused URI belongs to its current generation.
                         val matches = if (requestedGeneration != null) {
