@@ -542,10 +542,11 @@ class OutboundSendCorrelationsTest {
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
             selectionArgs: Array<out String>?, sortOrder: String?): Cursor? {
             if (unavailable) return null
-            assertArrayEquals(arrayOf("_id", "date"), projection)
-            return MatrixCursor(arrayOf("_id", "date")).apply {
+            val mms = uri.authority == "mms"
+            assertArrayEquals(arrayOf("_id", if (mms) "tr_id" else "date"), projection)
+            return MatrixCursor(projection).apply {
                 val id = uri.lastPathSegment!!.toLong()
-                if (id !in absent) addRow(arrayOf(id, dates[id] ?: 1000L))
+                if (id !in absent) addRow(arrayOf<Any?>(id, if (mms) "transaction-$id" else dates[id] ?: 1000L))
             }
         }
         // Purpose: isolate the platform boundary needed by this regression.

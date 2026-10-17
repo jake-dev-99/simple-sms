@@ -6,7 +6,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import io.simplezen.simple_permissions_android.PermissionGuards
-import io.simplezen.simple_query.ContentQuery
 import io.simplezen.simple_sms.device.ProviderWriteLock
 
 /**
@@ -37,6 +36,15 @@ internal class OutboundSendDeletion(private val context: Context) {
                 val token = db.rawQuery("SELECT token, generation FROM correlations WHERE uri=?", arrayOf(uri)).use { cursor ->
                     if (!cursor.moveToFirst()) null else {
                         val candidate = cursor.getString(0)
+                        if (Uri.parse(uri).authority == "mms") {
+                            // A stored MMS correlation is occurrence proof, never a hint
+                            // that may be discarded to adopt the current replacement PDU.
+                            val storedGeneration = cursor.getString(1)
+                            store.requireKnownGeneration(uri, storedGeneration)
+                            check(requestedGeneration == null || requestedGeneration == storedGeneration) {
+                                "The requested MMS occurrence no longer matches its correlation"
+                            }
+                        }
                         // Absence resumes only an already-fenced deletion. A
                         // live reused URI belongs to its current generation.
                         val matches = if (requestedGeneration != null) {
@@ -58,10 +66,12 @@ internal class OutboundSendDeletion(private val context: Context) {
                 // touching the provider. Never mistake an outage for absence.
                 for (row in targets) {
                     checkBudget(deadline)
+                    if (row.getValue("generation") != "absent") store.requireKnownGeneration(row.getValue("uri"), row.getValue("generation"))
                     generation(row.getValue("uri"))
                 }
                 checkBudget(deadline)
                 if (token != null) db.execSQL("INSERT OR IGNORE INTO deleted_sends(token) VALUES(?)", arrayOf(token))
+                if (targets.any { Uri.parse(it.getValue("uri")).authority == "mms" }) db.version = 3
                 targets.map { row ->
                     val values = ContentValues().apply {
                         put("scope", scope)
@@ -82,9 +92,10 @@ internal class OutboundSendDeletion(private val context: Context) {
                 if (generation(row.uri) == row.generation) {
                     checkBudget(deadline)
                     val undated = row.generation == "null"
+                    val mms = Uri.parse(row.uri).authority == "mms"
                     context.contentResolver.delete(Uri.parse(row.uri),
-                        if (undated) "date IS NULL" else "date = ?",
-                        if (undated) null else arrayOf(row.generation))
+                        if (mms) "tr_id = ?" else if (undated) "date IS NULL" else "date = ?",
+                        if (undated) null else arrayOf(if (mms) row.generation.removePrefix("mms:") else row.generation))
                     check(generation(row.uri) != row.generation) { "Native send attempt was not deleted: ${row.uri}" }
                 }
                 confirm(row.id)
@@ -115,6 +126,7 @@ internal class OutboundSendDeletion(private val context: Context) {
         }
         val completedJobs = mutableMapOf<String, Boolean>()
         page.map { row ->
+            if (row.generation != "absent") store.requireKnownGeneration(row.uri, row.generation)
             val confirmed = row.confirmed || (generation(row.uri) != row.generation).also {
                 if (it) confirm(row.id)
             }
@@ -156,7 +168,10 @@ internal class OutboundSendDeletion(private val context: Context) {
             it.moveToFirst() && it.getInt(0) == 1
         }
         if (complete) return@transaction true
-        val gone = store.rows(db, token).all { generation(it.getValue("uri")) != it.getValue("generation") }
+        val gone = store.rows(db, token).all {
+            store.requireKnownGeneration(it.getValue("uri"), it.getValue("generation"))
+            generation(it.getValue("uri")) != it.getValue("generation")
+        }
         if (gone) db.execSQL("UPDATE deleted_sends SET complete=1 WHERE token=?", arrayOf(token))
         gone
     }
@@ -166,18 +181,8 @@ internal class OutboundSendDeletion(private val context: Context) {
         store.transaction { it.execSQL("UPDATE deleted_sends SET complete=1 WHERE token=?", arrayOf(token)) }
     }
 
-    /** Read only one exact row through simple-query; null dates remain distinct from absence. */
-    private fun generation(uri: String): String? {
-        val rows = ContentQuery.queryOrNull(context, uri, arrayOf("_id", "date"))
-            ?: error("Could not verify deletion identity: $uri")
-        check(rows.size <= 1) { "Ambiguous deletion identity" }
-        val row = rows.firstOrNull() ?: return null
-        check(row["_id"]?.toString()?.toLongOrNull() == Uri.parse(uri).lastPathSegment?.toLongOrNull()) { "Incorrect provider deletion identity" }
-        check(row.containsKey("date")) { "Provider omitted deletion generation" }
-        return row["date"]?.let { value ->
-            value.toString().toLongOrNull()?.toString() ?: error("Malformed deletion generation")
-        } ?: "null"
-    }
+    /** Share occurrence proof with correlation recovery and the token-based deletion API. */
+    private fun generation(uri: String): String? = store.generation(uri, allowUndated = true)
 
     /** Stop before the next irreversible write if lock wait/provider work consumed the budget. */
     private fun checkBudget(deadline: Long) {

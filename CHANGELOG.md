@@ -1,9 +1,19 @@
 ## 0.7.0 (unreleased)
 
 - Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present. Every new receipt drain must restart at cursor zero; page cursors are traversal-local because unconfirmed plans retain their id when confirmed.
-- Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused row is deleted independently; a missing row resumes only an already-fenced partial deletion.
+- Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused SMS row is deleted independently; a correlated MMS row with legacy or mismatched occurrence proof is rejected before any fallback can adopt its current PDU. A missing row resumes only an already-fenced partial deletion.
 - Preserve correlation metadata across schema migration. Before any deletion fence, the additive schema can return to v1. Once a fence is persisted, stamp v2 atomically so 0.6 fails closed before correlated sends create rows; rolling back after deletion requires a build that understands these fences. Never clear fences or lower that safety barrier to restore an old binary.
 - Retain indexed receipt acknowledgment markers so partial-delete retries cannot recreate consumed identities or renew old tombstones over reused provider rows. Completed sends reuse outstanding receipt identities until acknowledgment; pending pages exclude consumed receipts.
+
+- Verify MMS occurrence identity with `tr_id` in correlation recovery and both deletion contracts; conditional writes preserve a replacement PDU even when its row ID is reused. Missing/legacy MMS identity proof fails closed without rebinding. Schema 3 prevents older readers from interpreting transaction identities as dates. Both deletion contracts share the durable retry fence. Allow empty idempotent acknowledgements after interrupted completion commits (UNFY-346).
+
+- Add bounded logical-send deletion and durable host-acknowledged receipts
+  (UNFY-346): delete every retained native attempt, preserve generation/thread
+  identity, fence concurrent or delayed retries, and recover partial progress
+  without scanning conversation history. Add `deleteSend`,
+  `pendingSendDeletions`, `acknowledgeSendDeletion` and `SendDeletionReceipt`.
+  This additive API requires the next minor release; publication/version
+  stamping remains in the Cut Release workflow.
 
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
 

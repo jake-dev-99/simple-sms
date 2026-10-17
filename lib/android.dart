@@ -51,3 +51,5 @@ export 'src/android/models/filters/sms_filter.dart';
 export 'src/android/models/filters/mms_filter.dart';
 export 'src/android/models/filters/contact_filter.dart';
 export 'src/android/models/filters/conversation_filter.dart';
+
+export 'src/android/models/messages/send_deletion_receipt.dart';

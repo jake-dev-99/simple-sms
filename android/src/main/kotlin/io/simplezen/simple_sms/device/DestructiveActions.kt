@@ -37,6 +37,8 @@ class DestructiveActions(val context: Context) : MethodChannel.MethodCallHandler
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "deleteSend", "pendingSendDeletions", "acknowledgeSendDeletion" ->
+                LogicalSendDeletion(context).onMethodCall(call, result)
             "deleteMessageAttempts" -> deletionResult(result) {
                 val args = call.arguments as? Map<*, *> ?: error("Expected deletion arguments")
                 val scope = args["scope"] as? String ?: error("Missing deletion scope")

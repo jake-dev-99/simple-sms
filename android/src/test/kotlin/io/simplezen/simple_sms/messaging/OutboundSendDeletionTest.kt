@@ -44,6 +44,28 @@ class OutboundSendDeletionTest {
         store.record(Uri.parse(uri), job)
     }
 
+    @Test fun legacyAndMismatchedMmsCorrelationsCannotAdoptAReplacementPdu() {
+        for ((index, proof) in listOf("100", "1000", "mms:original").withIndex()) {
+            val id = 100 + index
+            val uri = "content://mms/$id"
+            record(id, "job-$id", "mms")
+            database { db ->
+                db.execSQL("UPDATE correlations SET generation=? WHERE uri=?", arrayOf(proof, uri))
+                db.version = if (proof.startsWith("mms:")) 3 else 1
+            }
+            provider.transactions[uri] = "replacement-$id"
+            assertThrows(IllegalStateException::class.java) { deletion.delete("thread", uri) }
+            assertTrue(provider.rows.containsKey(uri))
+            assertTrue(provider.deletes.isEmpty())
+            assertTrue(deletion.pending(0, 64).isEmpty())
+            database { db ->
+                db.rawQuery("SELECT COUNT(*) FROM deleted_sends", null).use {
+                    assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
+                }
+            }
+        }
+    }
+
     @Test fun staleTargetKeepsActualLatestUntilOlderRowsSucceed() {
         record(70); record(2); record(40)
         provider.refuse = "content://sms/2"
@@ -321,6 +343,7 @@ class OutboundSendDeletionTest {
 
     class Rows : ContentProvider() {
         val rows = linkedMapOf<String, Long?>()
+        val transactions = mutableMapOf<String, String>()
         val deletes = mutableListOf<String>()
         var refuse: String? = null
         var unavailable = false
@@ -331,8 +354,9 @@ class OutboundSendDeletionTest {
             queries++
             assertNotNull("Never enumerate an entire thread", uri.lastPathSegment?.toLongOrNull())
             if (unavailable) return null
-            return MatrixCursor(arrayOf("_id", "date")).apply {
-                if (rows.containsKey(uri.toString())) addRow(arrayOf(uri.lastPathSegment!!.toLong(), rows[uri.toString()]))
+            return MatrixCursor(projection).apply {
+                if (rows.containsKey(uri.toString())) addRow(arrayOf<Any?>(uri.lastPathSegment!!.toLong(),
+                    if (uri.authority == "mms") transactions[uri.toString()] ?: "transaction-${uri.lastPathSegment}" else rows[uri.toString()]))
             }
         }
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
@@ -340,7 +364,7 @@ class OutboundSendDeletionTest {
             deletes.add(uri.toString())
             if (uri.toString() == refuse) return 0
             val value = rows[uri.toString()]
-            val matches = if (value == null) selection == "date IS NULL" else selection == "date = ?" && selectionArgs?.single() == value.toString()
+            val matches = if (uri.authority == "mms") selection == "tr_id = ?" && selectionArgs?.single() == (transactions[uri.toString()] ?: "transaction-${uri.lastPathSegment}") else if (value == null) selection == "date IS NULL" else selection == "date = ?" && selectionArgs?.single() == value.toString()
             if (!rows.containsKey(uri.toString()) || !matches) return 0
             rows.remove(uri.toString())
             return 1

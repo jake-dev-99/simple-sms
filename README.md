@@ -153,6 +153,45 @@ updated. Retrying the same action safely sets the requested flags again.
 The explicit read/unread method pairs provide the symmetric API. Existing
 `markMessageAsRead` and `markConversationAsRead` callers remain supported.
 
+### Delete every attempt of one queued send
+
+`AndroidDestructiveAction.deleteSend(messageUri: ..., clientCorrelationId: ...,
+threadId: ...)` uses the native job index, not a conversation-history scan.
+It captures at most 64 retained rows, preserves different SMS/MMS identities,
+checks their provider generation and thread, and deletes older attempts before
+the actual latest attempt. The default-SMS role is required. The durable job
+fence rejects later sends with `SEND_DELETED` before radio handoff; deletion
+cannot recall a message already handed to the carrier.
+
+The returned `SendDeletionReceipt` includes `complete`, exact
+`confirmedMessageUris`, their `confirmedGenerations`, and any partial failure.
+A partial failure is progress, not success: the latest row remains until its
+older attempts can be removed. Persist every confirmed identity in your host's
+delete journal before calling `acknowledgeSendDeletion` with those exact URIs.
+Acknowledgement is idempotent and never permits a later retry to send again.
+
+After interruption, `pendingSendDeletions` reads the durable journal without
+querying provider history. It accepts an optional thread filter, a lexical
+`afterClientCorrelationId` cursor and a page limit of 1–64 (default 20).
+At most 64 operations can await acknowledgement; new operations fail before
+mutation while that backlog is full. Each operation has at most 64 rows.
+Already acknowledged identities are omitted. Cancellation and bounded per-job
+identity records remain in no-backup SQLite storage, without message content
+or recipient numbers. A missing or unrecognized receipt fails validation.
+
+Repeat `deleteSend` for the same queue identity and native thread to resume a
+partially completed deletion. Replaying confirmations alone never resumes
+provider writes. Preserve newer provider occurrences that reuse a confirmed
+SMS URI: its generation is the raw SMS date. MMS uses an opaque `mms:` proof
+containing the PDU's `tr_id`; neither a date rewrite nor reuse of its row ID
+can authorize deletion of another transaction. Missing transaction proof and
+legacy MMS date/row-ID metadata fail closed without adopting the current PDU.
+Recording transaction identities permanently advances the local registry to
+schema 3, which older readers reject. No legacy metadata is erased.
+An unavailable or null SMS generation fails before creating a new deletion plan. An empty acknowledgement can retire
+a completed plan whose confirmations were already acknowledged before an
+interrupted completion commit.
+
 ### Save or discard SMS drafts
 
 The Android SMS store holds a thread's draft as its single `MESSAGE_TYPE_DRAFT`

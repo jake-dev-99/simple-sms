@@ -26,8 +26,9 @@ import '../android/models/messages/outbound_message.dart';
 class _Channels {
   static const messaging = MethodChannel('io.simplezen.simple_sms/messaging');
   static const actions = MethodChannel('io.simplezen.simple_sms/actions');
-  static const destructiveActions =
-      MethodChannel('io.simplezen.simple_sms/destructive_actions');
+  static const destructiveActions = MethodChannel(
+    'io.simplezen.simple_sms/destructive_actions',
+  );
   static const drafts = MethodChannel('io.simplezen.simple_sms/drafts');
 }
 
@@ -125,6 +126,37 @@ class ActionsInterop {
 class DestructiveActionsInterop {
   static const methodChannel = _Channels.destructiveActions;
 
+  /// Bounded logical-send mutation and durable, explicit host acknowledgement.
+  static Future<Object?> deleteSend(
+    String uri,
+    String token,
+    String threadId,
+  ) => methodChannel.invokeMethod<Object?>('deleteSend', {
+    'messageUri': uri,
+    'clientCorrelationId': token,
+    'threadId': threadId,
+  });
+
+  /// Indexed pending journal reads never enumerate native conversation history.
+  static Future<Object?> pendingSendDeletions(
+    String? threadId,
+    String? after,
+    int limit,
+  ) => methodChannel.invokeMethod<Object?>('pendingSendDeletions', {
+    if (threadId != null) 'threadId': threadId,
+    if (after != null) 'afterClientCorrelationId': after,
+    'limit': limit,
+  });
+
+  /// Retire only identities the host has durably journaled.
+  static Future<Object?> acknowledgeSendDeletion(
+    String token,
+    List<String> uris,
+  ) => methodChannel.invokeMethod<Object?>('acknowledgeSendDeletion', {
+    'clientCorrelationId': token,
+    'messageUris': uris,
+  });
+
   /// Raw verified outcome wire value (`DeleteResult.wireName`), untyped so
   /// `DeleteResult.fromWire` validates it; a delete that could not be
   /// verified throws `PlatformException` (UNFY-244).
@@ -136,10 +168,7 @@ class DestructiveActionsInterop {
   /// only within its own table (UNFY-213).
   ///
   /// Returns the raw verified outcome wire value, like [deleteThread].
-  static Future<Object?> deleteMessage(
-    String messageId,
-    SmsMmsType channel,
-  ) =>
+  static Future<Object?> deleteMessage(String messageId, SmsMmsType channel) =>
       methodChannel.invokeMethod<Object?>('deleteMessage', {
         'messageId': messageId,
         'channel': channel.name,
