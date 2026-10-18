@@ -2,10 +2,16 @@ package io.simplezen.simple_sms.messaging
 
 import android.app.Service
 import android.content.ComponentName
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
+import android.provider.Telephony
+import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
@@ -165,6 +171,36 @@ class OutboundMessagingHandlerTest {
     }
 
     @Test
+    fun severalRecipients_eachGetTheirOwnSend() {
+        startService(quickReply("sms:5554;5556"))
+
+        assertEquals(listOf(listOf("5554"), listOf("5556")), sends.map { it.recipients })
+        assertTrue(sends.all { it.body == "Can't talk now" })
+    }
+
+    @Test
+    fun realSend_storesTheRowFirst_thenSendsWithTheReplyOnItsSentIntent() {
+        OutboundMessagingHandler.send = originalSend
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
+        val sms = Robolectric.buildContentProvider(OutboxProvider::class.java).create("sms").get()
+        Robolectric.buildContentProvider(OutboxProvider::class.java).create("mms-sms")
+
+        startService(quickReply("smsto:5554").putExtra("subscription", 3))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, sms.inserted?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals("Can't talk now", sms.inserted?.getAsString(Telephony.Sms.BODY))
+        val sent = shadowOf(context.getSystemService(SmsManager::class.java).createForSubscriptionId(3))
+            .lastSentTextMessageParams
+        assertEquals("5554", sent.destinationAddress)
+        assertEquals("Can't talk now", sent.text)
+        assertEquals(
+            RespondViaMessageRequest(listOf("5554"), "Can't talk now", 3),
+            shadowOf(sent.sentIntent).savedIntent.quickReply(),
+        )
+        assertTrue("a started send announces nothing", deliveries.isEmpty())
+    }
+
+    @Test
     fun invalidIntent_stopsWithoutSending() {
         val controller = startService(quickReply(text = " "))
 
@@ -210,6 +246,32 @@ class OutboundMessagingHandlerTest {
     @Test
     fun ordinaryStatusIntent_carriesNoQuickReply() {
         assertNull(Intent().putExtra("messageID", 1).quickReply())
+    }
+
+    /** An `sms` / `mms-sms` provider that stores one outbox row and resolves any thread to 1. */
+    class OutboxProvider : ContentProvider() {
+        var inserted: ContentValues? = null
+
+        override fun onCreate() = true
+
+        override fun insert(uri: Uri, values: ContentValues?): Uri {
+            inserted = values
+            return Uri.parse("content://sms/42")
+        }
+
+        override fun query(
+            uri: Uri,
+            projection: Array<out String>?,
+            selection: String?,
+            selectionArgs: Array<out String>?,
+            sortOrder: String?,
+        ): Cursor = MatrixCursor(arrayOf("_id")).apply { if (uri.authority == "mms-sms") addRow(arrayOf(1L)) }
+
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
+
+        override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
+
+        override fun getType(uri: Uri): String? = null
     }
 
     // --- packaged manifest ---

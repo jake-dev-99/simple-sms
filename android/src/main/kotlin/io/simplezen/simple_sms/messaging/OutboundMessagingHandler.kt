@@ -27,7 +27,13 @@ class OutboundMessagingHandler : Service() {
         when (val parsed = parseRespondViaMessage(intent)) {
             is RespondViaMessageParse.Rejected ->
                 Log.e(TAG, "Ignoring respond-via-message intent: ${parsed.reason}")
-            is RespondViaMessageParse.Accepted -> send(applicationContext, parsed.request)
+            // One SMS per recipient: each result then names one recipient and
+            // reaches OutboundMessagingReceiver. routeMessage would send
+            // several recipients together, through a path whose results do
+            // not reach it.
+            is RespondViaMessageParse.Accepted -> parsed.request.recipients.forEach { recipient ->
+                send(applicationContext, parsed.request.copy(recipients = listOf(recipient)))
+            }
         }
         // The send needs this service no longer: its result reaches
         // OutboundMessagingReceiver even after the process has gone.

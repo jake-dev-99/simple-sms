@@ -932,18 +932,6 @@ class OutboundSendAckTest {
     }
 
     @Test
-    fun failedMmsQuickReply_isAnnouncedToDart() {
-        handler.release()
-        mmsProvider.row = mapOf("_id" to 7L)
-
-        deliverStatusBroadcast(
-            SENTMMS_ACTION, 7, mmsUri, SmsManager.MMS_ERROR_UNSPECIFIED, quickReply = quickReply,
-        )
-
-        assertEquals(listOf("receiveRespondViaMessageFailure"), announced.map { it.first })
-    }
-
-    @Test
     fun failedOrdinarySend_announcesNothing() {
         handler.release()
         smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
@@ -1036,13 +1024,11 @@ class OutboundSendAckTest {
         messageUri: Uri,
         resultCode: Int,
         part: SmsPartRef? = null,
-        quickReply: RespondViaMessageRequest? = null,
     ) {
         val intent = Intent(action)
             .setComponent(ComponentName(context, OutboundMessagingReceiver::class.java))
             .putExtra("messageID", messageId)
             .putExtra("uri", messageUri.toString())
-        quickReply?.let(intent::putQuickReply)
         if (part != null) {
             intent.putExtra("partToken", part.token)
                 .putExtra("partRowId", part.rowId)

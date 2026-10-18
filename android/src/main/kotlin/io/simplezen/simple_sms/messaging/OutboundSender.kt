@@ -801,8 +801,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      * Sends a respond-via-message quick reply (UNFY-319) the way [onMethodCall]
      * sends a message from Dart, except that nobody awaits its SENT result:
      * [result] gets `success` once the send has started, or the error that
-     * stopped it. Its status intent carries [request]
-     * ([putQuickReply]), so [SendResultRouter] hands a failed result to Dart.
+     * stopped it. [request] has one recipient and no attachment, so it goes
+     * as SMS, and its SENT intents carry it ([putQuickReply]):
+     * [SendResultRouter] hands a failed result to Dart.
      */
     internal fun sendQuickReply(request: RespondViaMessageRequest, result: MethodChannel.Result) = send(
         mapOf(
@@ -1188,7 +1189,6 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
 
             // Targets the manifest receiver, like the SMS intents (UNFY-299).
             val outboundIntent = statusReceiverIntent(context, SENTMMS_ACTION)
-            requestDetails.quickReply?.let(outboundIntent::putQuickReply)
             val sendTransaction = Transaction(context, sendSettings)
             sendTransaction.setExplicitBroadcastForSentMms(outboundIntent)
             sendTransaction.setMmsPersistedCallback { uri ->
