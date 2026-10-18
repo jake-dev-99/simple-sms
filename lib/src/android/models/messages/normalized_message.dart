@@ -408,6 +408,8 @@ MessageDeliveryState _mmsDeliveryState(
   // MMS) and can't represent a send failure — that only shows in `msg_box`.
   // So a failed box overrides the type-derived state (UNFY-178).
   if (box == MessageBox.failed) return MessageDeliveryState.failed;
+  // msg_box, not the SEND_REQ m_type, marks a draft (UNFY-351).
+  if (box == MessageBox.draft) return MessageDeliveryState.draft;
   // SEND_REQ describes the PDU, while msg_box records the send outcome and
   // `st` its recipients' delivery reports (UNFY-110): `failed` means no
   // recipient will get it. Without a verdict the row stays sent.
