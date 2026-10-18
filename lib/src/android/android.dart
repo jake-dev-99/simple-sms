@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:core';
 import 'dart:io' show Platform;
 import 'package:simple_sms_native/src/android/models/messages/mms.dart';
+import 'package:simple_sms_native/src/android/models/messages/respond_via_message_request.dart';
 import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 
 import './messaging/android_messaging.dart';
@@ -102,6 +104,10 @@ class Android {
   ///
   /// The [inboundSmsCallback] is invoked for each incoming SMS message.
   /// The [inboundMmsCallback] is invoked for each incoming MMS message.
+  /// The [respondViaMessageCallback] is invoked for each quick-reply text
+  /// Android asks the default SMS app to send; see
+  /// [AndroidMessaging.respondViaMessageCallback]. Omitting it keeps any
+  /// callback already registered.
   ///
   /// Safe to call multiple times: subsequent calls replace the active
   /// callbacks on the existing singleton. Useful for hot-reload flows and
@@ -110,6 +116,7 @@ class Android {
   factory Android.initialize({
     required Function(Sms) inboundSmsCallback,
     required Function(Mms) inboundMmsCallback,
+    FutureOr<void> Function(RespondViaMessageRequest)? respondViaMessageCallback,
   }) {
     assert(
       Platform.isAndroid,
@@ -119,6 +126,7 @@ class Android {
     AndroidMessaging.initialize(
       inboundSmsCallback: inboundSmsCallback,
       inboundMmsCallback: inboundMmsCallback,
+      respondViaMessageCallback: respondViaMessageCallback,
     );
     return _instance ??= Android._internal();
   }

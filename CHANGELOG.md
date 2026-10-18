@@ -1,6 +1,6 @@
 ## 0.7.0 (unreleased)
 
-- `OutboundMessagingHandler` now hands `RESPOND_VIA_MESSAGE` quick replies to Dart through `AndroidMessaging.initialize(respondViaMessageCallback:)` (UNFY-319) and stops once Dart answers. Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.
+- `OutboundMessagingHandler` now hands `RESPOND_VIA_MESSAGE` quick replies to Dart through `AndroidMessaging.initialize(respondViaMessageCallback:)` or `Android.initialize(respondViaMessageCallback:)` (UNFY-319) and stops once Dart has answered every pending reply. Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.
 
 - Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present. Every new receipt drain must restart at cursor zero; page cursors are traversal-local because unconfirmed plans retain their id when confirmed.
 - Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused SMS row is deleted independently; a correlated MMS row with legacy or mismatched occurrence proof is rejected before any fallback can adopt its current PDU. A missing row resumes only an already-fenced partial deletion.

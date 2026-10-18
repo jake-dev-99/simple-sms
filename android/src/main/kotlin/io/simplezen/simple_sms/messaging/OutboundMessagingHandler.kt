@@ -21,14 +21,21 @@ import java.util.Locale
 class OutboundMessagingHandler : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // Only touched on the main thread: onStartCommand and the delivery
+    // callbacks both run there.
+    private var pendingReplies = 0
+    private var latestStartId = 0
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestStartId = startId
         when (val parsed = parseRespondViaMessage(intent)) {
             is RespondViaMessageParse.Rejected -> {
                 Log.e(TAG, "Ignoring respond-via-message intent: ${parsed.reason}")
-                stopSelf(startId)
+                stopWhenIdle()
             }
             is RespondViaMessageParse.Accepted -> {
                 val request = parsed.request
+                pendingReplies++
                 deliver(
                     this,
                     METHOD,
@@ -39,13 +46,23 @@ class OutboundMessagingHandler : Service() {
                     ),
                 ) { delivered ->
                     if (!delivered) Log.e(TAG, "Dart did not accept the quick reply")
-                    stopSelf(startId)
+                    pendingReplies--
+                    stopWhenIdle()
                 }
             }
         }
         // A quick reply is time-bound; replaying it after a process kill
         // would send a stale text the user never re-confirmed.
         return START_NOT_STICKY
+    }
+
+    /**
+     * Stops once no reply is waiting on Dart. `stopSelf(startId)` stops only
+     * when that start is the newest, so a later rejected intent must not end
+     * the service while an earlier reply is still being handed over.
+     */
+    private fun stopWhenIdle() {
+        if (pendingReplies == 0) stopSelf(latestStartId)
     }
 
     companion object {

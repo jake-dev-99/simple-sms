@@ -185,6 +185,35 @@ class OutboundMessagingHandlerTest {
     }
 
     @Test
+    fun laterRejectedIntent_doesNotStopWhileAReplyIsPending() {
+        captureDeliveries()
+        val controller = startService(quickReply())
+        val service = controller.get()
+
+        service.onStartCommand(quickReply(text = null), 0, 2)
+
+        assertFalse("the earlier reply is still with Dart", shadowOf(service).isStoppedBySelf)
+
+        deliveries.single().onResult(true)
+
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test
+    fun overlappingReplies_stopOnlyAfterTheLastOne() {
+        captureDeliveries()
+        val controller = startService(quickReply("smsto:5554"))
+        val service = controller.get()
+        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
+
+        deliveries[1].onResult(true)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+
+        deliveries[0].onResult(true)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test
     fun invalidIntent_stopsWithoutDelivering() {
         captureDeliveries()
         val controller = startService(quickReply(text = " "))
