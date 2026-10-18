@@ -182,13 +182,13 @@ class ConversationLookup {
 
       if (!enrich || bare.isEmpty) return bare;
 
-      // `Future.wait` (not `.wait`) so a failed draft read surfaces as itself,
-      // not wrapped in a ParallelWaitError.
-      final [enriched as List<AndroidSimpleConversation>, drafts as Map<int, Sms>] =
-          await Future.wait<Object>([
-            Future.wait(bare.map(_enrichOrBare)),
-            _newestDraftByThread(filter),
-          ]);
+      final enrichedRead = Future.wait(bare.map(_enrichOrBare));
+      final draftsRead = _newestDraftByThread(filter);
+      // `Future.wait` (not `.wait`) so a failed read surfaces as itself, not
+      // wrapped in a ParallelWaitError, and neither read is left unhandled.
+      await Future.wait<void>([enrichedRead, draftsRead]);
+      final enriched = await enrichedRead;
+      final drafts = await draftsRead;
       final withDrafts = [
         for (final conversation in enriched)
           if (drafts[conversation.threadId] case final draft?)
@@ -223,7 +223,9 @@ class ConversationLookup {
   ///
   /// Not tolerant of an unavailable provider, unlike the per-thread
   /// enrichment reads: see [listConversations].
-  Future<Map<int, Sms>> _newestDraftByThread(ConversationFilter? filter) async {
+  Future<Map<int, Sms>> _newestDraftByThread(
+    ConversationFilter? filter,
+  ) async {
     final threadIds = filter?.threadIds;
     final drafts = await MessageLookup.instance.listSms(
       filter: SmsFilter(
