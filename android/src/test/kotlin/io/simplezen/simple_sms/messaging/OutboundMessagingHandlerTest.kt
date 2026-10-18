@@ -5,9 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Looper
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
+import java.time.Duration
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -61,6 +63,9 @@ class OutboundMessagingHandlerTest {
 
     private fun requestOf(intent: Intent?) =
         (parseRespondViaMessage(intent) as? RespondViaMessageParse.Accepted)?.request
+
+    private fun idleMainLooper(millis: Long) =
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
 
     private fun startService(intent: Intent) =
         Robolectric.buildService(OutboundMessagingHandler::class.java, intent)
@@ -210,6 +215,37 @@ class OutboundMessagingHandlerTest {
         assertFalse(shadowOf(service).isStoppedBySelf)
 
         deliveries[0].onResult(true)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test
+    fun unansweredReply_stopsAtTheDeadline() {
+        captureDeliveries()
+        val service = startService(quickReply()).get()
+
+        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 1_000)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+
+        idleMainLooper(2_000)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+
+        // A late answer changes nothing.
+        deliveries.single().onResult(true)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test
+    fun timedOutReply_doesNotStopWhileAnotherIsPending() {
+        captureDeliveries()
+        val service = startService(quickReply("smsto:5554")).get()
+        idleMainLooper(30_000)
+        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
+
+        // The first reply times out, the second is still with Dart.
+        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 30_000 + 1_000)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+
+        deliveries[1].onResult(true)
         assertTrue(shadowOf(service).isStoppedBySelf)
     }
 

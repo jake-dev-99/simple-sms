@@ -28,10 +28,8 @@ void main() {
     return messaging;
   }
 
-  Future<bool> receive(
-    AndroidMessaging messaging,
-    Map<String, Object?> body,
-  ) => messaging.receiveMessage(MethodCall(method, jsonEncode(body)));
+  Future<bool> receive(AndroidMessaging messaging, Map<String, Object?> body) =>
+      messaging.receiveMessage(MethodCall(method, jsonEncode(body)));
 
   Matcher processingError() => throwsA(
     isA<PlatformException>().having(
@@ -103,7 +101,13 @@ void main() {
 
   test('rejects a payload without recipients', () async {
     final target = messaging(callback: (_) {});
-    for (final recipients in <Object?>[null, <String>[], [''], [5554], '5554']) {
+    for (final recipients in <Object?>[
+      null,
+      <String>[],
+      [''],
+      [5554],
+      '5554',
+    ]) {
       await expectLater(
         receive(target, {...payload, 'recipients': recipients}),
         processingError(),
