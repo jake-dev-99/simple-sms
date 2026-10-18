@@ -3,9 +3,7 @@ package io.simplezen.simple_sms.messaging
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -15,89 +13,42 @@ import java.util.Locale
 /**
  * The respond-via-message service the default-SMS-app role requires. A phone
  * app starts it with [TelephonyManager.ACTION_RESPOND_VIA_MESSAGE] when the
- * user declines a call with a quick-reply text. It sends nothing itself: it
- * hands each request to Dart (`AndroidMessaging.respondViaMessageCallback`)
- * and stops once Dart has answered every one, or its deadline passed
+ * user declines a call with a quick-reply text. Like the inbound SMS and MMS
+ * receivers, it hands each valid request to Dart
+ * (`AndroidMessaging.respondViaMessageCallback`) and is done; Dart sends it
  * (UNFY-319). Outbound sends otherwise go through [OutboundSender] on the
  * messaging channel.
  */
 class OutboundMessagingHandler : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // Main thread only: onStartCommand runs there, and so does every delivery
-    // result (BackgroundEngineManager posts them to the main looper; its
-    // synchronous failure path is called from onStartCommand itself).
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var pendingReplies = 0
-    private var latestStartId = 0
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        latestStartId = startId
         when (val parsed = parseRespondViaMessage(intent)) {
-            is RespondViaMessageParse.Rejected -> {
+            is RespondViaMessageParse.Rejected ->
                 Log.e(TAG, "Ignoring respond-via-message intent: ${parsed.reason}")
-                stopWhenIdle()
-            }
-            is RespondViaMessageParse.Accepted -> handOver(parsed.request)
+            is RespondViaMessageParse.Accepted -> deliver(
+                this,
+                METHOD,
+                mutableMapOf(
+                    "recipients" to parsed.request.recipients,
+                    "body" to parsed.request.body,
+                    "subscriptionId" to parsed.request.subscriptionId,
+                ),
+            )
         }
+        stopSelf(startId)
         // A quick reply is time-bound; replaying it after a process kill
         // would send a stale text the user never re-confirmed.
         return START_NOT_STICKY
-    }
-
-    override fun onDestroy() {
-        mainHandler.removeCallbacksAndMessages(null)
-        super.onDestroy()
-    }
-
-    /** Hands [request] to Dart; Dart's answer or the deadline settles it, whichever comes first. */
-    private fun handOver(request: RespondViaMessageRequest) {
-        pendingReplies++
-        var settled = false
-        lateinit var deadline: Runnable
-        fun settle(failure: String?) {
-            if (settled) return
-            settled = true
-            mainHandler.removeCallbacks(deadline)
-            if (failure != null) Log.e(TAG, failure)
-            pendingReplies--
-            stopWhenIdle()
-        }
-        deadline = Runnable { settle("Dart did not answer the quick reply in time") }
-        mainHandler.postDelayed(deadline, REPLY_DEADLINE_MS)
-        deliver(
-            this,
-            METHOD,
-            mutableMapOf<String, Any?>(
-                "recipients" to request.recipients,
-                "body" to request.body,
-                "subscriptionId" to request.subscriptionId,
-            ),
-        ) { delivered -> settle(if (delivered) null else "Dart did not accept the quick reply") }
-    }
-
-    /**
-     * Stops once no reply is waiting on Dart. `stopSelf(startId)` stops only
-     * when that start is the newest, so a later rejected intent must not end
-     * the service while an earlier reply is still being handed over.
-     */
-    private fun stopWhenIdle() {
-        if (pendingReplies == 0) stopSelf(latestStartId)
     }
 
     companion object {
         private const val TAG = "OutboundMessagingHandler"
         private const val METHOD = "receiveRespondViaMessage"
 
-        // Dart's send settles within SEND_RESULT_TIMEOUT_MS at the latest; the
-        // extra minute covers engine start-up. Past it, a lost answer must not
-        // pin the service.
+        /** Delivers to Dart; tests replace it. */
         @VisibleForTesting
-        internal const val REPLY_DEADLINE_MS = SEND_RESULT_TIMEOUT_MS + 60_000L
-
-        /** Delivers to Dart and reports whether Dart accepted; tests replace it. */
-        @VisibleForTesting
-        internal var deliver: (Context, String, MutableMap<String, Any?>, (Boolean) -> Unit) -> Unit =
+        internal var deliver: (Context, String, MutableMap<String, Any?>) -> Unit =
             BackgroundEngineManager::sendToFlutter
     }
 }

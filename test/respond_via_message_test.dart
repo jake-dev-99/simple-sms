@@ -51,20 +51,6 @@ void main() {
     expect(received.single.subscriptionId, 3);
   });
 
-  test('acknowledges only after an asynchronous callback completes', () async {
-    final completion = Completer<void>();
-    var acknowledged = false;
-    final result = receive(
-      messaging(callback: (_) => completion.future),
-      payload,
-    )..then((_) => acknowledged = true);
-
-    await Future<void>.delayed(Duration.zero);
-    expect(acknowledged, isFalse);
-    completion.complete();
-    expect(await result, isTrue);
-  });
-
   test('accepts a request without a subscription', () async {
     final received = <RespondViaMessageRequest>[];
     final target = messaging(callback: received.add);
