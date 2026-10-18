@@ -3,103 +3,117 @@ package io.simplezen.simple_sms.messaging
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 /**
  * The respond-via-message service the default-SMS-app role requires. A phone
  * app starts it with [TelephonyManager.ACTION_RESPOND_VIA_MESSAGE] when the
- * user declines a call with a quick-reply text. It sends nothing itself: it
- * hands each request to Dart (`AndroidMessaging.respondViaMessageCallback`)
- * and stops once Dart has answered every one, or its deadline passed
- * (UNFY-319). Outbound sends otherwise go through [OutboundSender] on the
- * messaging channel.
+ * user declines a call with a quick-reply text. Like the inbound receivers,
+ * it does the durable work natively, before any Flutter engine runs: it sends
+ * the text through [OutboundSender], which stores the row first, then stops.
+ * Dart hears of a quick reply only if it fails
+ * ([announceQuickReplyFailure], UNFY-319).
  */
 class OutboundMessagingHandler : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // Main thread only: onStartCommand runs there, and so does every delivery
-    // result (BackgroundEngineManager posts them to the main looper; its
-    // synchronous failure path is called from onStartCommand itself).
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var pendingReplies = 0
-    private var latestStartId = 0
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        latestStartId = startId
         when (val parsed = parseRespondViaMessage(intent)) {
-            is RespondViaMessageParse.Rejected -> {
+            is RespondViaMessageParse.Rejected ->
                 Log.e(TAG, "Ignoring respond-via-message intent: ${parsed.reason}")
-                stopWhenIdle()
+            // One SMS per recipient: each result then names one recipient and
+            // reaches OutboundMessagingReceiver. routeMessage would send
+            // several recipients together, through a path whose results do
+            // not reach it.
+            is RespondViaMessageParse.Accepted -> parsed.request.recipients.forEach { recipient ->
+                send(applicationContext, parsed.request.copy(recipients = listOf(recipient)))
             }
-            is RespondViaMessageParse.Accepted -> handOver(parsed.request)
         }
+        // The send needs this service no longer: its result reaches
+        // OutboundMessagingReceiver even after the process has gone.
+        stopSelf(startId)
         // A quick reply is time-bound; replaying it after a process kill
         // would send a stale text the user never re-confirmed.
         return START_NOT_STICKY
     }
 
-    override fun onDestroy() {
-        mainHandler.removeCallbacksAndMessages(null)
-        super.onDestroy()
-    }
-
-    /** Hands [request] to Dart; Dart's answer or the deadline settles it, whichever comes first. */
-    private fun handOver(request: RespondViaMessageRequest) {
-        pendingReplies++
-        var settled = false
-        lateinit var deadline: Runnable
-        fun settle(failure: String?) {
-            if (settled) return
-            settled = true
-            mainHandler.removeCallbacks(deadline)
-            if (failure != null) Log.e(TAG, failure)
-            pendingReplies--
-            stopWhenIdle()
-        }
-        deadline = Runnable { settle("Dart did not answer the quick reply in time") }
-        mainHandler.postDelayed(deadline, REPLY_DEADLINE_MS)
-        deliver(
-            this,
-            METHOD,
-            mutableMapOf<String, Any?>(
-                "recipients" to request.recipients,
-                "body" to request.body,
-                "subscriptionId" to request.subscriptionId,
-            ),
-        ) { delivered -> settle(if (delivered) null else "Dart did not accept the quick reply") }
-    }
-
-    /**
-     * Stops once no reply is waiting on Dart. `stopSelf(startId)` stops only
-     * when that start is the newest, so a later rejected intent must not end
-     * the service while an earlier reply is still being handed over.
-     */
-    private fun stopWhenIdle() {
-        if (pendingReplies == 0) stopSelf(latestStartId)
-    }
-
     companion object {
         private const val TAG = "OutboundMessagingHandler"
-        private const val METHOD = "receiveRespondViaMessage"
 
-        // Dart's send settles within SEND_RESULT_TIMEOUT_MS at the latest; the
-        // extra minute covers engine start-up. Past it, a lost answer must not
-        // pin the service.
+        /** Starts sending a quick reply; tests replace it. */
         @VisibleForTesting
-        internal const val REPLY_DEADLINE_MS = SEND_RESULT_TIMEOUT_MS + 60_000L
+        internal var send: (Context, RespondViaMessageRequest) -> Unit = ::startQuickReply
 
-        /** Delivers to Dart and reports whether Dart accepted; tests replace it. */
+        /** Delivers to Dart; tests replace it. */
         @VisibleForTesting
-        internal var deliver: (Context, String, MutableMap<String, Any?>, (Boolean) -> Unit) -> Unit =
+        internal var deliver: (Context, String, MutableMap<String, Any?>) -> Unit =
             BackgroundEngineManager::sendToFlutter
+
+        /**
+         * Sends [request] through a sender of its own. Nobody awaits a quick
+         * reply's result, so the sender is released once the send has
+         * started; a send that could not start is announced to Dart at once.
+         */
+        private fun startQuickReply(context: Context, request: RespondViaMessageRequest) {
+            val sender = OutboundSender(context)
+            try {
+                sender.sendQuickReply(request, object : MethodChannel.Result {
+                    override fun success(result: Any?) = Unit
+
+                    override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                        Log.e(TAG, "Quick reply did not start: $errorCode $errorMessage")
+                        announceQuickReplyFailure(context, request)
+                    }
+
+                    override fun notImplemented() =
+                        error("notImplemented", "sendQuickReply has no reply for notImplemented", null)
+                })
+            } finally {
+                sender.release()
+            }
+        }
     }
+}
+
+/** Tells Dart that [request] did not send (`receiveRespondViaMessageFailure`). */
+internal fun announceQuickReplyFailure(context: Context, request: RespondViaMessageRequest) {
+    OutboundMessagingHandler.deliver(
+        context,
+        "receiveRespondViaMessageFailure",
+        mutableMapOf(
+            "recipients" to request.recipients,
+            "body" to request.body,
+            "subscriptionId" to request.subscriptionId,
+        ),
+    )
+}
+
+private const val EXTRA_QUICK_REPLY_RECIPIENTS = "quickReplyRecipients"
+private const val EXTRA_QUICK_REPLY_BODY = "quickReplyBody"
+private const val EXTRA_QUICK_REPLY_SUBSCRIPTION = "quickReplySubscription"
+
+/**
+ * Marks a status intent as a quick reply's, carrying [request] so the result
+ * receiver can announce a failure without reading the row back.
+ */
+internal fun Intent.putQuickReply(request: RespondViaMessageRequest): Intent =
+    putStringArrayListExtra(EXTRA_QUICK_REPLY_RECIPIENTS, ArrayList(request.recipients))
+        .putExtra(EXTRA_QUICK_REPLY_BODY, request.body)
+        .apply { request.subscriptionId?.let { putExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION, it) } }
+
+/** The quick reply a status intent reports on ([putQuickReply]), or null for any other send. */
+internal fun Intent.quickReply(): RespondViaMessageRequest? {
+    val recipients = getStringArrayListExtra(EXTRA_QUICK_REPLY_RECIPIENTS) ?: return null
+    val body = getStringExtra(EXTRA_QUICK_REPLY_BODY) ?: return null
+    val subscriptionId =
+        if (hasExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION)) getIntExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION, 0) else null
+    return RespondViaMessageRequest(recipients, body, subscriptionId)
 }
 
 /** What a respond-via-message intent asks for, already validated. */

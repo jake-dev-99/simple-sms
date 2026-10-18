@@ -33,29 +33,18 @@ object BackgroundEngineManager {
     data class PendingMessage(
         val method: String,
         val payload: String,
-        val onResult: (Boolean) -> Unit,
     )
 
     /**
      * Delivers a message to the Dart side. If the foreground engine is running,
      * uses it directly. Otherwise creates/reuses a background engine and queues
      * the message until the engine is ready.
-     *
-     * [onResult] runs once with whether Dart acknowledged the message with
-     * `true`; it gets `false` for an error, a missing handler or a payload
-     * that can't be serialized.
      */
-    fun sendToFlutter(
-        context: Context,
-        method: String,
-        payload: MutableMap<String, Any?>,
-        onResult: (Boolean) -> Unit = {},
-    ) {
+    fun sendToFlutter(context: Context, method: String, payload: MutableMap<String, Any?>) {
         val jsonString = try {
             AnySerializer.encodeToString(payload)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to serialize message payload: ${e.message}")
-            onResult(false)
             return
         }
 
@@ -65,7 +54,7 @@ object BackgroundEngineManager {
         val foregroundMessenger = SimpleSmsPlugin.flutterBinding?.binaryMessenger
         if (foregroundMessenger != null) {
             Log.d(TAG, "Foreground engine available, sending directly")
-            invokeMethod(foregroundMessenger, method, jsonString, onResult)
+            invokeMethod(foregroundMessenger, method, jsonString)
             return
         }
 
@@ -73,14 +62,14 @@ object BackgroundEngineManager {
         synchronized(lock) {
             if (backgroundEngine == null) {
                 Log.d(TAG, "Creating background FlutterEngine")
-                pendingMessages.add(PendingMessage(method, jsonString, onResult))
+                pendingMessages.add(PendingMessage(method, jsonString))
                 startBackgroundEngine(context)
             } else if (!isEngineReady) {
                 Log.d(TAG, "Engine starting, queuing message")
-                pendingMessages.add(PendingMessage(method, jsonString, onResult))
+                pendingMessages.add(PendingMessage(method, jsonString))
             } else {
                 Log.d(TAG, "Background engine ready, sending directly")
-                invokeMethod(backgroundEngine!!.dartExecutor.binaryMessenger, method, jsonString, onResult)
+                invokeMethod(backgroundEngine!!.dartExecutor.binaryMessenger, method, jsonString)
             }
         }
     }
@@ -106,7 +95,7 @@ object BackgroundEngineManager {
                 isEngineReady = true
                 Log.d(TAG, "Background engine ready, draining ${pendingMessages.size} queued messages")
                 for (pending in pendingMessages) {
-                    invokeMethod(messenger, pending.method, pending.payload, pending.onResult)
+                    invokeMethod(messenger, pending.method, pending.payload)
                 }
                 pendingMessages.clear()
             }
@@ -122,31 +111,23 @@ object BackgroundEngineManager {
         SimpleSmsPlugin.initializeMethodChannelsStatic(context, messenger)
     }
 
-    private fun invokeMethod(
-        messenger: BinaryMessenger,
-        method: String,
-        jsonString: String,
-        onResult: (Boolean) -> Unit,
-    ) {
+    private fun invokeMethod(messenger: BinaryMessenger, method: String, jsonString: String) {
         val channel = MethodChannel(messenger, CHANNEL_NAME)
 
         Handler(Looper.getMainLooper()).post {
             channel.invokeMethod(method, jsonString, object : MethodChannel.Result {
                 override fun success(result: Any?) {
                     Log.d(TAG, "Message delivered successfully: $method")
-                    onResult(result == true)
                 }
 
                 override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
                     Log.e(TAG, "Failed to deliver message: $method - $errorMessage")
-                    onResult(false)
                 }
 
                 override fun notImplemented() {
                     Log.e(TAG, "Method $method not implemented on Dart side. " +
                         "Ensure your app defines a top-level @pragma('vm:entry-point') " +
                         "function named 'initializeApp' that calls AndroidMessaging.initialize().")
-                    onResult(false)
                 }
             })
         }

@@ -324,13 +324,21 @@ internal class SmsStatusIntents(val sent: PendingIntent, val delivered: PendingI
  *   attach the report (`pdu`, `format` extras); the row travels as the intent
  *   data, which a fill-in cannot replace.
  *
+ * A [quickReply]'s SENT intent carries it ([putQuickReply], UNFY-319).
+ *
  * A reused row id never inherits an earlier send's results: they carry that
  * send's token, which [SmsPartLedger.start] forgets. A send made before
  * parts were tracked had no token: its pair is cancelled when its row is
  * reused ([cancelUntrackedStatusIntents]), and a result of it already on its
  * way is ignored ([isStaleUntrackedSmsResult]).
  */
-internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri, part: SmsPartRef): SmsStatusIntents {
+internal fun smsStatusIntents(
+    context: Context,
+    messageId: Int,
+    messageUri: Uri,
+    part: SmsPartRef,
+    quickReply: RespondViaMessageRequest? = null,
+): SmsStatusIntents {
     fun Intent.forPart(): Intent = setIdentifier("${part.token}:${part.index}")
         .putExtra(EXTRA_PART_TOKEN, part.token)
         .putExtra(EXTRA_PART_ROW_ID, part.rowId)
@@ -340,6 +348,7 @@ internal fun smsStatusIntents(context: Context, messageId: Int, messageUri: Uri,
         .putExtra("messageID", messageId)
         .putExtra("uri", messageUri.toString())
         .forPart()
+    quickReply?.let(sent::putQuickReply)
     val delivered = statusReceiverIntent(context, DELIVEREDSMS_ACTION).setData(messageUri).forPart()
     // Mutable is the default before Android 12 (S), which has no flag for it.
     val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
@@ -693,12 +702,15 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
      * settles as [ERR_SEND_RESULT_TIMEOUT] (UNFY-299). A send still pending on
      * [uri], whose row was deleted and its id reused, is settled now
      * ([onSuperseded]): it would otherwise never be answered (UNFY-335).
+     * A quick reply ([MessageRequestDetails.quickReply]) only claims the row:
+     * nobody awaits it, so [SendResultRouter] records its result (UNFY-319).
      */
     @VisibleForTesting
     internal fun awaitResult(uri: Uri, details: MessageRequestDetails) {
         // The row is this send's now: writes owed to a deleted message whose
         // id it reused must not land on it (UNFY-335).
         OwedRowWrites.forApp(context).forget(uri)
+        if (details.quickReply != null) return
         val superseded = channelResultMap.put(uri, details)
         resultTimeouts.postDelayed({ onResultTimeout(uri, details) }, details, SEND_RESULT_TIMEOUT_MS)
         if (superseded != null && superseded !== details) onSuperseded(uri, superseded)
@@ -758,6 +770,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val clientCorrelationId: String? = null,
     ) {
         internal var correlationAttempt = OutboundSendCorrelations.Attempt(clientCorrelationId)
+
+        /** The respond-via-message quick reply this send carries out, or null for a send from Dart (UNFY-319). */
+        internal var quickReply: RespondViaMessageRequest? = null
     }
 
     init {
@@ -777,128 +792,151 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
                     result.error("CORRELATION_READ_FAILED", e.message, null)
                 }
             }
-            "sendMessage" -> {
-                if (!context.packageManager.hasSystemFeature(
-                                PackageManager.FEATURE_TELEPHONY_MESSAGING
+            "sendMessage" -> send(call.arguments, result, quickReply = null)
+            else -> result.notImplemented()
+        }
+    }
+
+    /**
+     * Sends a respond-via-message quick reply (UNFY-319) the way [onMethodCall]
+     * sends a message from Dart, except that nobody awaits its SENT result:
+     * [result] gets `success` once the send has started, or the error that
+     * stopped it. [request] has one recipient and no attachment, so it goes
+     * as SMS, and its SENT intents carry it ([putQuickReply]):
+     * [SendResultRouter] hands a failed result to Dart.
+     */
+    internal fun sendQuickReply(request: RespondViaMessageRequest, result: MethodChannel.Result) = send(
+        mapOf(
+            "recipients" to request.recipients,
+            "body" to request.body,
+            "subscriptionId" to request.subscriptionId,
+        ),
+        result,
+        quickReply = request,
+    )
+
+    private fun send(arguments: Any?, result: MethodChannel.Result, quickReply: RespondViaMessageRequest?) {
+        if (!context.packageManager.hasSystemFeature(
+                        PackageManager.FEATURE_TELEPHONY_MESSAGING
+                )
+        ) {
+            Log.d(TAG, "Device missing FEATURE_TELEPHONY_MESSAGING")
+            result.error(
+                    ERR_NO_TELEPHONY,
+                    "Device does not support telephony messaging (no SIM, tablet, or emulator).",
+                    null
+            )
+            // Pre-fix this fell through and continued to construct
+            // the SMS/MMS request, which then crashed deeper in
+            // SmsManager.getDefault() on tablets without telephony.
+            return
+        }
+        // SMS-vs-MMS routing lives in [routeMessage] (the long-body
+        // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
+        // hang + orphan-MMS-rows bug — is documented there).
+        //
+        // Send-path error routing: sendSms / sendMms throw on failure
+        // (no Boolean return — exceptions are the sole failure channel).
+        // The single catch + mapSendException helper translates each
+        // typed exception into the matching ERR_* code. Add new error
+        // codes by extending mapSendException, NOT by adding catch arms
+        // here.
+        //
+        // Building the request is inside the catch too: malformed
+        // arguments (ERR_INVALID_MESSAGE), an unresolvable recipient
+        // set or a revoked permission there also map to their ERR_*
+        // code (UNFY-306).
+        //
+        // Successful sends are ACKed asynchronously by the
+        // OutboundMessagingReceiver broadcast handler, which reads
+        // channelResultMap[messageUri].flutterResult. A quick reply,
+        // which nobody awaits, is answered once it has started.
+        var requestDetails: MessageRequestDetails? = null
+        try {
+            val message = arguments as? Map<*, *>
+                    ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
+            val recipients = stringList(message["recipients"], "recipients")
+                    ?: throw IllegalArgumentException("sendMessage has no recipients")
+            val correlationId = message["clientCorrelationId"]?.let {
+                it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
+            }
+            OutboundSendCorrelations(context).withAttempt(
+                correlationId to maxOf(1, recipients.size),
+            ) { correlationAttempt ->
+                val details =
+                        MessageRequestDetails(
+                                threadId =
+                                        Telephony.Threads.getOrCreateThreadId(
+                                                context,
+                                                recipients.toSet(),
+                                        ),
+                                addresses = recipients,
+                                body = message["body"] as? String
+                                        ?: throw IllegalArgumentException("sendMessage has no body"),
+                                subscriptionId = message["subscriptionId"]?.let {
+                                    it as? Int
+                                            ?: throw IllegalArgumentException("subscriptionId must be an int")
+                                },
+                                attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
+                                clientCorrelationId = correlationId,
+                                flutterResult = result,
                         )
-                ) {
-                    Log.d(TAG, "Device missing FEATURE_TELEPHONY_MESSAGING")
-                    result.error(
-                            ERR_NO_TELEPHONY,
-                            "Device does not support telephony messaging (no SIM, tablet, or emulator).",
-                            null
-                    )
-                    // Pre-fix this fell through and continued to construct
-                    // the SMS/MMS request, which then crashed deeper in
-                    // SmsManager.getDefault() on tablets without telephony.
-                    return
-                }
-                // SMS-vs-MMS routing lives in [routeMessage] (the long-body
-                // rationale — the body.length >= 160 / Klinker SENTSMS_ACTION
-                // hang + orphan-MMS-rows bug — is documented there).
-                //
-                // Send-path error routing: sendSms / sendMms throw on failure
-                // (no Boolean return — exceptions are the sole failure channel).
-                // The single catch + mapSendException helper translates each
-                // typed exception into the matching ERR_* code. Add new error
-                // codes by extending mapSendException, NOT by adding catch arms
-                // here.
-                //
-                // Building the request is inside the catch too: malformed
-                // arguments (ERR_INVALID_MESSAGE), an unresolvable recipient
-                // set or a revoked permission there also map to their ERR_*
-                // code (UNFY-306).
-                //
-                // Successful sends are ACKed asynchronously by the
-                // OutboundMessagingReceiver broadcast handler, which reads
-                // channelResultMap[messageUri].flutterResult.
-                var requestDetails: MessageRequestDetails? = null
-                try {
-                    val message = call.arguments as? Map<*, *>
-                            ?: throw IllegalArgumentException("sendMessage takes a map of arguments")
-                    val recipients = stringList(message["recipients"], "recipients")
-                            ?: throw IllegalArgumentException("sendMessage has no recipients")
-                    val correlationId = message["clientCorrelationId"]?.let {
-                        it as? String ?: throw IllegalArgumentException("clientCorrelationId must be a string")
-                    }
-                    OutboundSendCorrelations(context).withAttempt(
-                        correlationId to maxOf(1, recipients.size),
-                    ) { correlationAttempt ->
-                        val details =
-                                MessageRequestDetails(
-                                        threadId =
-                                                Telephony.Threads.getOrCreateThreadId(
-                                                        context,
-                                                        recipients.toSet(),
-                                                ),
-                                        addresses = recipients,
-                                        body = message["body"] as? String
-                                                ?: throw IllegalArgumentException("sendMessage has no body"),
-                                        subscriptionId = message["subscriptionId"]?.let {
-                                            it as? Int
-                                                    ?: throw IllegalArgumentException("subscriptionId must be an int")
-                                        },
-                                        attachmentPaths = stringList(message["attachmentPaths"], "attachmentPaths"),
-                                        clientCorrelationId = correlationId,
-                                        flutterResult = result,
-                                )
-                        details.correlationAttempt = correlationAttempt
-                        requestDetails = details
+                details.correlationAttempt = correlationAttempt
+                details.quickReply = quickReply
+                requestDetails = details
 
-                        val smsManager: SmsManager =
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    val subIdToUse =
-                                            selectSubscriptionId(
-                                                    details.subscriptionId,
-                                                    SmsManager::getDefaultSmsSubscriptionId,
-                                            )
-                                    context.getSystemService(SmsManager::class.java)
-                                            .createForSubscriptionId(subIdToUse)
-                                } else {
-                                    @Suppress("DEPRECATION") SmsManager.getDefault()
-                                }
+                val smsManager: SmsManager =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val subIdToUse =
+                                    selectSubscriptionId(
+                                            details.subscriptionId,
+                                            SmsManager::getDefaultSmsSubscriptionId,
+                                    )
+                            context.getSystemService(SmsManager::class.java)
+                                    .createForSubscriptionId(subIdToUse)
+                        } else {
+                            @Suppress("DEPRECATION") SmsManager.getDefault()
+                        }
 
-                        val route =
-                                routeMessage(
-                                        hasAttachments =
-                                                !details.attachmentPaths.isNullOrEmpty(),
-                                        recipientCount = details.addresses.size,
-                                )
-                        when (route) {
-                            OutboundRoute.MMS ->
-                                    sendMms(smsManager = smsManager, requestDetails = details)
-                            OutboundRoute.SMS ->
-                                    sendSms(smsManager = smsManager, requestDetails = details)
-                        }
-                    }
-                } catch (e: Exception) {
-                    val pending = requestDetails
-                    val persistedUri = pending?.messageUri
-                    if (pending != null && persistedUri != null) {
-                        forgetSend(persistedUri, pending)
-                        try {
-                            markPersistedSendFailed(context, persistedUri)
-                        } catch (stateError: Exception) {
-                            Log.e(TAG, "Failed to settle message after send initiation error: $persistedUri", stateError)
-                            e.addSuppressed(stateError)
-                        }
-                    }
-                    val (code, message, details) = mapSendException(e)
-                    val errorDetails = if (e.suppressed.isEmpty()) details else mapOf(
-                        "sendDetails" to details,
-                        "messageUri" to persistedUri?.toString(),
-                        "providerStateErrors" to e.suppressed.map { it.message },
-                    )
-                    result.error(code, message, errorDetails)
-                } finally {
-                    // A send needs write access, so earlier status writes the
-                    // provider ignored may land now. Only once this send's row
-                    // is awaited, or failed: a write owed to a deleted message
-                    // whose id it reused must not land on it (UNFY-335).
-                    OutboxSweeper.onSend(context)
+                val route =
+                        routeMessage(
+                                hasAttachments =
+                                        !details.attachmentPaths.isNullOrEmpty(),
+                                recipientCount = details.addresses.size,
+                        )
+                when (route) {
+                    OutboundRoute.MMS ->
+                            sendMms(smsManager = smsManager, requestDetails = details)
+                    OutboundRoute.SMS ->
+                            sendSms(smsManager = smsManager, requestDetails = details)
                 }
             }
-            else -> result.notImplemented()
+            if (quickReply != null) result.success(null)
+        } catch (e: Exception) {
+            val pending = requestDetails
+            val persistedUri = pending?.messageUri
+            if (pending != null && persistedUri != null) {
+                forgetSend(persistedUri, pending)
+                try {
+                    markPersistedSendFailed(context, persistedUri)
+                } catch (stateError: Exception) {
+                    Log.e(TAG, "Failed to settle message after send initiation error: $persistedUri", stateError)
+                    e.addSuppressed(stateError)
+                }
+            }
+            val (code, message, details) = mapSendException(e)
+            val errorDetails = if (e.suppressed.isEmpty()) details else mapOf(
+                "sendDetails" to details,
+                "messageUri" to persistedUri?.toString(),
+                "providerStateErrors" to e.suppressed.map { it.message },
+            )
+            result.error(code, message, errorDetails)
+        } finally {
+            // A send needs write access, so earlier status writes the
+            // provider ignored may land now. Only once this send's row
+            // is awaited, or failed: a write owed to a deleted message
+            // whose id it reused must not land on it (UNFY-335).
+            OutboxSweeper.onSend(context)
         }
     }
 
@@ -1053,7 +1091,9 @@ class OutboundSender(context: Context) : MethodChannel.MethodCallHandler {
             val ledger = SmsPartLedger.forApp(context)
             val partRefs = startTrackedSmsSend(context, ledger, msgId, newUri, partCount)
             try {
-                val statusIntents = partRefs.map { smsStatusIntents(context, msgId, newUri, it) }
+                val statusIntents = partRefs.map {
+                    smsStatusIntents(context, msgId, newUri, it, requestDetails.quickReply)
+                }
                 awaitResult(newUri, requestDetails)
                 if (parts.size <= 1) {
                     smsManager.sendTextMessage(

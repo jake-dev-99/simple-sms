@@ -2,20 +2,25 @@ package io.simplezen.simple_sms.messaging
 
 import android.app.Service
 import android.content.ComponentName
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
-import android.os.Looper
+import android.provider.Telephony
+import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
-import java.time.Duration
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -24,32 +29,34 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Respond-via-message quick replies (UNFY-319): the intent parser and the
- * service that hands a valid request to Dart and stops itself.
+ * Respond-via-message quick replies (UNFY-319): the intent parser, the
+ * service that sends a valid request natively and stops itself, and the
+ * status-intent extras that let a failure reach Dart.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class OutboundMessagingHandlerTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+    private val originalSend = OutboundMessagingHandler.send
     private val originalDeliver = OutboundMessagingHandler.deliver
 
-    private class Delivery(
-        val method: String,
-        val payload: Map<String, Any?>,
-        val onResult: (Boolean) -> Unit,
-    )
+    private class Delivery(val method: String, val payload: Map<String, Any?>)
 
+    private val sends = mutableListOf<RespondViaMessageRequest>()
     private val deliveries = mutableListOf<Delivery>()
 
-    @After
-    fun restoreDelivery() {
-        OutboundMessagingHandler.deliver = originalDeliver
+    @Before
+    fun captureSendsAndDeliveries() {
+        OutboundMessagingHandler.send = { _, request -> sends += request }
+        OutboundMessagingHandler.deliver = { _, method, payload ->
+            deliveries += Delivery(method, payload.toMap())
+        }
     }
 
-    private fun captureDeliveries() {
-        OutboundMessagingHandler.deliver = { _, method, payload, onResult ->
-            deliveries += Delivery(method, payload.toMap(), onResult)
-        }
+    @After
+    fun restoreSeams() {
+        OutboundMessagingHandler.send = originalSend
+        OutboundMessagingHandler.deliver = originalDeliver
     }
 
     private fun quickReply(
@@ -63,9 +70,6 @@ class OutboundMessagingHandlerTest {
 
     private fun requestOf(intent: Intent?) =
         (parseRespondViaMessage(intent) as? RespondViaMessageParse.Accepted)?.request
-
-    private fun idleMainLooper(millis: Long) =
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
 
     private fun startService(intent: Intent) =
         Robolectric.buildService(OutboundMessagingHandler::class.java, intent)
@@ -158,114 +162,116 @@ class OutboundMessagingHandlerTest {
     // --- service ---
 
     @Test
-    fun validIntent_deliversToDartThenStops() {
-        captureDeliveries()
+    fun validIntent_sendsThenStops() {
         val controller = startService(quickReply("smsto:5554").putExtra("subscription", 3))
 
-        val delivery = deliveries.single()
-        assertEquals("receiveRespondViaMessage", delivery.method)
-        assertEquals(
-            mapOf(
-                "recipients" to listOf("5554"),
-                "body" to "Can't talk now",
-                "subscriptionId" to 3,
-            ),
-            delivery.payload,
-        )
-        assertFalse("must keep running until Dart answers", shadowOf(controller.get()).isStoppedBySelf)
-
-        delivery.onResult(true)
-
-        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
-    }
-
-    @Test
-    fun undeliveredQuickReply_stillStops() {
-        captureDeliveries()
-        val controller = startService(quickReply())
-
-        deliveries.single().onResult(false)
-
-        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
-    }
-
-    @Test
-    fun laterRejectedIntent_doesNotStopWhileAReplyIsPending() {
-        captureDeliveries()
-        val controller = startService(quickReply())
-        val service = controller.get()
-
-        service.onStartCommand(quickReply(text = null), 0, 2)
-
-        assertFalse("the earlier reply is still with Dart", shadowOf(service).isStoppedBySelf)
-
-        deliveries.single().onResult(true)
-
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun overlappingReplies_stopOnlyAfterTheLastOne() {
-        captureDeliveries()
-        val controller = startService(quickReply("smsto:5554"))
-        val service = controller.get()
-        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
-
-        deliveries[1].onResult(true)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        deliveries[0].onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun unansweredReply_stopsAtTheDeadline() {
-        captureDeliveries()
-        val service = startService(quickReply()).get()
-
-        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 1_000)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        idleMainLooper(2_000)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-
-        // A late answer changes nothing.
-        deliveries.single().onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun timedOutReply_doesNotStopWhileAnotherIsPending() {
-        captureDeliveries()
-        val service = startService(quickReply("smsto:5554")).get()
-        idleMainLooper(30_000)
-        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
-
-        // The first reply times out, the second is still with Dart.
-        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 30_000 + 1_000)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        deliveries[1].onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun invalidIntent_stopsWithoutDelivering() {
-        captureDeliveries()
-        val controller = startService(quickReply(text = " "))
-
+        assertEquals(RespondViaMessageRequest(listOf("5554"), "Can't talk now", 3), sends.single())
         assertTrue(deliveries.isEmpty())
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
     }
 
     @Test
+    fun severalRecipients_eachGetTheirOwnSend() {
+        startService(quickReply("sms:5554;5556"))
+
+        assertEquals(listOf(listOf("5554"), listOf("5556")), sends.map { it.recipients })
+        assertTrue(sends.all { it.body == "Can't talk now" })
+    }
+
+    @Test
+    fun realSend_storesTheRowFirst_thenSendsWithTheReplyOnItsSentIntent() {
+        OutboundMessagingHandler.send = originalSend
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, true)
+        val sms = Robolectric.buildContentProvider(OutboxProvider::class.java).create("sms").get()
+        Robolectric.buildContentProvider(OutboxProvider::class.java).create("mms-sms")
+
+        startService(quickReply("smsto:5554").putExtra("subscription", 3))
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_OUTBOX, sms.inserted?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals("Can't talk now", sms.inserted?.getAsString(Telephony.Sms.BODY))
+        val sent = shadowOf(context.getSystemService(SmsManager::class.java).createForSubscriptionId(3))
+            .lastSentTextMessageParams
+        assertEquals("5554", sent.destinationAddress)
+        assertEquals("Can't talk now", sent.text)
+        assertEquals(
+            RespondViaMessageRequest(listOf("5554"), "Can't talk now", 3),
+            shadowOf(sent.sentIntent).savedIntent.quickReply(),
+        )
+        assertTrue("a started send announces nothing", deliveries.isEmpty())
+    }
+
+    @Test
+    fun invalidIntent_stopsWithoutSending() {
+        val controller = startService(quickReply(text = " "))
+
+        assertTrue(sends.isEmpty())
+        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
+    }
+
+    @Test
     fun onStartCommand_returnsNotSticky() {
-        captureDeliveries()
         val service = Robolectric.buildService(OutboundMessagingHandler::class.java).create().get()
 
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(quickReply(), 0, 1))
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(quickReply(text = null), 0, 2))
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 3))
+    }
+
+    @Test
+    fun sendThatCannotStart_isAnnouncedToDart() {
+        OutboundMessagingHandler.send = originalSend
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, false)
+
+        startService(quickReply("smsto:5554").putExtra("subscription", 3))
+
+        val delivery = deliveries.single()
+        assertEquals("receiveRespondViaMessageFailure", delivery.method)
+        assertEquals(
+            mapOf("recipients" to listOf("5554"), "body" to "Can't talk now", "subscriptionId" to 3),
+            delivery.payload,
+        )
+    }
+
+    // --- status-intent extras ---
+
+    @Test
+    fun quickReplyExtras_roundTrip() {
+        val request = RespondViaMessageRequest(listOf("5554", "5556"), "Can't talk now", 3)
+
+        assertEquals(request, Intent().putQuickReply(request).quickReply())
+        val noSim = request.copy(subscriptionId = null)
+        assertEquals(noSim, Intent().putQuickReply(noSim).quickReply())
+    }
+
+    @Test
+    fun ordinaryStatusIntent_carriesNoQuickReply() {
+        assertNull(Intent().putExtra("messageID", 1).quickReply())
+    }
+
+    /** An `sms` / `mms-sms` provider that stores one outbox row and resolves any thread to 1. */
+    class OutboxProvider : ContentProvider() {
+        var inserted: ContentValues? = null
+
+        override fun onCreate() = true
+
+        override fun insert(uri: Uri, values: ContentValues?): Uri {
+            inserted = values
+            return Uri.parse("content://sms/42")
+        }
+
+        override fun query(
+            uri: Uri,
+            projection: Array<out String>?,
+            selection: String?,
+            selectionArgs: Array<out String>?,
+            sortOrder: String?,
+        ): Cursor = MatrixCursor(arrayOf("_id")).apply { if (uri.authority == "mms-sms") addRow(arrayOf(1L)) }
+
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
+
+        override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
+
+        override fun getType(uri: Uri): String? = null
     }
 
     // --- packaged manifest ---

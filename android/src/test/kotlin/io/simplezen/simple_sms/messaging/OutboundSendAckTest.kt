@@ -56,17 +56,22 @@ class OutboundSendAckTest {
     private lateinit var mmsProvider: FakeMessageProvider
     private lateinit var handler: OutboundSender
     private var sendParts: List<SmsPartRef>? = null
+    private val originalDeliver = OutboundMessagingHandler.deliver
+    private val announced = mutableListOf<Pair<String, Map<String, Any?>>>()
+    private val quickReply = RespondViaMessageRequest(listOf("5551234"), "Can't talk now", 3)
 
     @Before
     fun setUp() {
         smsProvider = Robolectric.buildContentProvider(FakeMessageProvider::class.java).create("sms").get()
         mmsProvider = Robolectric.buildContentProvider(FakeMessageProvider::class.java).create("mms").get()
         handler = OutboundSender(context)
+        OutboundMessagingHandler.deliver = { _, method, payload -> announced += method to payload.toMap() }
     }
 
     @After
     fun tearDown() {
         handler.release()
+        OutboundMessagingHandler.deliver = originalDeliver
     }
 
     @Test
@@ -869,6 +874,83 @@ class OutboundSendAckTest {
         assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
         assertEquals(SENT_RESULT_SELECTION, smsProvider.lastSelection)
         assertEquals(0, smsProvider.rowReads)
+    }
+
+    // --- quick replies (UNFY-319): nobody awaits them; a failure reaches Dart ---
+
+    @Test
+    fun quickReply_isNotAwaited() {
+        handler.awaitResult(smsUri, quickReplyDetails())
+
+        assertTrue(handler.channelResultMap.isEmpty())
+    }
+
+    @Test
+    fun failedQuickReply_isRecorded_thenAnnouncedToDart() {
+        handler.release()
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        sendParts = SmsPartLedger.forApp(context).start(42L, 1, false)
+
+        sendQuickReplyResult(part(), SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_FAILED, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertEquals(
+            listOf(
+                "receiveRespondViaMessageFailure" to mapOf(
+                    "recipients" to listOf("5551234"),
+                    "body" to "Can't talk now",
+                    "subscriptionId" to 3,
+                ),
+            ),
+            announced,
+        )
+    }
+
+    @Test
+    fun sentQuickReply_announcesNothing() {
+        handler.release()
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        sendParts = SmsPartLedger.forApp(context).start(42L, 1, false)
+
+        sendQuickReplyResult(part(), Activity.RESULT_OK)
+
+        assertEquals(Telephony.Sms.MESSAGE_TYPE_SENT, smsProvider.lastValues?.getAsInteger(Telephony.Sms.TYPE))
+        assertTrue(announced.isEmpty())
+    }
+
+    @Test
+    fun multipartQuickReply_isAnnouncedOnceAfterEveryPart() {
+        handler.release()
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+        sendParts = SmsPartLedger.forApp(context).start(42L, 2, false)
+
+        sendQuickReplyResult(part(0, 2), SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+        assertTrue("the other part has not reported", announced.isEmpty())
+        sendQuickReplyResult(part(1, 2), Activity.RESULT_OK)
+
+        assertEquals(1, announced.size)
+    }
+
+    @Test
+    fun failedOrdinarySend_announcesNothing() {
+        handler.release()
+        smsProvider.row = mapOf("_id" to 42L, "body" to "hi")
+
+        deliverStatusBroadcast(SENTSMS_ACTION, 42, smsUri, SmsManager.RESULT_ERROR_GENERIC_FAILURE)
+
+        assertTrue(announced.isEmpty())
+    }
+
+    private fun quickReplyDetails() = OutboundSender.MessageRequestDetails(
+        threadId = 1L,
+        addresses = quickReply.recipients,
+        body = quickReply.body,
+        flutterResult = RecordingResult(),
+    ).also { it.quickReply = quickReply }
+
+    private fun sendQuickReplyResult(part: SmsPartRef, resultCode: Int) {
+        smsStatusIntents(context, 42, smsUri, part, quickReply).sent.send(context, resultCode, null)
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     @Test
