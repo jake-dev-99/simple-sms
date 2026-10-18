@@ -424,6 +424,118 @@ void main() {
       },
     );
   });
+
+  group('native drafts (UNFY-349)', () {
+    setUp(() {
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+    });
+
+    test("draft is the thread's newest SMS draft by date then id", () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7), _thread(8), _thread(9)],
+        sms: [
+          _draft(1, threadId: 7, millis: 1000),
+          _draft(2, threadId: 7, millis: 3000),
+          _draft(3, threadId: 7, millis: 3000),
+          _draft(4, threadId: 7, millis: 2000),
+          _sms(5, threadId: 7, millis: 9000),
+          _sms(6, threadId: 8, millis: 9000),
+          _draft(7, threadId: 9, millis: 500),
+        ],
+      );
+
+      final byThread = await _listByThread();
+
+      expect(byThread[7]?.draft?.id, 3, reason: 'date tie goes to the higher id');
+      expect(byThread[9]?.draft?.id, 7);
+    });
+
+    test('a thread with no draft has none', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7), _thread(8)],
+        sms: [
+          _sms(1, threadId: 7, millis: 1000),
+          _draft(2, threadId: 8, millis: 2000),
+        ],
+      );
+
+      final byThread = await _listByThread();
+
+      expect(byThread[7]?.draft, isNull);
+      expect(byThread[8]?.draft?.id, 2);
+    });
+
+    test('drafts are read once for the whole list', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7), _thread(8), _thread(9)],
+        sms: [_draft(1, threadId: 7, millis: 1000)],
+      );
+
+      await LookupService().listConversations();
+
+      final [draftRead] = _draftReads(provider);
+      expect(
+        draftRead.filters.map((f) => f.field),
+        ['type'],
+        reason: 'provider-wide: no thread condition',
+      );
+      expect(draftRead.filters.single.value, ['3']);
+    });
+
+    test('one requested thread scopes the draft read to it', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        sms: [_draft(1, threadId: 7, millis: 1000)],
+      );
+
+      final conversation = await LookupService().getConversationByThread(7);
+
+      expect(conversation?.draft?.id, 1);
+      final [draftRead] = _draftReads(provider);
+      final byField = {for (final f in draftRead.filters) f.field: f.value};
+      expect(byField, {'thread_id': '7', 'type': ['3']});
+    });
+
+    test('a failed draft read fails the list', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        sms: [_draft(1, threadId: 7, millis: 1000)],
+      );
+      // `unavailable` leaves a thread bare when an enrichment read hits it,
+      // but the draft read is all-or-nothing: it fails the call.
+      final failure = SimpleQueryError(
+        code: SimpleQueryErrorCode.unavailable,
+        message: 'no cursor',
+        details: const {'contentUri': ProviderUris.sms},
+      );
+      provider.failQueriesTo(ProviderUris.sms, failure);
+
+      await expectLater(
+        LookupService().listConversations(),
+        throwsA(same(failure)),
+      );
+    });
+
+    test('enrich false reads no drafts', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        sms: [_draft(1, threadId: 7, millis: 1000)],
+      );
+
+      final [conversation] = await LookupService().listConversations(
+        enrich: false,
+      );
+
+      expect(conversation.draft, isNull);
+      expect(provider.requestsTo(ProviderUris.sms), isEmpty);
+    });
+  });
 }
 
 /// A contacts phone-filter row and the values a test asserts on.
@@ -479,6 +591,35 @@ Map<String, Object?> _sms(
   required int threadId,
   required int millis,
 }) => {'_id': id, 'thread_id': threadId, 'date': millis, 'type': 1};
+
+/// Purpose: builds a native SMS draft row (`type` 3, date in milliseconds).
+///
+/// @param id the SMS `_id`.
+/// @param threadId the owning thread.
+/// @param millis the `date` column.
+/// @returns the raw row.
+/// @throws nothing.
+Map<String, Object?> _draft(
+  int id, {
+  required int threadId,
+  required int millis,
+}) => {..._sms(id, threadId: threadId, millis: millis), 'type': 3};
+
+/// Purpose: lists the provider-wide draft reads: the `content://sms` requests
+/// that filter on `type` with a list.
+///
+/// @param provider the installed fake.
+/// @returns the matching requests, in call order.
+/// @throws nothing.
+List<QueryRequest> _draftReads(FakeContentProviderPlatform provider) =>
+    provider
+        .requestsTo(ProviderUris.sms)
+        .where(
+          (request) => request.filters.any(
+            (f) => f.field == 'type' && f.operator == QueryFilterOperator.inList,
+          ),
+        )
+        .toList(growable: false);
 
 /// Purpose: builds a `content://mms` row (date in seconds) with no body, as
 /// the provider returns it.
@@ -558,7 +699,7 @@ void _seedTables(
   const messageColumns = ['_id', 'thread_id', 'date'];
   provider
     ..seed(ProviderUris.conversations, threads)
-    ..seed(ProviderUris.sms, sms, columns: messageColumns)
+    ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
     ..seed(ProviderUris.mms, mms, columns: messageColumns)
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }

@@ -77,7 +77,7 @@ class AndroidSimpleConversation {
   //
   // These fields are `null` when the model is built via [fromRaw] alone.
   // [LookupService.listConversations] resolves them by issuing follow-up
-  // queries (canonical-address + contactable lookup, latest SMS/MMS).
+  // queries (canonical-address + contactable lookup, latest SMS/MMS, draft).
 
   /// Contactables (lightweight contact rows) resolved from [recipientIds].
   /// Null when not enriched.
@@ -90,6 +90,10 @@ class AndroidSimpleConversation {
   /// Most recent MMS in the thread, if any. Null when not enriched or when
   /// the thread has no MMS.
   final Mms? latestMms;
+
+  /// The thread's newest native SMS draft (`type` = 3), by date and then
+  /// `_id`. Null when not read (`enrich: false`) or when the thread has none.
+  final Sms? draft;
 
   AndroidSimpleConversation({
     required this.id,
@@ -140,6 +144,7 @@ class AndroidSimpleConversation {
     this.participants,
     this.latestSms,
     this.latestMms,
+    this.draft,
   });
 
   /// Returns a new instance with the supplied enrichment fields populated,
@@ -152,6 +157,7 @@ class AndroidSimpleConversation {
     List<Contactable>? participants,
     Sms? latestSms,
     Mms? latestMms,
+    Sms? draft,
   }) {
     return AndroidSimpleConversation(
       id: id,
@@ -202,6 +208,7 @@ class AndroidSimpleConversation {
       participants: participants ?? this.participants,
       latestSms: latestSms ?? this.latestSms,
       latestMms: latestMms ?? this.latestMms,
+      draft: draft ?? this.draft,
     );
   }
 

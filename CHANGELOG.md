@@ -17,6 +17,16 @@
 
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
 
+- Add `SmsFilter.excludeTypes` and `AndroidSimpleConversation.draft`
+  (UNFY-349). `excludeTypes` adds one `type != ?` condition per listed type.
+  With `enrich: true`, `listConversations` reads the native SMS drafts once for
+  the whole list and gives each thread its newest one (by date, then id) as
+  `draft`, null when it has none. A thread left unenriched because a provider
+  was unavailable still carries its `draft`. Behavior change: that draft read
+  is all-or-nothing, so with `enrich: true`, `listConversations` (and
+  `getConversationByThread`) now fails when it fails, including when the SMS
+  provider is unavailable. With `enrich: false` no draft is read.
+
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.
 
