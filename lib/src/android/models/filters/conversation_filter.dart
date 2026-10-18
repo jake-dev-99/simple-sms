@@ -18,14 +18,12 @@ class ConversationFilter {
     this.threadIdAfter,
   });
 
-  /// Match any of these thread ids (`thread_id IN (...)`).
+  /// Match any of these thread ids (`_id IN (...)`).
   ///
-  /// On Samsung's `content://mms-sms/conversations?simple=true` view the
-  /// row primary key `_id` is the **latest-message id** in the thread,
-  /// not the thread id — so filtering on `_id` matches message ids and
-  /// is almost always wrong. Filter on `thread_id` instead; that's the
-  /// stable join key used everywhere else ([SmsFilter.threadId],
-  /// [MmsFilter.threadId], `AndroidSimpleConversation.threadId`).
+  /// The `content://mms-sms/conversations?simple=true` view is the
+  /// `threads` table: its `_id` **is** the thread id, and it has no
+  /// `thread_id` column. The same id is [SmsFilter.threadId],
+  /// [MmsFilter.threadId] and `AndroidSimpleConversation.threadId`.
   final List<int>? threadIds;
 
   /// Match only archived (`true`) or un-archived (`false`) threads.
@@ -43,7 +41,7 @@ class ConversationFilter {
   /// Match only threads whose most recent message has an attachment.
   final bool? hasAttachment;
 
-  /// Match only rows where `thread_id > threadIdAfter` — cursor-based
+  /// Match only rows where `_id > threadIdAfter` — cursor-based
   /// pagination anchor. See [SmsFilter.idAfter] for rationale. Pair with
   /// [ConversationSortField.id] so "after this thread id" is
   /// well-defined.
