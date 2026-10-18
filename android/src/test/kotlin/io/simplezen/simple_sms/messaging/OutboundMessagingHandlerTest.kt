@@ -5,14 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Looper
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
-import java.time.Duration
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -33,11 +30,7 @@ class OutboundMessagingHandlerTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val originalDeliver = OutboundMessagingHandler.deliver
 
-    private class Delivery(
-        val method: String,
-        val payload: Map<String, Any?>,
-        val onResult: (Boolean) -> Unit,
-    )
+    private class Delivery(val method: String, val payload: Map<String, Any?>)
 
     private val deliveries = mutableListOf<Delivery>()
 
@@ -47,8 +40,8 @@ class OutboundMessagingHandlerTest {
     }
 
     private fun captureDeliveries() {
-        OutboundMessagingHandler.deliver = { _, method, payload, onResult ->
-            deliveries += Delivery(method, payload.toMap(), onResult)
+        OutboundMessagingHandler.deliver = { _, method, payload ->
+            deliveries += Delivery(method, payload.toMap())
         }
     }
 
@@ -63,9 +56,6 @@ class OutboundMessagingHandlerTest {
 
     private fun requestOf(intent: Intent?) =
         (parseRespondViaMessage(intent) as? RespondViaMessageParse.Accepted)?.request
-
-    private fun idleMainLooper(millis: Long) =
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
 
     private fun startService(intent: Intent) =
         Robolectric.buildService(OutboundMessagingHandler::class.java, intent)
@@ -172,81 +162,7 @@ class OutboundMessagingHandlerTest {
             ),
             delivery.payload,
         )
-        assertFalse("must keep running until Dart answers", shadowOf(controller.get()).isStoppedBySelf)
-
-        delivery.onResult(true)
-
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
-    }
-
-    @Test
-    fun undeliveredQuickReply_stillStops() {
-        captureDeliveries()
-        val controller = startService(quickReply())
-
-        deliveries.single().onResult(false)
-
-        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
-    }
-
-    @Test
-    fun laterRejectedIntent_doesNotStopWhileAReplyIsPending() {
-        captureDeliveries()
-        val controller = startService(quickReply())
-        val service = controller.get()
-
-        service.onStartCommand(quickReply(text = null), 0, 2)
-
-        assertFalse("the earlier reply is still with Dart", shadowOf(service).isStoppedBySelf)
-
-        deliveries.single().onResult(true)
-
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun overlappingReplies_stopOnlyAfterTheLastOne() {
-        captureDeliveries()
-        val controller = startService(quickReply("smsto:5554"))
-        val service = controller.get()
-        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
-
-        deliveries[1].onResult(true)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        deliveries[0].onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun unansweredReply_stopsAtTheDeadline() {
-        captureDeliveries()
-        val service = startService(quickReply()).get()
-
-        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 1_000)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        idleMainLooper(2_000)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-
-        // A late answer changes nothing.
-        deliveries.single().onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
-    }
-
-    @Test
-    fun timedOutReply_doesNotStopWhileAnotherIsPending() {
-        captureDeliveries()
-        val service = startService(quickReply("smsto:5554")).get()
-        idleMainLooper(30_000)
-        service.onStartCommand(quickReply("smsto:5556"), 0, 2)
-
-        // The first reply times out, the second is still with Dart.
-        idleMainLooper(OutboundMessagingHandler.REPLY_DEADLINE_MS - 30_000 + 1_000)
-        assertFalse(shadowOf(service).isStoppedBySelf)
-
-        deliveries[1].onResult(true)
-        assertTrue(shadowOf(service).isStoppedBySelf)
     }
 
     @Test
