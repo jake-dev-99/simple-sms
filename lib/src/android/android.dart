@@ -104,10 +104,9 @@ class Android {
   ///
   /// The [inboundSmsCallback] is invoked for each incoming SMS message.
   /// The [inboundMmsCallback] is invoked for each incoming MMS message.
-  /// The [respondViaMessageCallback] is invoked for each quick-reply text
-  /// Android asks the default SMS app to send; see
-  /// [AndroidMessaging.respondViaMessageCallback]. Omitting it keeps any
-  /// callback already registered.
+  /// The [respondViaMessageFailedCallback] is invoked for each quick-reply text
+  /// that did not send; see [AndroidMessaging.respondViaMessageFailedCallback].
+  /// Omitting it keeps any callback already registered.
   ///
   /// Safe to call multiple times: subsequent calls replace the active
   /// callbacks on the existing singleton. Useful for hot-reload flows and
@@ -116,7 +115,8 @@ class Android {
   factory Android.initialize({
     required Function(Sms) inboundSmsCallback,
     required Function(Mms) inboundMmsCallback,
-    FutureOr<void> Function(RespondViaMessageRequest)? respondViaMessageCallback,
+    FutureOr<void> Function(RespondViaMessageRequest)?
+    respondViaMessageFailedCallback,
   }) {
     assert(
       Platform.isAndroid,
@@ -126,7 +126,7 @@ class Android {
     AndroidMessaging.initialize(
       inboundSmsCallback: inboundSmsCallback,
       inboundMmsCallback: inboundMmsCallback,
-      respondViaMessageCallback: respondViaMessageCallback,
+      respondViaMessageFailedCallback: respondViaMessageFailedCallback,
     );
     return _instance ??= Android._internal();
   }

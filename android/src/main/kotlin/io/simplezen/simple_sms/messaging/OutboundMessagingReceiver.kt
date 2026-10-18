@@ -286,6 +286,7 @@ class OutboundMessagingReceiver : BroadcastReceiver() {
         Log.d(TAG_RECEIVER, "MessageID: $messageId, Action: $eventType, ResultCode: $resultCode, Status: $statusString")
         SendResultRouter.dispatch(
             context, messageId, messageUri, eventType, statusString, resultCode, intent.smsPartRef(), mmsMessageId,
+            intent.quickReply(),
         )
     }
 

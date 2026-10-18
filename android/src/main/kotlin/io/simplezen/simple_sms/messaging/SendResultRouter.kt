@@ -1,5 +1,6 @@
 package io.simplezen.simple_sms.messaging
 
+import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -17,7 +18,8 @@ import java.util.concurrent.CopyOnWriteArraySet
  * failed (UNFY-180). The owning handler settles its pending send; a settled
  * result nobody owns (the process restarted) is still recorded on the row. A
  * result lost outright (a reboot mid-send) is caught by
- * [markStaleOutboxFailed].
+ * [markStaleOutboxFailed]. Nobody owns a quick reply's result: a failed one
+ * is recorded, then handed to Dart ([announceQuickReplyFailure], UNFY-319).
  */
 internal object SendResultRouter {
     private const val TAG = "SendResultRouter"
@@ -45,6 +47,8 @@ internal object SendResultRouter {
      * @param part the SMS part reporting, from its intent.
      * @param mmsMessageId an MMS's message id from its SendConf
      *   ([mmsMessageIdFromSendConf]); null for an SMS, or when there is none.
+     * @param quickReply the quick reply the send carried out, from its intent;
+     *   null for any other send.
      * @returns nothing.
      * @throws nothing; failures are logged.
      */
@@ -57,6 +61,7 @@ internal object SendResultRouter {
         resultCode: Int,
         part: SmsPartRef?,
         mmsMessageId: String?,
+        quickReply: RespondViaMessageRequest?,
     ) {
         if (eventType == SENTSMS_ACTION && isStaleUntrackedSmsResult(context, part, messageId.toLong())) {
             Log.i(TAG, "SENT result for $messageUri from a send made before parts were tracked; ignored")
@@ -74,6 +79,7 @@ internal object SendResultRouter {
         } catch (e: Exception) {
             Log.e(TAG, "Failed recording unowned $eventType result for $messageUri", e)
         }
+        if (quickReply != null && settledCode != Activity.RESULT_OK) announceQuickReplyFailure(context, quickReply)
     }
 
     // The SMS's SENT outcome once [part] completes it, else null (logged).

@@ -2,8 +2,8 @@
 /// (`TelephonyManager.ACTION_RESPOND_VIA_MESSAGE`), e.g. when the user
 /// declines a call with a message.
 ///
-/// Delivered to `AndroidMessaging.respondViaMessageCallback`. Sending it is
-/// the app's job; the plugin only validates the intent and hands it over.
+/// The plugin sends it natively. One that did not send is delivered to
+/// `AndroidMessaging.respondViaMessageFailedCallback`.
 class RespondViaMessageRequest {
   /// Phone numbers to send [body] to. Never empty.
   final List<String> recipients;
