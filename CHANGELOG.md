@@ -183,6 +183,9 @@ return typed results.
 - **Contact lookup by address trims and percent-encodes it (UNFY-253).**
   An address with `+`, `#`, spaces or `@` now reaches the contacts filter
   intact, and a blank address returns null without a query.
+- **An MMS draft normalizes as `draft` (UNFY-351).** An MMS in the drafts box
+  (msg_box 3) now gives `MessageDeliveryState.draft` instead of `sending`,
+  whatever its m_type or `st`, as an SMS draft already does.
 
 ## 0.5.1
 
