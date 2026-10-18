@@ -278,6 +278,44 @@ class ConversationLookup {
     return r;
   }
 
+  /// Whether the provider's `threads` table holds a row for [threadId].
+  ///
+  /// Reads that one row straight from the `?simple=true` conversations URI,
+  /// which serves the `threads` table without the phantom filter
+  /// [listConversations] applies, so a phantom thread (no recipients, no
+  /// messages) is reported present: it still exists on the device. Unlike
+  /// [getConversationByThread], an absent answer is therefore proof the thread
+  /// is gone. Thread ids are never reused on AOSP, so that answer is final.
+  ///
+  /// Every provider failure is rethrown after a diagnostic, as
+  /// [listConversations] does, so a provider that cannot be read
+  /// (`SimpleQueryError(unavailable)`, a null cursor) never reads as absent.
+  Future<bool> threadRowExists(int threadId) async {
+    try {
+      // No projection, page or sort: the `_id` equality matches at most one
+      // row, and a limit without a sort is an invalid `ORDER BY LIMIT` on
+      // providers that honor the sort order.
+      final response = await SimpleQuery.instance.query(
+        QueryRequest(
+          domain: QueryDomain.platformSpecific,
+          filters: [
+            QueryFilterCondition(
+              field: '_id',
+              operator: QueryFilterOperator.equals,
+              value: threadId.toString(),
+            ),
+          ],
+          platformData: {'contentUri': _mmsSmsConversationsUri},
+        ),
+      );
+      return response.records.isNotEmpty;
+    } catch (e, s) {
+      debugPrint('simple_sms: threadRowExists failed (threadId=$threadId): $e');
+      debugPrint(s.toString());
+      rethrow;
+    }
+  }
+
   /// Enriches [base], or returns it bare (its enrichment fields null) when
   /// its enrichment reads failed only because a provider was unavailable
   /// (`SimpleQueryError(unavailable)`: a null cursor, e.g. the provider

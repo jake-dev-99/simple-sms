@@ -433,6 +433,13 @@ class LookupService {
       ConversationLookup.instance
           .getConversationByThread(threadId, enrich: enrich);
 
+  /// Whether the provider holds a `threads` row for [threadId], phantom
+  /// threads included (UNFY-321). `false` proves the thread is gone; a provider
+  /// failure throws rather than reporting absence.
+  /// Façade — delegates to [ConversationLookup].
+  Future<bool> threadRowExists(int threadId) =>
+      ConversationLookup.instance.threadRowExists(threadId);
+
   /// Lists every `data` row belonging to a single contact — phone numbers,
   /// emails, and any other MIME-typed data entries.
   /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
