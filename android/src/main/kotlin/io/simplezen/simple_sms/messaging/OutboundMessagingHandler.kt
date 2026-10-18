@@ -8,16 +8,17 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 /**
  * The respond-via-message service the default-SMS-app role requires. A phone
  * app starts it with [TelephonyManager.ACTION_RESPOND_VIA_MESSAGE] when the
- * user declines a call with a quick-reply text. Like the inbound SMS and MMS
- * receivers, it hands each valid request to Dart
- * (`AndroidMessaging.respondViaMessageCallback`) and is done; Dart sends it
- * (UNFY-319). Outbound sends otherwise go through [OutboundSender] on the
- * messaging channel.
+ * user declines a call with a quick-reply text. Like the inbound receivers,
+ * it does the durable work natively, before any Flutter engine runs: it sends
+ * the text through [OutboundSender], which stores the row first, then stops.
+ * Dart hears of a quick reply only if it fails
+ * ([announceQuickReplyFailure], UNFY-319).
  */
 class OutboundMessagingHandler : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -26,16 +27,10 @@ class OutboundMessagingHandler : Service() {
         when (val parsed = parseRespondViaMessage(intent)) {
             is RespondViaMessageParse.Rejected ->
                 Log.e(TAG, "Ignoring respond-via-message intent: ${parsed.reason}")
-            is RespondViaMessageParse.Accepted -> deliver(
-                this,
-                METHOD,
-                mutableMapOf(
-                    "recipients" to parsed.request.recipients,
-                    "body" to parsed.request.body,
-                    "subscriptionId" to parsed.request.subscriptionId,
-                ),
-            )
+            is RespondViaMessageParse.Accepted -> send(applicationContext, parsed.request)
         }
+        // The send needs this service no longer: its result reaches
+        // OutboundMessagingReceiver even after the process has gone.
         stopSelf(startId)
         // A quick reply is time-bound; replaying it after a process kill
         // would send a stale text the user never re-confirmed.
@@ -44,13 +39,75 @@ class OutboundMessagingHandler : Service() {
 
     companion object {
         private const val TAG = "OutboundMessagingHandler"
-        private const val METHOD = "receiveRespondViaMessage"
+
+        /** Starts sending a quick reply; tests replace it. */
+        @VisibleForTesting
+        internal var send: (Context, RespondViaMessageRequest) -> Unit = ::startQuickReply
 
         /** Delivers to Dart; tests replace it. */
         @VisibleForTesting
         internal var deliver: (Context, String, MutableMap<String, Any?>) -> Unit =
             BackgroundEngineManager::sendToFlutter
+
+        /**
+         * Sends [request] through a sender of its own. Nobody awaits a quick
+         * reply's result, so the sender is released once the send has
+         * started; a send that could not start is announced to Dart at once.
+         */
+        private fun startQuickReply(context: Context, request: RespondViaMessageRequest) {
+            val sender = OutboundSender(context)
+            try {
+                sender.sendQuickReply(request, object : MethodChannel.Result {
+                    override fun success(result: Any?) = Unit
+
+                    override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                        Log.e(TAG, "Quick reply did not start: $errorCode $errorMessage")
+                        announceQuickReplyFailure(context, request)
+                    }
+
+                    override fun notImplemented() =
+                        error("notImplemented", "sendQuickReply has no reply for notImplemented", null)
+                })
+            } finally {
+                sender.release()
+            }
+        }
     }
+}
+
+/** Tells Dart that [request] did not send (`receiveRespondViaMessageFailure`). */
+internal fun announceQuickReplyFailure(context: Context, request: RespondViaMessageRequest) {
+    OutboundMessagingHandler.deliver(
+        context,
+        "receiveRespondViaMessageFailure",
+        mutableMapOf(
+            "recipients" to request.recipients,
+            "body" to request.body,
+            "subscriptionId" to request.subscriptionId,
+        ),
+    )
+}
+
+private const val EXTRA_QUICK_REPLY_RECIPIENTS = "quickReplyRecipients"
+private const val EXTRA_QUICK_REPLY_BODY = "quickReplyBody"
+private const val EXTRA_QUICK_REPLY_SUBSCRIPTION = "quickReplySubscription"
+
+/**
+ * Marks a status intent as a quick reply's, carrying [request] so the result
+ * receiver can announce a failure without reading the row back.
+ */
+internal fun Intent.putQuickReply(request: RespondViaMessageRequest): Intent =
+    putStringArrayListExtra(EXTRA_QUICK_REPLY_RECIPIENTS, ArrayList(request.recipients))
+        .putExtra(EXTRA_QUICK_REPLY_BODY, request.body)
+        .apply { request.subscriptionId?.let { putExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION, it) } }
+
+/** The quick reply a status intent reports on ([putQuickReply]), or null for any other send. */
+internal fun Intent.quickReply(): RespondViaMessageRequest? {
+    val recipients = getStringArrayListExtra(EXTRA_QUICK_REPLY_RECIPIENTS) ?: return null
+    val body = getStringExtra(EXTRA_QUICK_REPLY_BODY) ?: return null
+    val subscriptionId =
+        if (hasExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION)) getIntExtra(EXTRA_QUICK_REPLY_SUBSCRIPTION, 0) else null
+    return RespondViaMessageRequest(recipients, body, subscriptionId)
 }
 
 /** What a respond-via-message intent asks for, already validated. */

@@ -8,7 +8,7 @@ import 'package:simple_sms_native/simple_sms_native.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const method = 'receiveRespondViaMessage';
+  const method = 'receiveRespondViaMessageFailure';
   final payload = <String, Object?>{
     'recipients': ['5554', '5556'],
     'body': "Can't talk now",
@@ -21,10 +21,10 @@ void main() {
     final messaging = AndroidMessaging.initialize(
       inboundSmsCallback: (_) {},
       inboundMmsCallback: (_) {},
-      respondViaMessageCallback: callback,
+      respondViaMessageFailedCallback: callback,
     );
     // The singleton keeps the callback an earlier test registered.
-    messaging.respondViaMessageCallback = callback;
+    messaging.respondViaMessageFailedCallback = callback;
     return messaging;
   }
 
@@ -39,7 +39,7 @@ void main() {
     ),
   );
 
-  test('routes a request to the callback', () async {
+  test('routes a failed quick reply to the callback', () async {
     final received = <RespondViaMessageRequest>[];
     final target = messaging(callback: received.add);
 
@@ -51,7 +51,7 @@ void main() {
     expect(received.single.subscriptionId, 3);
   });
 
-  test('accepts a request without a subscription', () async {
+  test('accepts a failed quick reply without a subscription', () async {
     final received = <RespondViaMessageRequest>[];
     final target = messaging(callback: received.add);
 
@@ -67,7 +67,7 @@ void main() {
         isA<PlatformException>().having(
           (e) => e.code,
           'code',
-          'NO_RESPOND_VIA_MESSAGE_HANDLER',
+          'NO_RESPOND_VIA_MESSAGE_FAILURE_HANDLER',
         ),
       ),
     );
@@ -82,7 +82,7 @@ void main() {
       inboundMmsCallback: (_) {},
     );
 
-    expect(again.respondViaMessageCallback, same(callback));
+    expect(again.respondViaMessageFailedCallback, same(callback));
   });
 
   test('rejects a payload without recipients', () async {

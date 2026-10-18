@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -13,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -21,28 +23,34 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Respond-via-message quick replies (UNFY-319): the intent parser and the
- * service that hands a valid request to Dart and stops itself.
+ * Respond-via-message quick replies (UNFY-319): the intent parser, the
+ * service that sends a valid request natively and stops itself, and the
+ * status-intent extras that let a failure reach Dart.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class OutboundMessagingHandlerTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+    private val originalSend = OutboundMessagingHandler.send
     private val originalDeliver = OutboundMessagingHandler.deliver
 
     private class Delivery(val method: String, val payload: Map<String, Any?>)
 
+    private val sends = mutableListOf<RespondViaMessageRequest>()
     private val deliveries = mutableListOf<Delivery>()
 
-    @After
-    fun restoreDelivery() {
-        OutboundMessagingHandler.deliver = originalDeliver
-    }
-
-    private fun captureDeliveries() {
+    @Before
+    fun captureSendsAndDeliveries() {
+        OutboundMessagingHandler.send = { _, request -> sends += request }
         OutboundMessagingHandler.deliver = { _, method, payload ->
             deliveries += Delivery(method, payload.toMap())
         }
+    }
+
+    @After
+    fun restoreSeams() {
+        OutboundMessagingHandler.send = originalSend
+        OutboundMessagingHandler.deliver = originalDeliver
     }
 
     private fun quickReply(
@@ -148,40 +156,60 @@ class OutboundMessagingHandlerTest {
     // --- service ---
 
     @Test
-    fun validIntent_deliversToDartThenStops() {
-        captureDeliveries()
+    fun validIntent_sendsThenStops() {
         val controller = startService(quickReply("smsto:5554").putExtra("subscription", 3))
 
-        val delivery = deliveries.single()
-        assertEquals("receiveRespondViaMessage", delivery.method)
-        assertEquals(
-            mapOf(
-                "recipients" to listOf("5554"),
-                "body" to "Can't talk now",
-                "subscriptionId" to 3,
-            ),
-            delivery.payload,
-        )
-        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
-    }
-
-    @Test
-    fun invalidIntent_stopsWithoutDelivering() {
-        captureDeliveries()
-        val controller = startService(quickReply(text = " "))
-
+        assertEquals(RespondViaMessageRequest(listOf("5554"), "Can't talk now", 3), sends.single())
         assertTrue(deliveries.isEmpty())
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
     }
 
     @Test
+    fun invalidIntent_stopsWithoutSending() {
+        val controller = startService(quickReply(text = " "))
+
+        assertTrue(sends.isEmpty())
+        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
+    }
+
+    @Test
     fun onStartCommand_returnsNotSticky() {
-        captureDeliveries()
         val service = Robolectric.buildService(OutboundMessagingHandler::class.java).create().get()
 
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(quickReply(), 0, 1))
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(quickReply(text = null), 0, 2))
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 3))
+    }
+
+    @Test
+    fun sendThatCannotStart_isAnnouncedToDart() {
+        OutboundMessagingHandler.send = originalSend
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING, false)
+
+        startService(quickReply("smsto:5554").putExtra("subscription", 3))
+
+        val delivery = deliveries.single()
+        assertEquals("receiveRespondViaMessageFailure", delivery.method)
+        assertEquals(
+            mapOf("recipients" to listOf("5554"), "body" to "Can't talk now", "subscriptionId" to 3),
+            delivery.payload,
+        )
+    }
+
+    // --- status-intent extras ---
+
+    @Test
+    fun quickReplyExtras_roundTrip() {
+        val request = RespondViaMessageRequest(listOf("5554", "5556"), "Can't talk now", 3)
+
+        assertEquals(request, Intent().putQuickReply(request).quickReply())
+        val noSim = request.copy(subscriptionId = null)
+        assertEquals(noSim, Intent().putQuickReply(noSim).quickReply())
+    }
+
+    @Test
+    fun ordinaryStatusIntent_carriesNoQuickReply() {
+        assertNull(Intent().putExtra("messageID", 1).quickReply())
     }
 
     // --- packaged manifest ---
