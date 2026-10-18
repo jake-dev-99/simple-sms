@@ -26,7 +26,12 @@ void main() {
   test('true for a thread row', () async {
     expect(await LookupService().threadRowExists(1), isTrue);
 
-    expect(provider.requestsTo(ProviderUris.conversations).last.page, isNull);
+    final request = provider.requestsTo(ProviderUris.conversations).last;
+    expect(request.page, isNull);
+    expect(request.filters, hasLength(1));
+    expect(request.filters.single.field, '_id');
+    expect(request.filters.single.operator, QueryFilterOperator.equals);
+    expect(request.filters.single.value, '1');
   });
 
   test('true for a phantom thread the list drops', () async {
@@ -44,6 +49,16 @@ void main() {
     final error = SimpleQueryError(
       code: SimpleQueryErrorCode.unavailable,
       message: 'cursor was null',
+    );
+    provider.failQueriesTo(ProviderUris.conversations, error);
+
+    await expectLater(LookupService().threadRowExists(1), throwsA(error));
+  });
+
+  test('any other provider failure throws too', () async {
+    final error = SimpleQueryError(
+      code: SimpleQueryErrorCode.permissionDenied,
+      message: 'READ_SMS not granted',
     );
     provider.failQueriesTo(ProviderUris.conversations, error);
 

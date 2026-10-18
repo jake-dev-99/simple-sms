@@ -425,6 +425,8 @@ class LookupService {
   /// Fetches a single conversation by thread id. Returns null if not found.
   ///
   /// Enriched by default; see [listConversations] for the `enrich` parameter.
+  /// A phantom thread reads as null here; use [threadRowExists] to prove a
+  /// thread is gone.
   /// Façade — delegates to [ConversationLookup] (Tier 0f extraction).
   Future<AndroidSimpleConversation?> getConversationByThread(
     int threadId, {

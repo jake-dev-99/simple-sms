@@ -252,6 +252,9 @@ class ConversationLookup {
   /// Fetches a single conversation by thread id. Returns null if not found.
   ///
   /// Enriched by default; see [listConversations] for the `enrich` parameter.
+  /// A phantom thread is dropped by [listConversations], so it reads as null
+  /// here: null does not prove the thread is gone. Use [threadRowExists] for
+  /// that.
   Future<AndroidSimpleConversation?> getConversationByThread(
     int threadId, {
     bool enrich = true,
@@ -285,7 +288,8 @@ class ConversationLookup {
   /// [listConversations] applies, so a phantom thread (no recipients, no
   /// messages) is reported present: it still exists on the device. Unlike
   /// [getConversationByThread], an absent answer is therefore proof the thread
-  /// is gone. Thread ids are never reused on AOSP, so that answer is final.
+  /// is gone. AOSP never reuses a thread id (`threads._id` is AUTOINCREMENT),
+  /// so while the provider database is intact that answer stays true.
   ///
   /// Every provider failure is rethrown after a diagnostic, as
   /// [listConversations] does, so a provider that cannot be read
