@@ -192,11 +192,13 @@ An unavailable or null SMS generation fails before creating a new deletion plan.
 a completed plan whose confirmations were already acknowledged before an
 interrupted completion commit.
 
-### Save or discard SMS drafts
+### Save or discard drafts
 
-The Android SMS store holds a thread's draft as its single `MESSAGE_TYPE_DRAFT`
-row. These methods write that row. Like deletes, they require the
-`DefaultSmsApp` role and read the result back before resolving.
+The Android SMS store holds a thread's draft as one row: an SMS text draft
+(`MESSAGE_TYPE_DRAFT`) or an MMS draft with attachments (`msg_box` 3). A
+thread has one draft across both tables. These methods write it. Like
+deletes, they require the `DefaultSmsApp` role and read the result back before
+resolving.
 
 ```dart
 // Thread IDs are native thread IDs; the thread must already exist.
@@ -205,17 +207,32 @@ final draftId = await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'Se
 // On a multi-SIM device, store the draft on the conversation's SIM.
 await AndroidDraftAction.saveSmsDraft(threadId: '123', body: 'See you at 6', subscriptionId: 2);
 
+// A draft with attachments: 1 to 8 files, plus an optional body. The
+// addresses are the thread's recipients and must resolve to that thread.
+final mmsDraftId = await AndroidDraftAction.saveMmsDraft(
+  threadId: '123',
+  addresses: {'+15555550100'},
+  body: 'Photo from the trip',
+  attachmentPaths: ['/path/to/photo.jpg'],
+);
+
 // discarded, or alreadyAbsent when the thread had no draft.
-final result = await AndroidDraftAction.discardSmsDraft('123');
+final result = await AndroidDraftAction.discardDraft('123');
 ```
 
-A save updates the thread's draft in place, so its `_id` stays the same across
-saves, and deletes any extra draft rows another app left. The body must not be
-blank; discard to clear a draft. Discarding the draft of a thread that holds
-no other message also removes the thread, as Android does for any delete. A
-write that can't be verified throws
-`DraftWriteFailedException` with a `DraftWriteFailureReason`. SMS text drafts
-only; MMS drafts are not supported yet.
+A save leaves the thread exactly one draft: it deletes the thread's drafts of
+the other kind and any extra rows another app left. An SMS save updates the
+thread's draft in place, so its `_id` stays the same across saves. An MMS
+draft keeps each file's raw bytes, typed by its extension, and is marked read
+and seen. An SMS body must not be blank; discard to clear a draft. Discarding
+the draft of a thread that holds no other message also removes the thread, as
+Android does for any delete. A write that can't be verified throws
+`DraftWriteFailedException` with a `DraftWriteFailureReason`.
+
+To read drafts back, list the drafts box with
+`MmsFilter(messageBoxes: [MessageBox.draft])`, or leave them out with
+`MmsFilter(excludeMessageBoxes: [MessageBox.draft])` (which also drops rows
+whose `msg_box` is NULL).
 
 ### Background message handling
 

@@ -56,7 +56,7 @@ return typed results.
 ### Added
 
 - **Native SMS draft writes (UNFY-213, ADR-0016).** `AndroidDraftAction`
-  saves (`saveSmsDraft`) or discards (`discardSmsDraft`) the single
+  saves (`saveSmsDraft`) or discards (`discardDraft`) the single
   `MESSAGE_TYPE_DRAFT` row of an existing thread on a new
   `io.simplezen.simple_sms/drafts` channel, registered on every engine and run
   on a background task queue. A save updates the thread's newest draft in
@@ -68,8 +68,29 @@ return typed results.
   across engines, so a thread delete can't race a draft save. A write that can't be verified throws
   `DraftWriteFailedException` carrying a `DraftWriteFailureReason`
   (`notDefaultSmsApp`, `threadNotFound`, `draftWriteFailed`,
-  `draftWriteIncomplete`, `verifyFailed`, `invalidArgument`). SMS text drafts
-  only.
+  `draftWriteIncomplete`, `verifyFailed`, `invalidArgument`). `saveSmsDraft`
+  writes SMS text drafts; MMS drafts are `saveMmsDraft` (UNFY-281).
+
+- **Native MMS draft writes (UNFY-281, ADR-0016).** `AndroidDraftAction.saveMmsDraft`
+  saves attachments and an optional body as the thread's MMS draft (`msg_box`
+  3) and resolves to its MMS `_id`. The draft is the `m_send_req` PDU a send
+  would compose: one part per file, keeping its raw bytes and typed by file
+  extension (`application/octet-stream` when unknown), then a `text/plain`
+  part for a non-blank body. It is marked read and seen, so it never counts as
+  unread. A thread holds **one draft across SMS and MMS**: `saveMmsDraft`
+  deletes the thread's other MMS drafts and its SMS drafts, `saveSmsDraft` now
+  also deletes its MMS drafts, and the save succeeds only when the read-back
+  finds exactly the saved draft. `discardSmsDraft` is renamed `discardDraft`
+  (the name never shipped in a release) and also removes MMS drafts; discarding
+  the draft of a draft-only thread deletes the conversation, MMS drafts
+  included. Recipients that resolve to another thread remove the new row from
+  it and fail with `draftWriteIncomplete`; an unreadable attachment fails with
+  `draftWriteFailed` before anything is written.
+
+- **`MmsFilter.messageBoxes` and `excludeMessageBoxes` (UNFY-281).**
+  `messageBoxes` adds `msg_box IN (...)`; `excludeMessageBoxes` adds one
+  `msg_box != ?` condition per listed box, which also drops a row whose
+  `msg_box` is NULL.
 
 - **Durable outbound identity (UNFY-310).** Optional `OutboundMessage.clientCorrelationId` is synchronously persisted with its exact SMS/MMS provider URI before radio handoff. `AndroidMessaging.getSendCorrelations` recovers that identity after restart. An indexed SQLite registry in Android's no-backup directory avoids whole-registry XML rewrites and prevents cloud backup/device transfer from restoring device-specific row IDs. Metadata contains no message content or recipient addresses; the exact provider `date` is retained only to verify row generation, never to discover or match a logical send. Unreleased XML metadata is not imported because it lacks a verified generation and device-local provenance.
   Correlated sends and recovery require `ReadSms` for provider-generation verification. Recording an uncorrelated send clears prior identity at its URI. Recovery prunes absent or generation-changed rows, preserving a job's surviving attempts in recorded order; provider unavailability fails without pruning identities.

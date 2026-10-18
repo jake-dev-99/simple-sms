@@ -5,13 +5,17 @@ import 'sort_direction.dart';
 ///
 /// All fields are optional; omitted fields contribute no filter. Fields are
 /// combined with AND. The MMS table's type column is `m_type` on Android;
-/// values come from [MmsMessageType.value].
+/// values come from [MmsMessageType.value]. `messageBoxes` supplies a
+/// `msg_box IN (...)` match against [MessageBox.value]; `excludeMessageBoxes`
+/// supplies one `msg_box != ?` condition per listed box.
 class MmsFilter {
   const MmsFilter({
     this.ids,
     this.threadId,
     this.isRead,
     this.types,
+    this.messageBoxes,
+    this.excludeMessageBoxes,
     this.dateFrom,
     this.dateTo,
     this.subscriptionId,
@@ -30,6 +34,16 @@ class MmsFilter {
 
   /// Match any of these message types (`m_type IN (...)`).
   final List<MmsMessageType>? types;
+
+  /// Match any of these message boxes (`msg_box IN (...)`).
+  final List<MessageBox>? messageBoxes;
+
+  /// Match no message in these boxes: one `msg_box != ?` condition per entry.
+  ///
+  /// SQL `!=` drops a row whose `msg_box` is NULL. The provider fills
+  /// `msg_box` on every insert, so only an app that explicitly nulls it
+  /// produces one.
+  final List<MessageBox>? excludeMessageBoxes;
 
   /// Match only messages with `date >= dateFrom.millisecondsSinceEpoch / 1000`
   /// (MMS stores `date` in seconds, not milliseconds).
@@ -55,6 +69,8 @@ class MmsFilter {
     int? threadId,
     bool? isRead,
     List<MmsMessageType>? types,
+    List<MessageBox>? messageBoxes,
+    List<MessageBox>? excludeMessageBoxes,
     DateTime? dateFrom,
     DateTime? dateTo,
     int? subscriptionId,
@@ -65,6 +81,8 @@ class MmsFilter {
     threadId: threadId ?? this.threadId,
     isRead: isRead ?? this.isRead,
     types: types ?? this.types,
+    messageBoxes: messageBoxes ?? this.messageBoxes,
+    excludeMessageBoxes: excludeMessageBoxes ?? this.excludeMessageBoxes,
     dateFrom: dateFrom ?? this.dateFrom,
     dateTo: dateTo ?? this.dateTo,
     subscriptionId: subscriptionId ?? this.subscriptionId,
@@ -76,6 +94,8 @@ class MmsFilter {
   String toString() =>
       'MmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
+      'messageBoxes: $messageBoxes, '
+      'excludeMessageBoxes: $excludeMessageBoxes, '
       'dateFrom: $dateFrom, dateTo: $dateTo, subscriptionId: $subscriptionId, '
       'idAfter: $idAfter, idBefore: $idBefore)';
 }

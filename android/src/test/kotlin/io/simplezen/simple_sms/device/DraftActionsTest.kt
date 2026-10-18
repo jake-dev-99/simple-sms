@@ -26,13 +26,16 @@ import org.robolectric.shadows.ShadowRoleManager
  * Purpose: pin the native SMS draft write contract (UNFY-213, ADR-0016) — a
  * save leaves exactly one draft holding the saved body and answers its `_id`,
  * a discard leaves none, every write is re-qualified by thread and draft type,
- * and every unverifiable state surfaces as its own error code.
+ * and every unverifiable state surfaces as its own error code. A thread holds
+ * one draft across SMS and MMS (UNFY-281): a save removes the thread's MMS
+ * drafts and a discard removes them with the SMS ones.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class DraftActionsTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val sms = FakeSmsProvider()
+    private val mms = FakeMmsProvider(context)
     private val threads = FakeThreadsProvider()
     private val drafts = DraftActions(context)
 
@@ -40,6 +43,7 @@ class DraftActionsTest {
     @Before
     fun setUp() {
         ShadowContentResolver.registerProviderInternal("sms", sms)
+        ShadowContentResolver.registerProviderInternal("mms", mms)
         ShadowContentResolver.registerProviderInternal("mms-sms", threads)
         threads.listed += 5L
         roleManager().apply {
@@ -312,6 +316,76 @@ class DraftActionsTest {
         assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
     }
 
+    /**
+     * Purpose: a text save removes the thread's MMS drafts, one by one and only
+     * its own, before the SMS write's conversation-URI delete recomputes the thread.
+     */
+    @Test
+    fun save_removesTheThreadsMmsDrafts() {
+        sms.rows += SmsRow(id = 2, threadId = 5, type = 3, body = "old", date = 10)
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.rows += MmsRow(id = 61, threadId = 5, box = 3)
+        mms.rows += MmsRow(id = 62, threadId = 5, box = 1)
+        mms.rows += MmsRow(id = 63, threadId = 9, box = 3)
+        var mmsAtConversationDelete: List<Long>? = null
+        sms.afterWrite = {
+            if (sms.deletes.isNotEmpty() && mmsAtConversationDelete == null) {
+                mmsAtConversationDelete = mms.rows.map { it.id }
+            }
+        }
+
+        val result = save("5", "text now")
+
+        assertEquals(listOf<Any?>("2"), result.successes)
+        assertEquals(listOf(62L, 63L), mms.rows.map { it.id })
+        assertEquals(
+            listOf(
+                ProviderWrite("content://mms", "_id = ? AND thread_id = ? AND msg_box = ?", listOf("60", "5", "3")),
+                ProviderWrite("content://mms", "_id = ? AND thread_id = ? AND msg_box = ?", listOf("61", "5", "3")),
+            ),
+            mms.deletes,
+        )
+        assertEquals(listOf(62L, 63L), mmsAtConversationDelete)
+        assertEquals(
+            listOf(ProviderWrite("content://sms/conversations/5", "type = ? AND _id != ?", listOf("3", "2"))),
+            sms.deletes,
+        )
+    }
+
+    /** Purpose: a thread with only an MMS draft still gets the conversation-URI delete, after the MMS delete. */
+    @Test
+    fun save_overAMmsOnlyDraft_recomputesTheThread() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+
+        val result = save("5", "text now")
+
+        val draft = sms.rows.single()
+        assertEquals(listOf<Any?>(draft.id.toString()), result.successes)
+        assertTrue(mms.rows.isEmpty())
+        assertEquals(
+            listOf(ProviderWrite("content://sms/conversations/5", "type = ? AND _id != ?", listOf("3", "${draft.id}"))),
+            sms.deletes,
+        )
+    }
+
+    /** Purpose: an MMS draft the provider kept leaves the text save unverified. */
+    @Test
+    fun save_mmsDraftSurvives_isIncomplete() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.ignoreDeletes = true
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), save("5", "hi").errors)
+    }
+
+    /** Purpose: an MMS draft that can't be read means the thread is never written blind. */
+    @Test
+    fun save_unreadableMmsDrafts_failsBeforeWriting() {
+        mms.nullCursor = true
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), save("5", "hi").errors)
+        assertEquals(0, sms.writeCount() + mms.writeCount())
+    }
+
     /** Purpose: reject ids that match no provider row, and missing or blank bodies, before any I/O. */
     @Test
     fun save_rejectsInvalidArguments() {
@@ -333,7 +407,7 @@ class DraftActionsTest {
         assertTrue(threads.queries == 0 && sms.queries == 0 && sms.writeCount() == 0)
     }
 
-    // ── discardSmsDraft ───────────────────────────────────────────────
+    // ── discardDraft ──────────────────────────────────────────────────
 
     /**
      * Purpose: delete every draft of the thread only, through its conversation
@@ -349,6 +423,52 @@ class DraftActionsTest {
 
         assertEquals(listOf<Any?>("discarded"), result.successes)
         assertEquals(listOf(1L, 3L), sms.rows.map { it.id })
+        assertEquals(
+            listOf(ProviderWrite("content://sms/conversations/5", "type = ?", listOf("3"))),
+            sms.deletes,
+        )
+    }
+
+    /** Purpose: a discard deletes the thread's SMS and MMS drafts, MMS one by one, and no other message. */
+    @Test
+    fun discard_removesSmsAndMmsDrafts() {
+        sms.rows += SmsRow(id = 1, threadId = 5, type = 1, body = "inbound")
+        sms.rows += SmsRow(id = 2, threadId = 5, type = 3, body = "a", date = 10)
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.rows += MmsRow(id = 62, threadId = 5, box = 1)
+        mms.rows += MmsRow(id = 63, threadId = 9, box = 3)
+
+        val result = discard("5")
+
+        assertEquals(listOf<Any?>("discarded"), result.successes)
+        assertEquals(listOf(1L), sms.rows.map { it.id })
+        assertEquals(listOf(62L, 63L), mms.rows.map { it.id })
+        assertEquals(
+            listOf(ProviderWrite("content://mms", "_id = ? AND thread_id = ? AND msg_box = ?", listOf("60", "5", "3"))),
+            mms.deletes,
+        )
+    }
+
+    /** Purpose: an MMS draft that survives the delete fails the discard. */
+    @Test
+    fun discard_mmsDraftSurvives_isIncomplete() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.ignoreDeletes = true
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), discard("5").errors)
+    }
+
+    /**
+     * Purpose: a thread that held only MMS drafts is still deleted through its
+     * conversation URI, so the provider recomputes it (and removes it if empty).
+     */
+    @Test
+    fun discard_mmsOnlyThread_deletesThroughTheConversationUri() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+
+        val result = discard("5")
+
+        assertEquals(listOf<Any?>("discarded"), result.successes)
         assertEquals(
             listOf(ProviderWrite("content://sms/conversations/5", "type = ?", listOf("3"))),
             sms.deletes,
@@ -395,7 +515,7 @@ class DraftActionsTest {
     @Test
     fun discard_rejectsInvalidThreadIds() {
         for (arguments in listOf(null, "", "0", "-4", "abc", 5)) {
-            assertEquals("$arguments", listOf("INVALID_ARGUMENT"), invoke(MethodCall("discardSmsDraft", arguments)).errors)
+            assertEquals("$arguments", listOf("INVALID_ARGUMENT"), invoke(MethodCall("discardDraft", arguments)).errors)
         }
         assertTrue(sms.queries == 0 && sms.writeCount() == 0)
     }
@@ -403,199 +523,11 @@ class DraftActionsTest {
     private fun save(threadId: String, body: String) =
         invoke(MethodCall("saveSmsDraft", mapOf("threadId" to threadId, "body" to body)))
 
-    private fun discard(threadId: String) = invoke(MethodCall("discardSmsDraft", threadId))
+    private fun discard(threadId: String) = invoke(MethodCall("discardDraft", threadId))
 
     private fun roleManager(): ShadowRoleManager =
         Shadow.extract(context.getSystemService(RoleManager::class.java))
 
     private fun invoke(call: MethodCall): DraftCallResult =
         DraftCallResult().also { drafts.onMethodCall(call, it) }
-}
-
-/** Purpose: one `content://sms` row, holding only the columns draft writes touch. */
-private data class SmsRow(
-    val id: Long,
-    val threadId: Long,
-    val type: Int,
-    val body: String?,
-    val date: Long? = 1L,
-    val subId: Long? = 1L,
-)
-
-/** The subscription the fake provider stamps on an insert that names none. */
-private const val DEFAULT_SUB_ID = 1L
-
-/** Purpose: snapshot one write's target and filter. */
-private data class ProviderWrite(val uri: String, val selection: String?, val arguments: List<String>?)
-
-/**
- * Purpose: an in-memory `content://sms` that evaluates exactly the filters the
- * draft writes use — any other filter fails the test, pinning the contract.
- */
-private class FakeSmsProvider : ContentProvider() {
-    val rows = mutableListOf<SmsRow>()
-    val inserted = mutableListOf<ContentValues>()
-    val updates = mutableListOf<ProviderWrite>()
-    val updatedValues = mutableListOf<ContentValues>()
-    val deletes = mutableListOf<ProviderWrite>()
-    var queries = 0
-    var nullCursor = false
-    var insertReturnsNull = false
-    var ignoreDeletes = false
-    var beforeUpdate: () -> Unit = {}
-    var nextId = 100L
-    var writeFailure: RuntimeException? = null
-    var queryFailureAfterWrite: RuntimeException? = null
-    var afterWrite: () -> Unit = {}
-    private var wrote = false
-
-    fun writeCount() = inserted.size + updates.size + deletes.size
-
-    /** Purpose: permit registration without allocating external resources. */
-    override fun onCreate() = true
-
-    /** Purpose: answer a thread's draft rows, a null cursor, or a failure. */
-    override fun query(
-        uri: Uri,
-        projection: Array<out String>?,
-        selection: String?,
-        selectionArgs: Array<out String>?,
-        sortOrder: String?,
-    ): Cursor? {
-        if (wrote) queryFailureAfterWrite?.let { throw it }
-        queries++
-        if (nullCursor) return null
-        assertEquals("content://sms", uri.toString())
-        assertEquals(listOf("_id", "body", "date", "sub_id"), projection?.toList())
-        return MatrixCursor(arrayOf("_id", "body", "date", "sub_id")).apply {
-            matching(uri, selection, selectionArgs).forEach {
-                addRow(arrayOf<Any?>(it.id, it.body, it.date, it.subId))
-            }
-        }
-    }
-
-    /** Purpose: insert a row and answer its URI, or drop it. */
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = write {
-        assertEquals("content://sms", uri.toString())
-        inserted += ContentValues(values)
-        if (insertReturnsNull) return@write null
-        val id = nextId++
-        rows += SmsRow(
-            id = id,
-            threadId = values!!.getAsLong("thread_id"),
-            type = values.getAsInteger("type"),
-            body = values.getAsString("body"),
-            date = values.getAsLong("date"),
-            // AOSP stamps the default SMS subscription when none is given.
-            subId = values.getAsLong("sub_id") ?: DEFAULT_SUB_ID,
-        )
-        Uri.parse("content://sms/$id")
-    }
-
-    /** Purpose: apply body + date to the matching row. */
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int =
-        write {
-            beforeUpdate()
-            updates += ProviderWrite(uri.toString(), selection, selectionArgs?.toList())
-            updatedValues += ContentValues(values)
-            val targets = matching(uri, selection, selectionArgs)
-            targets.forEach { row ->
-                rows[rows.indexOf(row)] = row.copy(
-                    body = values!!.getAsString("body"),
-                    date = values.getAsLong("date"),
-                    subId = values.getAsLong("sub_id") ?: row.subId,
-                )
-            }
-            targets.size
-        }
-
-    /** Purpose: remove the matching rows. */
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = write {
-        deletes += ProviderWrite(uri.toString(), selection, selectionArgs?.toList())
-        if (ignoreDeletes) return@write 0
-        val targets = matching(uri, selection, selectionArgs)
-        rows.removeAll(targets)
-        targets.size
-    }
-
-    /** Purpose: fail if a draft write unexpectedly inspects a MIME type. */
-    override fun getType(uri: Uri): String? =
-        throw UnsupportedOperationException("Draft writes must not inspect MIME types")
-
-    private fun <T> write(block: () -> T): T {
-        writeFailure?.let { throw it }
-        wrote = true
-        return block().also { afterWrite() }
-    }
-
-    /** The rows at [uri] (`content://sms`, or one thread's `content://sms/conversations/<id>`) matching the filter. */
-    private fun matching(uri: Uri, selection: String?, args: Array<out String>?): List<SmsRow> {
-        val a = args!!.map { it.toLong() }
-        val segments = uri.pathSegments
-        if (segments.isEmpty()) {
-            return when (selection) {
-                "thread_id = ? AND type = ?" -> rows.filter { it.threadId == a[0] && it.type.toLong() == a[1] }
-                "_id = ? AND thread_id = ? AND type = ?" ->
-                    rows.filter { it.id == a[0] && it.threadId == a[1] && it.type.toLong() == a[2] }
-                else -> throw AssertionError("Unexpected SMS filter: $selection")
-            }
-        }
-        assertEquals("conversations", segments[0])
-        val inThread = rows.filter { it.threadId == segments[1].toLong() }
-        return when (selection) {
-            "type = ?" -> inThread.filter { it.type.toLong() == a[0] }
-            "type = ? AND _id != ?" -> inThread.filter { it.type.toLong() == a[0] && it.id != a[1] }
-            else -> throw AssertionError("Unexpected conversation filter: $selection")
-        }
-    }
-}
-
-/** Purpose: the conversation list's thread rows (`content://mms-sms/conversations?simple=true`). */
-private class FakeThreadsProvider : ContentProvider() {
-    val listed = mutableSetOf<Long>()
-    var queries = 0
-
-    override fun onCreate() = true
-
-    override fun query(
-        uri: Uri,
-        projection: Array<out String>?,
-        selection: String?,
-        selectionArgs: Array<out String>?,
-        sortOrder: String?,
-    ): Cursor {
-        queries++
-        assertEquals("content://mms-sms/conversations?simple=true", uri.toString())
-        assertEquals("_id = ?", selection)
-        val id = selectionArgs!!.single().toLong()
-        return MatrixCursor(arrayOf("_id")).apply { if (id in listed) addRow(arrayOf(id)) }
-    }
-
-    override fun insert(uri: Uri, values: ContentValues?): Uri? =
-        throw UnsupportedOperationException("Draft writes must not create threads")
-
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int =
-        throw UnsupportedOperationException("Draft writes must not update threads")
-
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int =
-        throw UnsupportedOperationException("Draft writes must not delete threads")
-
-    override fun getType(uri: Uri): String? =
-        throw UnsupportedOperationException("Draft writes must not inspect MIME types")
-}
-
-/** Purpose: capture the handler's single reply, keeping success values apart from error codes. */
-private class DraftCallResult : MethodChannel.Result {
-    val successes = mutableListOf<Any?>()
-    val errors = mutableListOf<String>()
-    val messages = mutableListOf<String>()
-
-    override fun success(result: Any?) { successes.add(result) }
-
-    override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-        errors.add(errorCode)
-        messages.add("$errorMessage $errorDetails")
-    }
-
-    override fun notImplemented() { throw AssertionError("Draft command was not implemented") }
 }

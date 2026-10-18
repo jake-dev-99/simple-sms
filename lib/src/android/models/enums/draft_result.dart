@@ -1,6 +1,6 @@
-/// Verified outcome of `AndroidDraftAction.discardSmsDraft` (UNFY-213).
+/// Verified outcome of `AndroidDraftAction.discardDraft` (UNFY-213).
 ///
-/// Both values mean the thread holds no native SMS draft. A discard that could
+/// Both values mean the thread holds no native draft, SMS or MMS. A discard that could
 /// not be verified is never one of these values — it throws
 /// [DraftWriteFailedException] instead.
 enum DraftDiscardResult {
@@ -41,19 +41,23 @@ enum DraftWriteFailureReason {
   /// belong to an existing conversation.
   threadNotFound('THREAD_NOT_FOUND'),
 
-  /// The provider threw or returned no row id, or the thread couldn't be
-  /// read before the save (in which case nothing was written).
+  /// The provider threw or returned no row id, the thread couldn't be read
+  /// before the save, or an attachment file of an MMS save couldn't be read (in
+  /// which case nothing was written).
   draftWriteFailed('DRAFT_WRITE_FAILED'),
 
   /// The write ran but the read-back disagrees: after a save the thread does
-  /// not hold exactly the saved draft; after a discard a draft remains.
+  /// not hold exactly the saved draft (an MMS save also needs the draft's
+  /// attachments and body as parts, and the recipients to resolve to the
+  /// thread); after a discard a draft remains.
   draftWriteIncomplete('DRAFT_WRITE_INCOMPLETE'),
 
   /// The write ran but the thread's drafts couldn't be read back.
   verifyFailed('VERIFY_FAILED'),
 
-  /// The thread id is not a positive numeric provider id, the body is
-  /// missing or blank, or the subscription id is not an int.
+  /// The thread id is not a positive numeric provider id, the body of an SMS
+  /// save is missing or blank, an MMS save lacks addresses or has no
+  /// attachment or more than eight, or the subscription id is not an int.
   invalidArgument('INVALID_ARGUMENT');
 
   const DraftWriteFailureReason(this.code);
