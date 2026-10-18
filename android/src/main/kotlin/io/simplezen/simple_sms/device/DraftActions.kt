@@ -220,9 +220,14 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         val draftId = try {
             mmsWriter.persist(addresses, content)
         } catch (e: Exception) {
+            // The row may have been inserted before the failure: no unread,
+            // unfinished draft is left beside the earlier ones, which stay.
+            val cleaned = removeUnfinishedMmsDrafts(threadId, keeping = earlier.mms.map { it.id }.toSet())
             result.error(
                 "DRAFT_WRITE_FAILED",
-                "Failed to save the attachment draft of thread $threadId: ${e.javaClass.name}",
+                "Failed to save the attachment draft of thread $threadId" +
+                    (if (cleaned) "" else " (an unfinished draft could not be removed)") +
+                    ": ${e.javaClass.name}",
                 bodySafeTrace(e),
             )
             return
@@ -288,6 +293,18 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         }
         Log.d(TAG, "Saved attachment draft $draftId of thread $threadId with ${content.attachments.size} attachments")
         result.success(draftId.toString())
+    }
+
+    /**
+     * Delete the MMS drafts of [threadId] other than [keeping], which a save
+     * that failed part-way may have left; true when none remains.
+     */
+    private fun removeUnfinishedMmsDrafts(threadId: Long, keeping: Set<Long>): Boolean = try {
+        mmsDraftsIn(threadId).filter { it.id !in keeping }.forEach { deleteMmsDraft(it.id, threadId) }
+        mmsDraftsIn(threadId).all { it.id in keeping }
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not remove the unfinished MMS draft of thread $threadId: ${e.javaClass.name}")
+        false
     }
 
     /**

@@ -348,6 +348,42 @@ class MmsDraftActionsTest {
         assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
     }
 
+    /**
+     * Purpose: a save that fails after the row was inserted leaves no unfinished
+     * (unread) draft beside the earlier one, which stays.
+     */
+    @Test
+    fun save_persistFailsAfterTheRowIsInserted_removesTheUnfinishedDraft() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.afterWrite = {
+            if (mms.insertedDrafts.isNotEmpty() && mms.failNextWrite == null && mms.rowUpdates.isEmpty()) {
+                mms.failNextWrite = IllegalStateException("disk full")
+            }
+        }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertEquals(listOf(60L), mms.rows.map { it.id })
+        assertFalse(result.messages.single(), result.messages.single().contains("could not be removed"))
+    }
+
+    /** Purpose: an unfinished draft that can't be removed is reported with the failure. */
+    @Test
+    fun save_unfinishedDraftCannotBeRemoved_isSaidInTheError() {
+        mms.afterWrite = {
+            if (mms.insertedDrafts.isNotEmpty() && mms.rowUpdates.isEmpty()) {
+                mms.writeFailure = IllegalStateException("disk full")
+            }
+        }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue(result.messages.single(), result.messages.single().contains("an unfinished draft could not be removed"))
+        assertEquals(1, mms.rows.size)
+    }
+
     /** Purpose: a provider exception while persisting surfaces as a failed write. */
     @Test
     fun save_providerThrows_isDraftWriteFailed() {

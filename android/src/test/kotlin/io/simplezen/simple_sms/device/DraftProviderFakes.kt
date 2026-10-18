@@ -242,6 +242,9 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
     var ignoreDeletes = false
     var nextId = 200L
     var writeFailure: RuntimeException? = null
+
+    /** Fails the next write only, then clears. */
+    var failNextWrite: RuntimeException? = null
     var queryFailureAfterWrite: RuntimeException? = null
     var afterWrite: () -> Unit = {}
     private val partBytes = mutableMapOf<Long, ByteArrayOutputStream>()
@@ -381,6 +384,10 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
 
     private fun <T> write(block: () -> T): T {
         writeFailure?.let { throw it }
+        failNextWrite?.let {
+            failNextWrite = null
+            throw it
+        }
         wrote = true
         return block().also { afterWrite() }
     }
