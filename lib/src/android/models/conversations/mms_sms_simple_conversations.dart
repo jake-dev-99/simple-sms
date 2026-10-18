@@ -83,8 +83,9 @@ class AndroidSimpleConversation {
   /// Null when not enriched.
   final List<Contactable>? participants;
 
-  /// Most recent SMS in the thread, if any. Null when not enriched or when
-  /// the thread has no SMS.
+  /// Most recent SMS in the thread that is not a draft, if any. Null when not
+  /// enriched or when the thread has no such SMS. The thread's draft is
+  /// [draft].
   final Sms? latestSms;
 
   /// Most recent MMS in the thread, if any. Null when not enriched or when

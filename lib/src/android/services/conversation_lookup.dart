@@ -391,7 +391,10 @@ class ConversationLookup {
 
     // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
     final latestSmsFuture = MessageLookup.instance.listSms(
-      filter: SmsFilter(threadId: base.threadId),
+      filter: SmsFilter(
+        threadId: base.threadId,
+        excludeTypes: const [SmsMessageType.draft],
+      ),
       sort: SmsSort.newestFirst,
       limit: 1,
     );

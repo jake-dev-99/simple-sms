@@ -22,10 +22,12 @@
   With `enrich: true`, `listConversations` reads the native SMS drafts once for
   the whole list and gives each thread its newest one (by date, then id) as
   `draft`, null when it has none. A thread left unenriched because a provider
-  was unavailable still carries its `draft`. Behavior change: that draft read
-  is all-or-nothing, so with `enrich: true`, `listConversations` (and
-  `getConversationByThread`) now fails when it fails, including when the SMS
-  provider is unavailable. With `enrich: false` no draft is read.
+  was unavailable still carries its `draft`. Behavior changes: the enriched
+  `latestSms` is now the thread's newest SMS that is not a draft; read the
+  draft from `draft`. And the draft read is all-or-nothing, so with
+  `enrich: true`, `listConversations` (and `getConversationByThread`) now
+  fails when it fails, including when the SMS provider is unavailable. With
+  `enrich: false` no draft is read.
 
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.

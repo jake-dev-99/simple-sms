@@ -430,6 +430,24 @@ void main() {
       _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
     });
 
+    test('latestSms skips a newer SMS draft', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        sms: [
+          _sms(1, threadId: 7, millis: 1000),
+          _sms(2, threadId: 7, millis: 2000),
+          _draft(3, threadId: 7, millis: 3000),
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestSms?.id, 2);
+      expect(conversation.draft?.id, 3);
+    });
+
     test("draft is the thread's newest SMS draft by date then id", () async {
       _seedTables(
         provider,
