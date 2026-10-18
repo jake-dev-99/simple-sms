@@ -27,6 +27,18 @@ void main() {
     expect(conversations[1].participants, isNull);
   });
 
+  test('an unenriched thread keeps its draft', () async {
+    provider
+      ..failThread = 2
+      ..drafts = [_draft(25, threadId: 2)];
+
+    final conversations = await LookupService().listConversations();
+
+    expect(conversations[1].participants, isNull);
+    expect(conversations[1].draft?.id, 25);
+    expect(conversations[0].draft, isNull);
+  });
+
   test('any other enrichment error still fails the list', () async {
     provider
       ..failThread = 2
@@ -90,12 +102,18 @@ class _Provider extends SimpleQueryPlatform {
   /// When set, [failThread]'s latest-MMS read throws this code too.
   SimpleQueryErrorCode? mmsFailure;
 
+  /// The native SMS drafts the provider-wide draft read answers with.
+  List<Map<String, Object?>> drafts = const [];
+
   @override
   Future<QueryResult> query(QueryRequest request) async {
     final uri = request.platformData?['contentUri'] as String?;
     if (uri == 'content://mms-sms/conversations?simple=true') {
       if (conversationsUnavailable) throw _error(uri!);
       return QueryResult(records: [_thread(1), _thread(2)]);
+    }
+    if (uri == 'content://sms' && _isDraftRead(request)) {
+      return QueryResult(records: drafts);
     }
     if (uri == 'content://sms') {
       final threadId = int.parse(
@@ -121,6 +139,12 @@ class _Provider extends SimpleQueryPlatform {
     return const QueryResult(records: []);
   }
 
+  /// The provider-wide draft listing: a `type IN (...)` read, unlike the
+  /// per-thread latest-SMS read, which excludes types with `!=`.
+  bool _isDraftRead(QueryRequest request) => request.filters.any(
+    (f) => f.field == 'type' && f.operator == QueryFilterOperator.inList,
+  );
+
   SimpleQueryError _error(String uri, {SimpleQueryErrorCode? code}) =>
       SimpleQueryError(
         code: code ?? SimpleQueryErrorCode.unavailable,
@@ -131,6 +155,13 @@ class _Provider extends SimpleQueryPlatform {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+Map<String, Object?> _draft(int id, {required int threadId}) => {
+  '_id': id,
+  'thread_id': threadId,
+  'date': 0,
+  'type': 3,
+};
 
 Map<String, Object?> _thread(int id) => {
   '_id': id,

@@ -403,9 +403,9 @@ class LookupService {
   /// Lists conversations (MMS-SMS threads) matching the given [filter].
   ///
   /// If [enrich] is `true` (default), each returned [AndroidSimpleConversation]
-  /// has its `participants`, `latestSms`, and `latestMms` fields populated via
-  /// follow-up lookups. Set to `false` to avoid the extra round-trips when
-  /// only the flat conversation row is needed.
+  /// has its `participants`, `latestSms`, `latestMms` and `draft` fields
+  /// populated via follow-up lookups. Set to `false` to avoid the extra
+  /// round-trips when only the flat conversation row is needed.
   /// Façade — delegates to [ConversationLookup] (Tier 0f extraction).
   Future<List<AndroidSimpleConversation>> listConversations({
     ConversationFilter? filter,

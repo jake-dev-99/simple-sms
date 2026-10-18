@@ -5,7 +5,8 @@ import 'sort_direction.dart';
 ///
 /// All fields are optional; omitted fields contribute no filter. Fields are
 /// combined with AND. `ids` supplies an `_id IN (...)` match; `types` supplies
-/// a `type IN (...)` match against [SmsMessageType.value].
+/// a `type IN (...)` match against [SmsMessageType.value]; `excludeTypes`
+/// supplies one `type != ?` condition per listed type.
 ///
 /// ```dart
 /// final filter = SmsFilter(
@@ -21,6 +22,7 @@ class SmsFilter {
     this.threadId,
     this.isRead,
     this.types,
+    this.excludeTypes,
     this.dateFrom,
     this.dateTo,
     this.addressContains,
@@ -40,6 +42,14 @@ class SmsFilter {
 
   /// Match any of these message types (`type IN (...)`).
   final List<SmsMessageType>? types;
+
+  /// Match no message of these types: one `type != ?` condition per entry.
+  ///
+  /// Unlike a positive [types] list, a row whose type the plugin cannot parse
+  /// is still read, and fails at parse time rather than being skipped. SQL
+  /// `!=` drops a row whose `type` is NULL; the provider fills `type` on every
+  /// insert, so only an app that explicitly nulls it produces one.
+  final List<SmsMessageType>? excludeTypes;
 
   /// Match only messages with `date >= dateFrom.millisecondsSinceEpoch`.
   final DateTime? dateFrom;
@@ -79,6 +89,7 @@ class SmsFilter {
     int? threadId,
     bool? isRead,
     List<SmsMessageType>? types,
+    List<SmsMessageType>? excludeTypes,
     DateTime? dateFrom,
     DateTime? dateTo,
     String? addressContains,
@@ -90,6 +101,7 @@ class SmsFilter {
     threadId: threadId ?? this.threadId,
     isRead: isRead ?? this.isRead,
     types: types ?? this.types,
+    excludeTypes: excludeTypes ?? this.excludeTypes,
     dateFrom: dateFrom ?? this.dateFrom,
     dateTo: dateTo ?? this.dateTo,
     addressContains: addressContains ?? this.addressContains,
@@ -102,7 +114,7 @@ class SmsFilter {
   String toString() =>
       'SmsFilter('
       'ids: $ids, threadId: $threadId, isRead: $isRead, types: $types, '
-      'dateFrom: $dateFrom, dateTo: $dateTo, '
+      'excludeTypes: $excludeTypes, dateFrom: $dateFrom, dateTo: $dateTo, '
       'addressContains: $addressContains, subscriptionId: $subscriptionId, '
       'idAfter: $idAfter, idBefore: $idBefore)';
 }

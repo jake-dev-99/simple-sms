@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/conversations/mms_sms_simple_conversations.dart';
+import '../models/enums/sms_mms_enums.dart';
 import '../models/filters/conversation_filter.dart';
 import '../models/filters/mms_filter.dart';
 import '../models/filters/sms_filter.dart';
@@ -115,14 +116,19 @@ class ConversationLookup {
   /// Lists conversations (MMS-SMS threads) matching the given [filter].
   ///
   /// If [enrich] is `true` (default), each returned [AndroidSimpleConversation]
-  /// has its `participants`, `latestSms`, and `latestMms` fields populated via
-  /// follow-up lookups. Set to `false` to avoid the extra round-trips when
-  /// only the flat conversation row is needed. A thread whose follow-up
-  /// lookups find a provider unavailable is returned unenriched instead of
-  /// failing the list (UNFY-299). A latest-MMS parts batch that fails as
-  /// `unavailable` or `transientFailure` leaves those MMS with empty parts
-  /// (UNFY-250). Any other error, or an unavailable conversations provider,
-  /// throws.
+  /// has its `participants`, `latestSms`, `latestMms` and `draft` fields
+  /// populated via follow-up lookups. Set to `false` to avoid the extra
+  /// round-trips when only the flat conversation row is needed; no draft is
+  /// read then and every `draft` is null. A thread whose follow-up lookups
+  /// find a provider unavailable is returned unenriched instead of failing
+  /// the list (UNFY-299), but still carries its `draft`. A latest-MMS parts
+  /// batch that fails as `unavailable` or `transientFailure` leaves those MMS
+  /// with empty parts (UNFY-250). Any other error, or an unavailable
+  /// conversations provider, throws.
+  ///
+  /// The drafts are read once for the whole list, and that read is
+  /// all-or-nothing: any error from it, `unavailable` included, fails the
+  /// call. Reporting no drafts would read as every draft discarded.
   Future<List<AndroidSimpleConversation>> listConversations({
     ConversationFilter? filter,
     ConversationSort? sort,
@@ -174,14 +180,27 @@ class ConversationLookup {
         return !isPhantom;
       }).toList(growable: false);
 
-      if (!enrich) return bare;
+      if (!enrich || bare.isEmpty) return bare;
 
-      final enriched = await Future.wait(bare.map(_enrichOrBare));
+      final enrichedRead = Future.wait(bare.map(_enrichOrBare));
+      final draftsRead = _newestDraftByThread(filter);
+      // `Future.wait` (not `.wait`) so a failed read surfaces as itself, not
+      // wrapped in a ParallelWaitError, and neither read is left unhandled.
+      await Future.wait<void>([enrichedRead, draftsRead]);
+      final enriched = await enrichedRead;
+      final drafts = await draftsRead;
+      final withDrafts = [
+        for (final conversation in enriched)
+          if (drafts[conversation.threadId] case final draft?)
+            conversation.enrich(draft: draft)
+          else
+            conversation,
+      ];
       // Hydrate every thread's latest-MMS parts in batched `mid IN` queries
       // rather than one `listMmsParts` per thread (UNFY-250 perf) so the MMS
       // body resolves for the conversation-list preview at parity with SMS.
-      await _hydrateLatestMmsParts(enriched);
-      return enriched;
+      await _hydrateLatestMmsParts(withDrafts);
+      return withDrafts;
     } catch (e, s) {
       // Per the file-level contract on lookup_service.dart: query
       // methods do NOT swallow exceptions. The previous
@@ -196,6 +215,33 @@ class ConversationLookup {
       debugPrint(s.toString());
       rethrow;
     }
+  }
+
+  /// Reads the native SMS drafts (`type` = 3) in one query and keeps the
+  /// newest of each thread. Scoped to the thread when [filter] names exactly
+  /// one; otherwise provider-wide, which is cheaper than one read per thread.
+  ///
+  /// Not tolerant of an unavailable provider, unlike the per-thread
+  /// enrichment reads: see [listConversations].
+  Future<Map<int, Sms>> _newestDraftByThread(
+    ConversationFilter? filter,
+  ) async {
+    final threadIds = filter?.threadIds;
+    final drafts = await MessageLookup.instance.listSms(
+      filter: SmsFilter(
+        types: const [SmsMessageType.draft],
+        threadId:
+            threadIds != null && threadIds.length == 1 ? threadIds.single : null,
+      ),
+      sort: SmsSort.newestFirst,
+    );
+    // `newestFirst` orders by date, then `_id`, both descending, so the first
+    // draft seen for a thread is its newest.
+    final newest = <int, Sms>{};
+    for (final draft in drafts) {
+      newest.putIfAbsent(draft.threadId, () => draft);
+    }
+    return newest;
   }
 
   /// Attaches each conversation's latest-MMS parts, fetched in batched
@@ -347,7 +393,10 @@ class ConversationLookup {
 
     // Latest SMS + MMS for the thread (each capped at 1 row) in parallel.
     final latestSmsFuture = MessageLookup.instance.listSms(
-      filter: SmsFilter(threadId: base.threadId),
+      filter: SmsFilter(
+        threadId: base.threadId,
+        excludeTypes: const [SmsMessageType.draft],
+      ),
       sort: SmsSort.newestFirst,
       limit: 1,
     );
