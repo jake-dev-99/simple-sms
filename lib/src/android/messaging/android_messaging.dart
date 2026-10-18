@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../interop/channels.dart';
 import '../models/messages/mms.dart';
 import '../models/messages/outbound_message.dart';
+import '../models/messages/respond_via_message_request.dart';
 import '../models/messages/sms.dart';
 
 /// Manages SMS/MMS message sending and receiving on Android.
@@ -34,9 +36,17 @@ class AndroidMessaging {
   /// preserve their explicit acknowledgement, including `false`.
   Function(Sms) smsCallback;
 
+  /// Callback invoked for each quick-reply text Android asks the default SMS
+  /// app to send (`RESPOND_VIA_MESSAGE`, UNFY-319). Android keeps the native
+  /// service running until it completes, so complete only once the request is
+  /// handled. Without one, the request fails with
+  /// `NO_RESPOND_VIA_MESSAGE_HANDLER` and nothing is sent.
+  FutureOr<void> Function(RespondViaMessageRequest)? respondViaMessageCallback;
+
   AndroidMessaging._internal({
     required this.mmsCallback,
     required this.smsCallback,
+    this.respondViaMessageCallback,
   }) {
     final inboundChannel = MethodChannel(
       'io.simplezen.simple_sms/inbound_messaging',
@@ -51,19 +61,28 @@ class AndroidMessaging {
   /// singleton so the last caller always wins (matching what a developer
   /// naturally expects when they re-invoke `Android.initialize` from a
   /// hot-reload path or a background-engine entrypoint).
+  ///
+  /// [respondViaMessageCallback] replaces the existing one only when
+  /// non-null, so a re-initialization that omits it keeps the handler an
+  /// earlier call registered.
   factory AndroidMessaging.initialize({
     required Function(Sms) inboundSmsCallback,
     required Function(Mms) inboundMmsCallback,
+    FutureOr<void> Function(RespondViaMessageRequest)? respondViaMessageCallback,
   }) {
     final existing = _instance;
     if (existing != null) {
       existing.smsCallback = inboundSmsCallback;
       existing.mmsCallback = inboundMmsCallback;
+      if (respondViaMessageCallback != null) {
+        existing.respondViaMessageCallback = respondViaMessageCallback;
+      }
       return existing;
     }
     return _instance = AndroidMessaging._internal(
       smsCallback: inboundSmsCallback,
       mmsCallback: inboundMmsCallback,
+      respondViaMessageCallback: respondViaMessageCallback,
     );
   }
 
@@ -197,6 +216,17 @@ class AndroidMessaging {
           return await _invokeCallback(smsCallback, Sms.fromRaw(messageData));
         case 'receiveInboundMmsMessage':
           return await _invokeCallback(mmsCallback, Mms.fromRaw(messageData));
+        case 'receiveRespondViaMessage':
+          final callback = respondViaMessageCallback;
+          if (callback == null) {
+            throw PlatformException(
+              code: 'NO_RESPOND_VIA_MESSAGE_HANDLER',
+              message:
+                  'simple_sms: a quick reply arrived but no respondViaMessageCallback is registered',
+            );
+          }
+          await callback(RespondViaMessageRequest.fromRaw(messageData));
+          return true;
         default:
           throw PlatformException(
             code: 'UNKNOWN_METHOD',

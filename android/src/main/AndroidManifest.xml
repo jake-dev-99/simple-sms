@@ -69,7 +69,10 @@
                 android:resource="@xml/file_paths"/>
         </provider>
 
-        <!-- SMS Sender Service -->
+        <!-- SMS Sender Service (quick replies, UNFY-319). The filter matches the
+             ACTION_RESPOND_VIA_MESSAGE contract: all four recipient schemes,
+             and only a caller holding SEND_RESPOND_VIA_MESSAGE. Apps must not
+             redeclare this service. -->
         <service
             android:name="io.simplezen.simple_sms.messaging.OutboundMessagingHandler"
             android:exported="true"
@@ -78,7 +81,10 @@
                 <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
                 <action android:name="android.intent.action.SENDTO" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
                 <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
             </intent-filter>
         </service>
 

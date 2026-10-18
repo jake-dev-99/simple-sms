@@ -21,6 +21,7 @@ export 'src/android/models/messages/message_change_event.dart';
 export 'src/android/models/messages/normalized_message.dart';
 export 'src/android/models/messages/thread_page_cursor.dart';
 export 'src/android/models/messages/outbound_message.dart';
+export 'src/android/models/messages/respond_via_message_request.dart';
 
 // Models - People
 export 'src/android/models/people/message_participant.dart';
