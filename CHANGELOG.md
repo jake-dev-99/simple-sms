@@ -2,6 +2,7 @@
 
 - `OutboundMessagingHandler` now hands `RESPOND_VIA_MESSAGE` quick replies to Dart through `AndroidMessaging.initialize(respondViaMessageCallback:)` or `Android.initialize(respondViaMessageCallback:)` (UNFY-319) and stops once Dart has answered every pending reply. Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.
 
+- Add `LookupService.threadRowExists` (UNFY-321): a raw read of one `threads` row that ignores the phantom filter; a provider failure throws.
 - Add `AndroidSendDeletion` (UNFY-346): delete every indexed attempt of a logical send within a bounded native operation, preserve latest attempts on partial failure, fence retries across restarts, and hand durable deletion receipts to consumers for tombstone journaling. Consumers must acknowledge a receipt only after their own journal commits. Receipt plans distinguish confirmed removals from rows still present. Every new receipt drain must restart at cursor zero; page cursors are traversal-local because unconfirmed plans retain their id when confirmed.
 - Accept SMS/MMS box aliases for deletion and verify the requested provider generation before adopting its correlation token. A reused SMS row is deleted independently; a correlated MMS row with legacy or mismatched occurrence proof is rejected before any fallback can adopt its current PDU. A missing row resumes only an already-fenced partial deletion.
 - Preserve correlation metadata across schema migration. Before any deletion fence, the additive schema can return to v1. Once a fence is persisted, stamp v2 atomically so 0.6 fails closed before correlated sends create rows; rolling back after deletion requires a build that understands these fences. Never clear fences or lower that safety barrier to restore an old binary.
@@ -18,6 +19,18 @@
   stamping remains in the Cut Release workflow.
 
 - Require simple_permissions_native ^1.6.4 so published resolution includes the repaired platform packages and native PermissionGuards API.
+
+- Add `SmsFilter.excludeTypes` and `AndroidSimpleConversation.draft`
+  (UNFY-349). `excludeTypes` adds one `type != ?` condition per listed type.
+  With `enrich: true`, `listConversations` reads the native SMS drafts once for
+  the whole list and gives each thread its newest one (by date, then id) as
+  `draft`, null when it has none. A thread left unenriched because a provider
+  was unavailable still carries its `draft`. Behavior changes: the enriched
+  `latestSms` is now the thread's newest SMS that is not a draft; read the
+  draft from `draft`. And the draft read is all-or-nothing, so with
+  `enrich: true`, `listConversations` (and `getConversationByThread`) now
+  fails when it fails, including when the SMS provider is unavailable. With
+  `enrich: false` no draft is read.
 
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.
@@ -172,6 +185,9 @@ return typed results.
 - **Contact lookup by address trims and percent-encodes it (UNFY-253).**
   An address with `+`, `#`, spaces or `@` now reaches the contacts filter
   intact, and a blank address returns null without a query.
+- **An MMS draft normalizes as `draft` (UNFY-351).** An MMS in the drafts box
+  (msg_box 3) now gives `MessageDeliveryState.draft` instead of `sending`,
+  whatever its m_type or `st`, as an SMS draft already does.
 
 ## 0.5.1
 

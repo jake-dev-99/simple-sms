@@ -271,6 +271,26 @@ void main() {
       expect(m.deliveryState, MessageDeliveryState.failed);
     });
 
+    test('drafts box → draft, whatever the m_type', () {
+      // A draft is a SEND_REQ row in msg_box 3; the type must not make it
+      // a send in flight (UNFY-351).
+      for (final type in [...MmsMessageType.values, null]) {
+        final m = NormalizedMessage.fromMms(
+          buildMms(type: type, messageBox: MessageBox.draft),
+        );
+        expect(m.deliveryState, MessageDeliveryState.draft, reason: '$type');
+      }
+    });
+
+    test('drafts box ignores st', () {
+      final m = NormalizedMessage.fromMms(buildMms(
+        type: MmsMessageType.sendRequest,
+        messageBox: MessageBox.draft,
+        status: AndroidMessageStatus.retrieved,
+      ));
+      expect(m.deliveryState, MessageDeliveryState.draft);
+    });
+
     test('sendRequest in outbox (not failed) → sending', () {
       final m = NormalizedMessage.fromMms(buildMms(
         type: MmsMessageType.sendRequest,

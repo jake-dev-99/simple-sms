@@ -407,8 +407,8 @@ void main() {
     // and a space-separated `recipient_ids` payload.
     test('coerces Samsung string-form int flags without throwing', () {
       final raw = <String, dynamic>{
-        '_id': 6244, // latest-message id on this view
-        'thread_id': 3, // stable thread pk
+        '_id': 6244, // message id, as on a joined (non-simple) row
+        'thread_id': 3, // the parser prefers thread_id when present
         'archived': '0',
         'has_attachment': '1',
         'read': '1',

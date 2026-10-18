@@ -302,6 +302,17 @@ class MessageLookup {
         ),
       );
     }
+    // `!=` per type, not a positive `IN` list, so a row with a type the plugin
+    // cannot parse is still read and still fails at parse time.
+    for (final type in filter.excludeTypes ?? const []) {
+      conditions.add(
+        QueryFilterCondition(
+          field: 'type',
+          operator: QueryFilterOperator.notEquals,
+          value: type.value.toString(),
+        ),
+      );
+    }
     if (filter.dateFrom != null) {
       conditions.add(
         QueryFilterCondition(
