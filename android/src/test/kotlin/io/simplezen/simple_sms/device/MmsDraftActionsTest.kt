@@ -652,6 +652,18 @@ class MmsDraftActionsTest {
         assertTrue(failure.toString(), failure?.message?.contains("exceeded its share") == true)
     }
 
+    /** Purpose: a file that reports no size is still read, and ends, within a limit below the chunk size. */
+    @Test
+    fun readBounded_fileReportingNoSize_isReadWithinALimitBelowTheChunkSize() {
+        val real = File(file("special.bin", ByteArray(50) { it.toByte() }))
+        val reportsNoSize = object : File(real.path) {
+            override fun length(): Long = 0
+        }
+
+        assertArrayEquals(real.readBytes(), drafts.readBounded(reportsNoSize, limit = 100))
+        assertArrayEquals(real.readBytes(), drafts.readBounded(reportsNoSize, limit = 50))
+    }
+
     /** Purpose: a file one byte over the room left is refused, not truncated. */
     @Test
     fun readBounded_fileOneByteOverTheLimit_isRefused() {
