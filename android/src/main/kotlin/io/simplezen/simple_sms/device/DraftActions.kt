@@ -838,10 +838,12 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
     /**
      * All of [file]'s bytes, failing with [AttachmentTooLargeException] once they exceed [limit].
      * The buffer starts at the size the file system reports (within [limit]) so a file of that
-     * size is read without copies; a file that is longer, or reports none, grows it.
+     * size is read without copies; a file that is longer, or reports none, grows it. A [limit]
+     * below [READ_CHUNK_BYTES], down to zero, gets a buffer no larger than itself.
      */
-    private fun readBounded(file: File, limit: Long): ByteArray {
-        var buffer = ByteArray(file.length().coerceIn(READ_CHUNK_BYTES.toLong(), limit.coerceAtLeast(1)).toInt())
+    internal fun readBounded(file: File, limit: Long): ByteArray {
+        val initialSize = file.length().coerceIn(minOf(READ_CHUNK_BYTES.toLong(), limit), limit)
+        var buffer = ByteArray(initialSize.toInt())
         var total = 0
         file.inputStream().use { input ->
             while (true) {

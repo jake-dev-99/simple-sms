@@ -5,6 +5,7 @@ import android.content.Context
 import android.webkit.MimeTypeMap
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.MethodCall
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -630,6 +631,34 @@ class MmsDraftActionsTest {
 
         assertEquals(listOf("INVALID_ARGUMENT"), result.errors)
         assertEquals(0, sms.writeCount() + mms.writeCount())
+    }
+
+    /** Purpose: a file that fits the little room left in the total is read, down to the last byte. */
+    @Test
+    fun readBounded_limitBelowTheChunkSize_readsAFileThatFits() {
+        val tiny = File(file("tiny.bin", byteArrayOf(7)))
+
+        assertArrayEquals(byteArrayOf(7), drafts.readBounded(tiny, limit = 1))
+        assertArrayEquals(byteArrayOf(7), drafts.readBounded(tiny, limit = 1000))
+    }
+
+    /** Purpose: with no room left, an empty file is read and any byte is refused. */
+    @Test
+    fun readBounded_zeroLimit_acceptsAnEmptyFileAndRefusesAByte() {
+        assertEquals(0, drafts.readBounded(File(file("empty.bin", ByteArray(0))), limit = 0).size)
+
+        val failure = runCatching { drafts.readBounded(File(file("one.bin", byteArrayOf(1))), limit = 0) }
+            .exceptionOrNull()
+        assertTrue(failure.toString(), failure?.message?.contains("exceeded its share") == true)
+    }
+
+    /** Purpose: a file one byte over the room left is refused, not truncated. */
+    @Test
+    fun readBounded_fileOneByteOverTheLimit_isRefused() {
+        val failure = runCatching { drafts.readBounded(File(file("two.bin", byteArrayOf(1, 2))), limit = 1) }
+            .exceptionOrNull()
+
+        assertTrue(failure.toString(), failure?.message?.contains("exceeded its share") == true)
     }
 
     // ── helpers ───────────────────────────────────────────────────────
