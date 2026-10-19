@@ -26,12 +26,14 @@ internal fun queryRows(
     projection: Array<String>,
     selection: String? = null,
     selectionArgs: Array<String>? = null,
+    sortOrder: String? = null,
 ): List<Map<String, Any?>> = ContentQuery.queryOrNull(
     context,
     uri.toString(),
     projection = projection,
     selection = selection,
     selectionArgs = selectionArgs,
+    sortOrder = sortOrder,
 ) ?: throw IllegalStateException("Provider returned no cursor for $uri")
 
 /** [value] as a Long (providers may return numbers as text); null stays null. */

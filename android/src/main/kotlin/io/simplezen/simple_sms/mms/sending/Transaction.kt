@@ -670,12 +670,27 @@ class Transaction(private val context: Context, settings: Settings) {
             recipients: Array<String>?,
             subject: String?,
             parts: List<MMSPart>,
+        ): SendReq =
+            composeSendReq(context, fromAddress, recipients!!, subject, parts, settings.getSubscriptionId())
+
+        /**
+         * The `m_send_req` PDU for [parts] to [recipients], from the number of
+         * [subscriptionId]'s SIM. Reads no static [settings], so a draft
+         * written outside a send can compose one (UNFY-281).
+         */
+        internal fun composeSendReq(
+            context: Context,
+            fromAddress: String?,
+            recipients: Array<String>,
+            subject: String?,
+            parts: List<MMSPart>,
+            subscriptionId: Int,
         ): SendReq {
             val req = SendReq()
             // From, per spec
-            req.prepareFromAddress(context, fromAddress, settings.getSubscriptionId())
+            req.prepareFromAddress(context, fromAddress, subscriptionId)
             // To
-            for (recipient in recipients!!) {
+            for (recipient in recipients) {
                 req.addTo(EncodedStringValue(recipient))
             }
             // Subject

@@ -175,7 +175,7 @@ class DestructiveActionsInterop {
       });
 }
 
-/// Native SMS draft writes (ADR-0016).
+/// Native draft writes (ADR-0016).
 class DraftsInterop {
   static const methodChannel = _Channels.drafts;
 
@@ -193,8 +193,27 @@ class DraftsInterop {
     'subscriptionId': subscriptionId,
   });
 
-  /// Discard thread [threadId]'s draft. Returns the raw verified outcome wire
-  /// value (`DraftDiscardResult.wireName`).
-  static Future<Object?> discardSmsDraft(String threadId) =>
-      methodChannel.invokeMethod<Object?>('discardSmsDraft', threadId);
+  /// Save [attachmentPaths] and [body] as thread [threadId]'s MMS draft,
+  /// addressed to [addresses], on [subscriptionId] when given. Returns the raw
+  /// verified wire value (the draft's MMS `_id`), untyped so
+  /// `AndroidDraftAction` validates it; a save that could not be verified
+  /// throws `PlatformException`.
+  static Future<Object?> saveMmsDraft(
+    String threadId,
+    List<String> addresses,
+    String? body,
+    List<String> attachmentPaths,
+    int? subscriptionId,
+  ) => methodChannel.invokeMethod<Object?>('saveMmsDraft', {
+    'threadId': threadId,
+    'addresses': addresses,
+    'body': body,
+    'attachmentPaths': attachmentPaths,
+    'subscriptionId': subscriptionId,
+  });
+
+  /// Discard thread [threadId]'s draft, SMS and MMS. Returns the raw verified
+  /// outcome wire value (`DraftDiscardResult.wireName`).
+  static Future<Object?> discardDraft(String threadId) =>
+      methodChannel.invokeMethod<Object?>('discardDraft', threadId);
 }

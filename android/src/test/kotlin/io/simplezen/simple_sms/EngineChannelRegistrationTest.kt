@@ -146,7 +146,7 @@ class EngineChannelRegistrationTest {
         // MissingPluginException.
         val code = messenger.invokeExpectingError(
             SimpleSmsPlugin.DRAFTS_CHANNEL,
-            MethodCall("discardSmsDraft", null),
+            MethodCall("discardDraft", null),
         )
 
         assertEquals("INVALID_ARGUMENT", code)

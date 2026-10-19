@@ -15,6 +15,8 @@
  */
 
 // Modified by Simple Zen: Kotlin port maintained in the first-party MMS namespace (UNFY-123).
+// Modified by Simple Zen: process-unique temporary part IDs, cleanup of the parts of a failed
+// persist, and a row-inserted callback (UNFY-281).
 
 package io.simplezen.simple_sms.mms.codec
 
@@ -576,10 +578,7 @@ class PduPersister private constructor(private val mContext: Context) {
 
         try {
             var data = part.data
-            if (ContentType.TEXT_PLAIN == contentType ||
-                ContentType.APP_SMIL == contentType ||
-                ContentType.TEXT_HTML == contentType
-            ) {
+            if (contentType in TEXT_STORED_CONTENT_TYPES) {
                 val cv = ContentValues()
                 if (data == null) {
                     data = "".toByteArray(charset(CharacterSets.DEFAULT_CHARSET_NAME))
@@ -995,6 +994,8 @@ class PduPersister private constructor(private val mContext: Context) {
      *  to create the associated thread. When false, only the sender will be used in finding or
      *  creating the appropriate thread or conversation.
      * @param preOpenedFiles if not null, a map of preopened InputStreams for the parts.
+     * @param onRowInserted if not null, called with the new row's URI as soon as it exists, so a
+     *  caller can find the row when the persist fails afterwards (Simple Zen modification, UNFY-281).
      * @return A Uri which can be used to access the stored PDU.
      */
     @Throws(MmsException::class)
@@ -1005,6 +1006,7 @@ class PduPersister private constructor(private val mContext: Context) {
         groupMmsEnabled: Boolean,
         preOpenedFiles: HashMap<Uri, InputStream>?,
         subscriptionId: Int,
+        onRowInserted: ((Uri) -> Unit)? = null,
     ): Uri {
         if (uri == null) {
             throw MmsException("Uri may not be null.")
@@ -1140,82 +1142,91 @@ class PduPersister private constructor(private val mContext: Context) {
             values.put(Mms.THREAD_ID, threadId)
         }
 
-        // Save parts first to avoid inconsistent message is loaded
-        // while saving the parts.
-        val dummyId = System.currentTimeMillis() // Dummy ID of the msg.
+        // Dummy ID of the msg: unique within the process, so two persists in the same
+        // millisecond (a draft and a send) cannot claim each other's parts (Simple Zen
+        // modification, UNFY-281).
+        val dummyId = nextDummyId()
+        var res: Uri?
+        try {
+            // Save parts first to avoid inconsistent message is loaded
+            // while saving the parts.
+            // Figure out if this PDU is a text-only message
+            var textOnly = true
 
-        // Figure out if this PDU is a text-only message
-        var textOnly = true
+            // Sum up the total message size
+            var messageSize = 0
 
-        // Sum up the total message size
-        var messageSize = 0
-
-        // Get body if the PDU is a RetrieveConf or SendReq.
-        if (pdu is MultimediaMessagePdu) {
-            body = pdu.body
-            // Start saving parts if necessary.
-            if (body != null) {
-                val partsNum = body.partsNum
-                if (partsNum > 2) {
-                    // For a text-only message there will be two parts: 1-the SMIL, 2-the text.
-                    // Down a few lines below we're checking to make sure we've only got SMIL or
-                    // text. We also have to check then we don't have more than two parts.
-                    // Otherwise, a slideshow with two text slides would be marked as textOnly.
-                    textOnly = false
-                }
-                for (i in 0 until partsNum) {
-                    val part = body.getPart(i)
-                    messageSize += part.dataLength
-                    persistPart(part, dummyId, preOpenedFiles)
-
-                    // If we've got anything besides text/plain or SMIL part, then we've got
-                    // an mms message with some other type of attachment.
-                    val contentType = getPartContentType(part)
-                    if (contentType != null && ContentType.APP_SMIL != contentType &&
-                        ContentType.TEXT_PLAIN != contentType
-                    ) {
+            // Get body if the PDU is a RetrieveConf or SendReq.
+            if (pdu is MultimediaMessagePdu) {
+                body = pdu.body
+                // Start saving parts if necessary.
+                if (body != null) {
+                    val partsNum = body.partsNum
+                    if (partsNum > 2) {
+                        // For a text-only message there will be two parts: 1-the SMIL, 2-the text.
+                        // Down a few lines below we're checking to make sure we've only got SMIL or
+                        // text. We also have to check then we don't have more than two parts.
+                        // Otherwise, a slideshow with two text slides would be marked as textOnly.
                         textOnly = false
+                    }
+                    for (i in 0 until partsNum) {
+                        val part = body.getPart(i)
+                        messageSize += part.dataLength
+                        persistPart(part, dummyId, preOpenedFiles)
+
+                        // If we've got anything besides text/plain or SMIL part, then we've got
+                        // an mms message with some other type of attachment.
+                        val contentType = getPartContentType(part)
+                        if (contentType != null && ContentType.APP_SMIL != contentType &&
+                            ContentType.TEXT_PLAIN != contentType
+                        ) {
+                            textOnly = false
+                        }
                     }
                 }
             }
-        }
-        // Record whether this mms message is a simple plain text or not. This is a hint for the
-        // UI.
-        // values.put(Mms.TEXT_ONLY, textOnly ? 1 : 0);
-        // The message-size might already have been inserted when parsing the
-        // PDU header. If not, then we insert the message size as well.
-        if (values.getAsInteger(Mms.MESSAGE_SIZE) == null) {
-            values.put(Mms.MESSAGE_SIZE, messageSize)
-        }
-
-        // insert only if it is a valid subscription id.
-        if (Settings.DEFAULT_SUBSCRIPTION_ID != subscriptionId &&
-            SubscriptionIdChecker.getInstance(mContext).canUseSubscriptionId()
-        ) {
-            values.put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId)
-        }
-
-        var res: Uri?
-        if (existingUri) {
-            res = uri
-            SqliteWrapper.update(mContext, mContentResolver, res, values, null, null)
-        } else {
-            res = SqliteWrapper.insert(mContext, mContentResolver, uri, values)
-            if (res == null) {
-                throw MmsException("persist() failed: return null.")
+            // Record whether this mms message is a simple plain text or not. This is a hint for the
+            // UI.
+            // values.put(Mms.TEXT_ONLY, textOnly ? 1 : 0);
+            // The message-size might already have been inserted when parsing the
+            // PDU header. If not, then we insert the message size as well.
+            if (values.getAsInteger(Mms.MESSAGE_SIZE) == null) {
+                values.put(Mms.MESSAGE_SIZE, messageSize)
             }
-            // Get the real ID of the PDU and update all parts which were
-            // saved with the dummy ID.
-            msgId = ContentUris.parseId(res)
-        }
 
-        values = ContentValues(1)
-        values.put(Part.MSG_ID, msgId)
-        SqliteWrapper.update(
-            mContext, mContentResolver,
-            Uri.parse("content://mms/$dummyId/part"),
-            values, null, null,
-        )
+            // insert only if it is a valid subscription id.
+            if (Settings.DEFAULT_SUBSCRIPTION_ID != subscriptionId &&
+                SubscriptionIdChecker.getInstance(mContext).canUseSubscriptionId()
+            ) {
+                values.put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId)
+            }
+
+            if (existingUri) {
+                res = uri
+                SqliteWrapper.update(mContext, mContentResolver, res, values, null, null)
+            } else {
+                res = SqliteWrapper.insert(mContext, mContentResolver, uri, values)
+                if (res == null) {
+                    throw MmsException("persist() failed: return null.")
+                }
+                // Get the real ID of the PDU and update all parts which were
+                // saved with the dummy ID.
+                msgId = ContentUris.parseId(res)
+                onRowInserted?.invoke(res)
+            }
+
+            values = ContentValues(1)
+            values.put(Part.MSG_ID, msgId)
+            SqliteWrapper.update(
+                mContext, mContentResolver,
+                Uri.parse("content://mms/$dummyId/part"),
+                values, null, null,
+            )
+        } catch (e: Throwable) {
+            // Parts saved under the dummy ID belong to no message: no row will claim them.
+            discardTemporaryParts(dummyId)
+            throw e
+        }
         // We should return the longest URI of the persisted PDU, for
         // example, if input URI is "content://mms/inbox" and the _ID of
         // persisted PDU is '8', we should return "content://mms/inbox/8"
@@ -1234,6 +1245,19 @@ class PduPersister private constructor(private val mContext: Context) {
         }
 
         return res
+    }
+
+    /**
+     * Delete the parts [persist] saved under the temporary message ID [dummyId] when it failed
+     * before they were moved to a message. A failure to delete is logged: the persist failure
+     * that led here is the one the caller sees.
+     */
+    private fun discardTemporaryParts(dummyId: Long) {
+        try {
+            mContentResolver.delete(Uri.parse("content://mms/$dummyId/part"), null, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not delete the temporary parts of a failed persist: ${e.javaClass.name}")
+        }
     }
 
     /**
@@ -1351,6 +1375,10 @@ class PduPersister private constructor(private val mContext: Context) {
     }
 
     companion object {
+        private val dummyIds = DummyIds()
+
+        private fun nextDummyId(): Long = dummyIds.next()
+
         private const val TAG = "PduPersister"
 
         @Suppress("unused")

@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_sms_native/android.dart';
 
-/// Native SMS draft writes resolve only to a verified outcome; anything the
+/// Native draft writes resolve only to a verified outcome; anything the
 /// native side could not verify surfaces as an error, never as a value the
 /// caller could mistake for "the draft is written" (UNFY-213, ADR-0016).
 void main() {
@@ -95,18 +95,99 @@ void main() {
     });
   });
 
-  group('AndroidDraftAction.discardSmsDraft', () {
+  group('AndroidDraftAction.saveMmsDraft', () {
+    Future<String> save({
+      String? body,
+      Set<String> addresses = const {'+15555550100'},
+      List<String> attachmentPaths = const ['/cache/photo.jpg'],
+      int? subscriptionId,
+    }) => AndroidDraftAction.saveMmsDraft(
+      threadId: '5',
+      addresses: addresses,
+      body: body,
+      attachmentPaths: attachmentPaths,
+      subscriptionId: subscriptionId,
+    );
+
+    test('forwards the thread, recipients, body and files', () async {
+      reply(() async => '42');
+      await save(
+        body: 'see you',
+        addresses: {'+15555550100', '+15555550101'},
+        attachmentPaths: ['/cache/a.jpg', '/cache/b.pdf'],
+      );
+      expect(calls.single.method, 'saveMmsDraft');
+      expect(calls.single.arguments, {
+        'threadId': '5',
+        'addresses': ['+15555550100', '+15555550101'],
+        'body': 'see you',
+        'attachmentPaths': ['/cache/a.jpg', '/cache/b.pdf'],
+        'subscriptionId': null,
+      });
+    });
+
+    test('forwards a missing body and a subscription', () async {
+      reply(() async => '42');
+      await save(subscriptionId: 2);
+      expect(calls.single.arguments, {
+        'threadId': '5',
+        'addresses': ['+15555550100'],
+        'body': null,
+        'attachmentPaths': ['/cache/photo.jpg'],
+        'subscriptionId': 2,
+      });
+    });
+
+    test('resolves to the native draft id', () async {
+      reply(() async => '42');
+      expect(await save(), '42');
+    });
+
+    for (final bad in <Object?>[null, '', '0', '-1', 'x', 42]) {
+      test('throws StateError for an unrecognized reply ($bad)', () async {
+        reply(() async => bad);
+        await expectLater(save(), throwsStateError);
+      });
+    }
+
+    test('throws a typed failure instead of reporting an id', () async {
+      reply(
+        () async => throw PlatformException(
+          code: 'DRAFT_WRITE_INCOMPLETE',
+          message: 'The recipients resolve to thread 9',
+        ),
+      );
+      await expectLater(
+        save(),
+        throwsA(
+          isA<DraftWriteFailedException>()
+              .having(
+                (e) => e.reason,
+                'reason',
+                DraftWriteFailureReason.draftWriteIncomplete,
+              )
+              .having(
+                (e) => e.message,
+                'message',
+                'The recipients resolve to thread 9',
+              ),
+        ),
+      );
+    });
+  });
+
+  group('AndroidDraftAction.discardDraft', () {
     test('forwards the thread id on the drafts channel', () async {
       reply(() async => 'discarded');
-      await AndroidDraftAction.discardSmsDraft('5');
-      expect(calls.single.method, 'discardSmsDraft');
+      await AndroidDraftAction.discardDraft('5');
+      expect(calls.single.method, 'discardDraft');
       expect(calls.single.arguments, '5');
     });
 
     for (final result in DraftDiscardResult.values) {
       test('maps "${result.wireName}"', () async {
         reply(() async => result.wireName);
-        expect(await AndroidDraftAction.discardSmsDraft('5'), result);
+        expect(await AndroidDraftAction.discardDraft('5'), result);
       });
     }
 
@@ -114,7 +195,7 @@ void main() {
       test('throws StateError for an unrecognized result ($bad)', () async {
         reply(() async => bad);
         await expectLater(
-          AndroidDraftAction.discardSmsDraft('5'),
+          AndroidDraftAction.discardDraft('5'),
           throwsStateError,
         );
       });
@@ -138,21 +219,35 @@ void main() {
       }, codes);
     });
 
+    final writes = <String, Future<Object?> Function()>{
+      'discardDraft': () => AndroidDraftAction.discardDraft('5'),
+      'saveMmsDraft': () => AndroidDraftAction.saveMmsDraft(
+        threadId: '5',
+        addresses: {'+15555550100'},
+        attachmentPaths: ['/cache/photo.jpg'],
+      ),
+    };
+
     for (final MapEntry(key: code, value: reason) in codes.entries) {
-      test('$code becomes DraftWriteFailedException(${reason.name})', () async {
-        reply(
-          () async =>
-              throw PlatformException(code: code, details: 'native trace'),
+      for (final MapEntry(key: name, value: write) in writes.entries) {
+        test(
+          '$name: $code becomes DraftWriteFailedException(${reason.name})',
+          () async {
+            reply(
+              () async =>
+                  throw PlatformException(code: code, details: 'native trace'),
+            );
+            await expectLater(
+              write(),
+              throwsA(
+                isA<DraftWriteFailedException>()
+                    .having((e) => e.reason, 'reason', reason)
+                    .having((e) => e.details, 'details', 'native trace'),
+              ),
+            );
+          },
         );
-        await expectLater(
-          AndroidDraftAction.discardSmsDraft('5'),
-          throwsA(
-            isA<DraftWriteFailedException>()
-                .having((e) => e.reason, 'reason', reason)
-                .having((e) => e.details, 'details', 'native trace'),
-          ),
-        );
-      });
+      }
     }
 
     test('an unknown code throws StateError, never a guessed reason', () async {
@@ -167,7 +262,7 @@ void main() {
       'a missing native handler is not mistaken for a draft failure',
       () async {
         await expectLater(
-          AndroidDraftAction.discardSmsDraft('5'),
+          AndroidDraftAction.discardDraft('5'),
           throwsA(isA<MissingPluginException>()),
         );
       },

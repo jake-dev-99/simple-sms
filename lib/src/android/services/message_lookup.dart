@@ -432,6 +432,27 @@ class MessageLookup {
         ),
       );
     }
+    final boxes = filter.messageBoxes;
+    if (boxes != null && boxes.isNotEmpty) {
+      conditions.add(
+        QueryFilterCondition(
+          field: 'msg_box',
+          operator: QueryFilterOperator.inList,
+          value: boxes.map((box) => box.value.toString()).toList(),
+        ),
+      );
+    }
+    // `!=` per box, not a positive `IN` list, so a row in a box the plugin
+    // cannot parse is still read and still fails at parse time.
+    for (final box in filter.excludeMessageBoxes ?? const []) {
+      conditions.add(
+        QueryFilterCondition(
+          field: 'msg_box',
+          operator: QueryFilterOperator.notEquals,
+          value: box.value.toString(),
+        ),
+      );
+    }
     if (filter.dateFrom != null) {
       conditions.add(
         QueryFilterCondition(
