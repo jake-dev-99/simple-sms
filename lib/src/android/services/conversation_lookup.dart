@@ -443,7 +443,10 @@ class ConversationLookup {
       limit: 1,
     );
     final latestMmsFuture = MessageLookup.instance.listMms(
-      filter: MmsFilter(threadId: base.threadId),
+      filter: MmsFilter(
+        threadId: base.threadId,
+        excludeMessageBoxes: const [MessageBox.draft],
+      ),
       sort: MmsSort.newestFirst,
       limit: 1,
     );
