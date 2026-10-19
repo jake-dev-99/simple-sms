@@ -34,11 +34,13 @@
 - Leave drafts out of thread pages and the enriched `latestMms` (UNFY-349).
   Behavior changes: `getNormalizedThreadPage` no longer returns SMS drafts
   (`type` = 3) or MMS in the drafts box (`msg_box` = 3), on a first page or a
-  cursor page, and the enriched `latestMms` is now the thread's newest
+  cursor page. The enriched `latestMms` is now the thread's newest
   user-visible MMS (`MmsMessageType.userVisibleValues`) outside the drafts
-  box, so a delivery or read report is no longer the thread's latest MMS. Read a thread's SMS draft from
-  `AndroidSimpleConversation.draft`, and list MMS drafts with
-  `MmsFilter(messageBoxes: [MessageBox.draft])`.
+  box, the rule thread pages already use. So a delivery or read report, a
+  send or forward confirmation, and an inbound MMS that has not downloaded
+  yet (m-notification-ind) are no longer the thread's latest MMS. Read a
+  thread's SMS draft from `AndroidSimpleConversation.draft`, and list MMS
+  drafts with `MmsFilter(messageBoxes: [MessageBox.draft])`.
 
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.

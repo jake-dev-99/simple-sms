@@ -89,9 +89,9 @@ class AndroidSimpleConversation {
   final Sms? latestSms;
 
   /// Most recent user-visible MMS in the thread that is not in the drafts
-  /// box, if any: never a draft, a delivery or read report, or another
-  /// transport-only PDU. Null when not enriched or when the thread has no
-  /// such MMS.
+  /// box, if any, by the rule thread pages use: never a draft, a report or
+  /// confirmation, or an inbound MMS that has not downloaded yet. Null when
+  /// not enriched or when the thread has no such MMS.
   final Mms? latestMms;
 
   /// The thread's newest native SMS draft (`type` = 3), by date and then
