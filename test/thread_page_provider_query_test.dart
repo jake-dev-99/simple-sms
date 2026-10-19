@@ -58,6 +58,44 @@ void main() {
   );
 
   test(
+    'thread pages leave out SMS and MMS drafts and still fill the page',
+    () async {
+      final later = at.add(const Duration(seconds: 1));
+      _seedThread(
+        provider,
+        sms: [
+          for (var id = 10; id <= 13; id++) _sms(id, at),
+          {..._sms(20, later), 'type': 3}, // newer than every message
+          {..._sms(1, at), 'type': 3}, // in the cursor's tie read
+        ],
+        mms: [
+          for (var id = 10; id <= 11; id++) _mms(id, at),
+          {..._mms(20, later), 'm_type': 0x80, 'msg_box': 3},
+          {..._mms(1, at), 'm_type': 0x80, 'msg_box': 3},
+        ],
+      );
+      final lookup = LookupService();
+      final pages = <List<(SmsMmsType, int)>>[];
+      ThreadPageCursor? cursor;
+      for (var i = 0; i < 10; i++) {
+        final page = await lookup.getNormalizedThreadPage(
+          7,
+          limit: 3,
+          cursor: cursor,
+        );
+        pages.add([for (final m in page) (m.channel, m.id)]);
+        if (page.length < 3) break;
+        cursor = ThreadPageCursor.fromMessage(page.last);
+      }
+      expect(pages, [
+        [(SmsMmsType.sms, 13), (SmsMmsType.sms, 12), (SmsMmsType.mms, 11)],
+        [(SmsMmsType.sms, 11), (SmsMmsType.mms, 10), (SmsMmsType.sms, 10)],
+        <(SmsMmsType, int)>[],
+      ]);
+    },
+  );
+
+  test(
     'fractional SMS cursor includes older MMS in the same second once',
     () async {
       final smsAt = at.add(const Duration(milliseconds: 500));
@@ -132,6 +170,7 @@ Map<String, Object?> _mms(int id, DateTime at) => {
   'thread_id': 7,
   'date': at.millisecondsSinceEpoch ~/ 1000,
   'm_type': 0x84,
+  'msg_box': 1,
   'read': 1,
 };
 
