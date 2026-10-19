@@ -26,35 +26,42 @@ internal class MmsDraftWriter(private val context: Context) {
      * a draft is never unread or unseen, so it must not count toward the
      * conversation's unread state or notifications.
      *
-     * @throws IllegalStateException when the provider keeps no row or rejects the read + seen update.
+     * @throws MmsDraftWriteException on any failure, naming the row when one was
+     *   inserted before it, so the caller can remove exactly that row.
      */
     fun persist(addresses: List<String>, content: MmsDraftContent): Long {
-        val subscriptionId = selectSubscriptionId(content.subscriptionId) { SmsManager.getDefaultSmsSubscriptionId() }
-        val req = Transaction.composeSendReq(
-            context,
-            null,
-            addresses.toTypedArray(),
-            null,
-            parts(content),
-            subscriptionId,
-        )
-        val uri = PduPersister.getPduPersister(context).persist(
-            req,
-            Telephony.Mms.Draft.CONTENT_URI,
-            true,
-            true,
-            null,
-            subscriptionId,
-        )
-        val values = ContentValues().apply {
-            put(Telephony.Mms.READ, 1)
-            put(Telephony.Mms.SEEN, 1)
+        var insertedId: Long? = null
+        try {
+            val subscriptionId =
+                selectSubscriptionId(content.subscriptionId) { SmsManager.getDefaultSmsSubscriptionId() }
+            val req = Transaction.composeSendReq(
+                context,
+                null,
+                addresses.toTypedArray(),
+                null,
+                parts(content),
+                subscriptionId,
+            )
+            val uri = PduPersister.getPduPersister(context).persist(
+                req,
+                Telephony.Mms.Draft.CONTENT_URI,
+                true,
+                true,
+                null,
+                subscriptionId,
+            ) { inserted -> insertedId = ContentUris.parseId(inserted) }
+            val values = ContentValues().apply {
+                put(Telephony.Mms.READ, 1)
+                put(Telephony.Mms.SEEN, 1)
+            }
+            val draftId = ContentUris.parseId(uri)
+            check(context.contentResolver.update(uri, values, null, null) > 0) {
+                "The provider kept no row to mark draft $draftId read and seen"
+            }
+            return draftId
+        } catch (e: Exception) {
+            throw MmsDraftWriteException(insertedId, e)
         }
-        val draftId = ContentUris.parseId(uri)
-        check(context.contentResolver.update(uri, values, null, null) > 0) {
-            "The provider kept no row to mark draft $draftId read and seen"
-        }
-        return draftId
     }
 
     private fun parts(content: MmsDraftContent): List<MMSPart> =
@@ -74,3 +81,10 @@ internal class MmsDraftWriter(private val context: Context) {
             },
         )
 }
+
+/**
+ * A failed [MmsDraftWriter.persist]. [insertedId] is the `_id` of the draft row
+ * the persister had inserted when it failed, or null when it failed before
+ * inserting one. The cause carries the failure; its message may echo content.
+ */
+internal class MmsDraftWriteException(val insertedId: Long?, cause: Throwable) : Exception(cause)

@@ -12,6 +12,10 @@ import io.flutter.plugin.common.MethodChannel
 import io.simplezen.simple_permissions_android.PermissionDeniedException
 import io.simplezen.simple_permissions_android.PermissionGuards
 import io.simplezen.simple_sms.messaging.getMimeType
+import io.simplezen.simple_sms.mms.codec.PduHeaders
+import io.simplezen.simple_sms.mms.codec.TEXT_STORED_CONTENT_TYPES
+import io.simplezen.simple_sms.mms.sending.Settings
+import io.simplezen.simple_sms.mms.support.SubscriptionIdChecker
 import java.io.File
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -25,7 +29,8 @@ import java.util.IdentityHashMap
  *
  * Each write requires the default-SMS role and is read back: a save succeeds
  * with the draft's native `_id` only when that row is the thread's one draft
- * and holds the saved body (and the named subscription, or the attachments); a
+ * and holds the saved body (and the named subscription), or for an MMS draft
+ * its attachments (type and bytes), flags and recipients; a
  * discard succeeds with `"discarded"` or `"alreadyAbsent"` only when no draft
  * remains in either table. Otherwise it fails with a code the Dart side mirrors
  * as `DraftWriteFailureReason`. The writes and their read-backs are blocking
@@ -67,8 +72,26 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         private const val MMS_DRAFT_BY_ID =
             "${Telephony.Mms._ID} = ? AND ${Telephony.Mms.THREAD_ID} = ? AND ${Telephony.Mms.MESSAGE_BOX} = ?"
 
+        /** One MMS draft by id and box in whatever thread it landed: a save finds its own stray row this way. */
+        private const val MMS_DRAFT_BY_ID_ANY_THREAD =
+            "${Telephony.Mms._ID} = ? AND ${Telephony.Mms.MESSAGE_BOX} = ?"
+
         private const val MMS_BY_ID = "${Telephony.Mms._ID} = ?"
         private const val PARTS_OF_MMS = "${Telephony.Mms.Part.MSG_ID} = ?"
+        private const val TO_ADDRESSES = "${Telephony.Mms.Addr.TYPE} = ?"
+
+        /**
+         * The most bytes one attachment, and all of a draft's, may hold. A draft is read
+         * into memory whole, written, and read back to verify it, so the size is bounded
+         * before any file is read. The bounds are those of a send through the app that
+         * consumes this plugin (16 MiB an attachment, 32 MiB a message).
+         */
+        private const val MAX_ATTACHMENT_BYTES = 16L * 1024 * 1024
+        private const val MAX_DRAFT_BYTES = 32L * 1024 * 1024
+        private const val READ_CHUNK_BYTES = 64 * 1024
+        private const val BOUNDS_MESSAGE =
+            "saveMmsDraft takes attachments of at most $MAX_ATTACHMENT_BYTES bytes each and " +
+                "$MAX_DRAFT_BYTES bytes in all"
 
         /**
          * Within a conversation URI, a selection no row matches. The delete still
@@ -88,9 +111,21 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             Telephony.Sms.SUBSCRIPTION_ID,
         )
 
-        private val MMS_DRAFT_PROJECTION = arrayOf(Telephony.Mms._ID, Telephony.Mms.DATE)
+        private val MMS_DRAFT_ID_PROJECTION = arrayOf(Telephony.Mms._ID)
+        private val MMS_DRAFT_PROJECTION = arrayOf(
+            Telephony.Mms._ID,
+            Telephony.Mms.DATE,
+            Telephony.Mms.READ,
+            Telephony.Mms.SEEN,
+            Telephony.Mms.SUBSCRIPTION_ID,
+        )
         private val MMS_THREAD_PROJECTION = arrayOf(Telephony.Mms.THREAD_ID)
-        private val PART_PROJECTION = arrayOf(Telephony.Mms.Part.CONTENT_TYPE, Telephony.Mms.Part.TEXT)
+        private val ADDRESS_PROJECTION = arrayOf(Telephony.Mms.Addr.ADDRESS)
+        private val PART_PROJECTION = arrayOf(
+            Telephony.Mms.Part._ID,
+            Telephony.Mms.Part.CONTENT_TYPE,
+            Telephony.Mms.Part.TEXT,
+        )
     }
 
     private val mmsWriter = MmsDraftWriter(context)
@@ -185,10 +220,12 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
      * draft: persist a new MMS draft, then delete the thread's earlier MMS
      * drafts and its SMS drafts.
      *
-     * The thread must already be listed, and every file is read before anything
-     * is written. The new draft must land in [threadId]: the PDU persister
-     * allocates the thread from the [addresses], so a draft that resolved to
-     * another thread is removed from it and the save fails.
+     * The thread must already be listed, and every file is read, within the
+     * size bounds, before anything is written. The new draft must land in
+     * [threadId]: the PDU persister allocates the thread from the [addresses],
+     * so a draft that resolved to another thread is removed from it and the
+     * save fails. A save that fails after the draft was inserted removes that
+     * row, wherever it is, and says so when it cannot.
      */
     private fun saveMmsDraft(
         result: MethodChannel.Result,
@@ -204,9 +241,20 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                 result.error("THREAD_NOT_FOUND", "Thread $threadId is not on the device; no draft was saved", null)
                 return
             }
-            MmsDraftContent(body, attachmentPaths.map(::readAttachment), subscriptionId) to threadDrafts(threadId)
+            requireWithinSizeBounds(attachmentPaths)
+            MmsDraftContent(body, readAttachments(attachmentPaths), subscriptionId) to threadDrafts(threadId)
         } catch (e: PermissionDeniedException) {
             result.error("NOT_DEFAULT_SMS_APP", e.message, null)
+            return
+        } catch (e: AttachmentTooLargeException) {
+            result.error("INVALID_ARGUMENT", e.message, null)
+            return
+        } catch (e: OutOfMemoryError) {
+            result.error(
+                "DRAFT_WRITE_FAILED",
+                "Not enough memory to read the attachments of thread $threadId; nothing was written",
+                null,
+            )
             return
         } catch (e: Exception) {
             result.error(
@@ -219,54 +267,92 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         }
         val draftId = try {
             mmsWriter.persist(addresses, content)
-        } catch (e: Exception) {
-            // The row may have been inserted before the failure: no unread,
-            // unfinished draft is left beside the earlier ones, which stay.
-            val cleaned = removeUnfinishedMmsDrafts(threadId, keeping = earlier.mms.map { it.id }.toSet())
+        } catch (e: MmsDraftWriteException) {
+            // The persister cleans up its temporary parts; a row it inserted is removed here.
+            val inserted = e.insertedId
+            val cleaned = inserted == null || removeInsertedDraft(inserted)
             result.error(
                 "DRAFT_WRITE_FAILED",
                 "Failed to save the attachment draft of thread $threadId" +
-                    (if (cleaned) "" else " (an unfinished draft could not be removed)") +
-                    ": ${e.javaClass.name}",
+                    (if (cleaned) "" else " (the unfinished draft $inserted could not be removed)") +
+                    ": ${e.cause?.javaClass?.name}",
                 bodySafeTrace(e),
             )
             return
+        }
+        /**
+         * Fails the save with [code] after removing the new draft. A draft that cannot be
+         * removed is a failed write whatever went wrong first, and the error says so.
+         */
+        fun failAfterInsert(code: String, what: String, cause: Exception? = null) {
+            val cleaned = removeInsertedDraft(draftId)
+            result.error(
+                if (cleaned) code else "DRAFT_WRITE_FAILED",
+                what + if (cleaned) "; the new draft was removed" else "; the new draft $draftId could not be removed",
+                cause?.let(::bodySafeTrace),
+            )
         }
         val draftThreadId = try {
             mmsThreadOf(draftId)
         } catch (e: Exception) {
-            result.error(
+            failAfterInsert(
                 "VERIFY_FAILED",
                 "Saved attachment draft $draftId but could not read its thread: ${e.javaClass.name}",
-                bodySafeTrace(e),
+                e,
             )
             return
         }
         if (draftThreadId != threadId) {
-            removeStrayMmsDraft(result, draftId, draftThreadId, threadId)
+            failAfterInsert(
+                "DRAFT_WRITE_INCOMPLETE",
+                "The recipients resolve to thread $draftThreadId, not $threadId, so attachment draft $draftId " +
+                    "landed in the wrong thread",
+            )
+            return
+        }
+        // The new draft's own content is verified before anything of the thread's is removed, so
+        // a draft the provider mangled costs the earlier ones nothing.
+        val (written, verified) = try {
+            mmsDraftRow(draftId) to
+                content.copy(subscriptionId = subscriptionId.takeIf { subscriptionStoredFor(it) })
+        } catch (e: Exception) {
+            failAfterInsert(
+                "VERIFY_FAILED",
+                "Saved attachment draft $draftId of thread $threadId but could not read it back: ${e.javaClass.name}",
+                e,
+            )
+            return
+        }
+        if (written == null || !isMmsDraftContentSaved(written, verified, addresses)) {
+            failAfterInsert(
+                "DRAFT_WRITE_INCOMPLETE",
+                "Attachment draft $draftId of thread $threadId does not hold its ${content.attachments.size} " +
+                    "attachments, flags, recipients and content as saved; read back " +
+                    (written?.let { "${it.parts.size} parts" } ?: "no such row"),
+            )
             return
         }
         try {
-            earlier.mms.forEach { deleteMmsDraft(it.id, threadId) }
-            if (earlier.mms.isNotEmpty() || earlier.sms.isNotEmpty()) {
+            earlier.mmsIds.forEach { deleteMmsDraft(it, threadId) }
+            if (earlier.mmsIds.isNotEmpty() || earlier.sms.isNotEmpty()) {
                 context.contentResolver.delete(conversationUri(threadId), DRAFTS, arrayOf(DRAFT_TYPE.toString()))
             }
         } catch (e: Exception) {
-            result.error(
+            failAfterInsert(
                 "DRAFT_WRITE_FAILED",
                 "Saved attachment draft $draftId of thread $threadId but could not remove the thread's " +
                     "earlier drafts: ${e.javaClass.name}",
-                bodySafeTrace(e),
+                e,
             )
             return
         }
         val (readBack, stillListed) = try {
-            threadDrafts(threadId) to threadListed(threadId)
+            ThreadDrafts(draftsIn(threadId), mmsDraftIds(threadId)) to threadListed(threadId)
         } catch (e: Exception) {
-            result.error(
+            failAfterInsert(
                 "VERIFY_FAILED",
                 "Saved attachment draft $draftId of thread $threadId but could not read it back: ${e.javaClass.name}",
-                bodySafeTrace(e),
+                e,
             )
             return
         }
@@ -276,18 +362,15 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
                 draftId,
                 threadId,
                 delete = { deleteMmsDraft(draftId, threadId) },
-                remains = { mmsDraftsIn(threadId).any { it.id == draftId } },
+                remains = { mmsDraftIds(threadId).contains(draftId) },
             )
             return
         }
-        if (!isMmsDraftSaved(readBack.mms, readBack.sms.size, draftId, content)) {
-            result.error(
+        if (!isOnlyDraft(readBack.mmsIds, readBack.sms.size, draftId)) {
+            failAfterInsert(
                 "DRAFT_WRITE_INCOMPLETE",
-                "Thread $threadId does not hold exactly saved attachment draft $draftId with its " +
-                    "${content.attachments.size} attachments; read back MMS draft rows " +
-                    "${readBack.mms.map { "${it.id} (${it.parts.size} parts)" }} and SMS draft rows " +
-                    "${readBack.sms.map { it.id }}",
-                null,
+                "Thread $threadId does not hold exactly saved attachment draft $draftId; read back MMS draft " +
+                    "rows ${readBack.mmsIds} and SMS draft rows ${readBack.sms.map { it.id }}",
             )
             return
         }
@@ -296,53 +379,44 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
     }
 
     /**
-     * Delete the MMS drafts of [threadId] other than [keeping], which a save
-     * that failed part-way may have left; true when none remains.
+     * Remove MMS draft [draftId], which a save inserted, from the thread it
+     * landed in, and have the provider recompute that thread: a delete through
+     * its conversation URI removes the thread when the draft was all it held
+     * (an MMS delete through the table URI never removes an empty thread). Only
+     * that row goes: the recipients may have resolved to a conversation holding
+     * other messages. True once the row is gone; a failure is logged and false.
      */
-    private fun removeUnfinishedMmsDrafts(threadId: Long, keeping: Set<Long>): Boolean = try {
-        mmsDraftsIn(threadId).filter { it.id !in keeping }.forEach { deleteMmsDraft(it.id, threadId) }
-        mmsDraftsIn(threadId).all { it.id in keeping }
+    private fun removeInsertedDraft(draftId: Long): Boolean = try {
+        // The thread is looked up first so it can be recomputed. A failed lookup must not keep
+        // the row from being deleted, but then the thread is not recomputed: not fully removed.
+        var recomputable = true
+        val landedIn = try {
+            mmsThreadOfOrNull(draftId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read the thread of the new MMS draft $draftId: ${e.javaClass.name}")
+            recomputable = false
+            null
+        }
+        context.contentResolver.delete(
+            MMS_URI,
+            MMS_DRAFT_BY_ID_ANY_THREAD,
+            arrayOf(draftId.toString(), MMS_DRAFT_BOX.toString()),
+        )
+        landedIn?.let { context.contentResolver.delete(conversationUri(it), NO_ROW, arrayOf(NO_ROW_ID)) }
+        mmsThreadOfOrNull(draftId) == null && recomputable
     } catch (e: Exception) {
-        Log.w(TAG, "Could not remove the unfinished MMS draft of thread $threadId: ${e.javaClass.name}")
+        Log.w(TAG, "Could not remove the new MMS draft $draftId: ${e.javaClass.name}")
         false
     }
 
     /**
-     * Remove draft [draftId], which the persister put in thread [strayThreadId]
-     * instead of [threadId], and fail the save. Only that row goes: the
-     * recipients may have resolved to a conversation holding other messages. A
-     * delete through the thread's conversation URI then makes the provider
-     * recompute it, which removes the thread when the draft was all it held (an
-     * MMS delete through the table URI never removes an empty thread).
+     * Whether `PduPersister` stored [subscriptionId] on the draft it persisted: only a real
+     * subscription, and only on a provider with a subscription column. Otherwise the save
+     * cannot be verified against it.
      */
-    private fun removeStrayMmsDraft(result: MethodChannel.Result, draftId: Long, strayThreadId: Long, threadId: Long) {
-        val remains = try {
-            deleteMmsDraft(draftId, strayThreadId)
-            context.contentResolver.delete(conversationUri(strayThreadId), NO_ROW, arrayOf(NO_ROW_ID))
-            mmsDraftsIn(strayThreadId).any { it.id == draftId }
-        } catch (e: Exception) {
-            result.error(
-                "DRAFT_WRITE_FAILED",
-                "The attachment draft $draftId landed in thread $strayThreadId, not $threadId, and could not " +
-                    "be removed from it: ${e.javaClass.name}",
-                bodySafeTrace(e),
-            )
-            return
-        }
-        if (remains) {
-            result.error(
-                "DRAFT_WRITE_FAILED",
-                "The attachment draft $draftId landed in thread $strayThreadId, not $threadId, and remains in it",
-                null,
-            )
-            return
-        }
-        result.error(
-            "DRAFT_WRITE_INCOMPLETE",
-            "The recipients resolve to thread $strayThreadId, not $threadId; the attachment draft was removed from it",
-            null,
-        )
-    }
+    private fun subscriptionStoredFor(subscriptionId: Int?): Boolean =
+        subscriptionId != null && subscriptionId != Settings.DEFAULT_SUBSCRIPTION_ID &&
+            SubscriptionIdChecker.getInstance(context).canUseSubscriptionId()
 
     /**
      * Save [content] as [threadId]'s draft: update the thread's newest SMS draft
@@ -412,13 +486,13 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             )
             return
         }
-        if (readBack.mms.isNotEmpty() || !isDraftSaved(readBack.sms, draftId, content)) {
+        if (readBack.mmsIds.isNotEmpty() || !isDraftSaved(readBack.sms, draftId, content)) {
             result.error(
                 "DRAFT_WRITE_INCOMPLETE",
                 "Thread $threadId does not hold exactly saved draft $draftId " +
                     "(subscription ${content.subscriptionId ?: "unnamed"}); read back draft rows " +
                     "${readBack.sms.map { "${it.id} (subscription ${it.subscriptionId})" }} " +
-                    "and MMS draft rows ${readBack.mms.map { it.id }}",
+                    "and MMS draft rows ${readBack.mmsIds}",
                 null,
             )
             return
@@ -479,8 +553,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         val draftId = draftToKeep(drafts.sms)?.id?.takeIf { updateDraft(it, threadId, content, now) }
             ?: insertDraft(threadId, content, now)
             ?: return null
-        drafts.mms.forEach { deleteMmsDraft(it.id, threadId) }
-        if (drafts.mms.isNotEmpty() || drafts.sms.any { it.id != draftId }) {
+        drafts.mmsIds.forEach { deleteMmsDraft(it, threadId) }
+        if (drafts.mmsIds.isNotEmpty() || drafts.sms.any { it.id != draftId }) {
             context.contentResolver.delete(
                 conversationUri(threadId),
                 DRAFTS_EXCEPT,
@@ -539,7 +613,7 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
     private fun discardDraft(result: MethodChannel.Result, threadId: Long) {
         val deletedRows = try {
             PermissionGuards.requireRoleHeld(context, RoleManager.ROLE_SMS)
-            val mmsDeleted = mmsDraftsIn(threadId).sumOf { deleteMmsDraft(it.id, threadId) }
+            val mmsDeleted = mmsDraftIds(threadId).sumOf { deleteMmsDraft(it, threadId) }
             mmsDeleted + context.contentResolver.delete(conversationUri(threadId), DRAFTS, arrayOf(DRAFT_TYPE.toString()))
         } catch (e: PermissionDeniedException) {
             result.error("NOT_DEFAULT_SMS_APP", e.message, null)
@@ -565,15 +639,15 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         Log.d(
             TAG,
             "Discarded $deletedRows draft rows of thread $threadId, " +
-                "${remaining.sms.size} SMS and ${remaining.mms.size} MMS remain",
+                "${remaining.sms.size} SMS and ${remaining.mmsIds.size} MMS remain",
         )
-        when (classifyThreadDiscard(deletedRows, remaining.sms.size, remaining.mms.size)) {
+        when (classifyThreadDiscard(deletedRows, remaining.sms.size, remaining.mmsIds.size)) {
             DraftDiscardOutcome.DISCARDED -> result.success("discarded")
             DraftDiscardOutcome.ALREADY_ABSENT -> result.success("alreadyAbsent")
             DraftDiscardOutcome.INCOMPLETE -> result.error(
                 "DRAFT_WRITE_INCOMPLETE",
                 "Thread $threadId still holds SMS draft rows ${remaining.sms.map { it.id }} " +
-                    "and MMS draft rows ${remaining.mms.map { it.id }}",
+                    "and MMS draft rows ${remaining.mmsIds}",
                 null,
             )
         }
@@ -618,25 +692,65 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
 
     private fun draftsInThreadArgs(threadId: Long) = arrayOf(threadId.toString(), DRAFT_TYPE.toString())
 
-    /** [threadId]'s drafts in both tables. */
-    private fun threadDrafts(threadId: Long) = ThreadDrafts(draftsIn(threadId), mmsDraftsIn(threadId))
+    /** [threadId]'s drafts in both tables, the MMS ones by id only: a cleanup must not depend on a draft's parts. */
+    private fun threadDrafts(threadId: Long) = ThreadDrafts(draftsIn(threadId), mmsDraftIds(threadId))
+
+    /** The `_id`s of [threadId]'s MMS draft rows (`msg_box = 3`). A missing or non-numeric `_id` throws. */
+    private fun mmsDraftIds(threadId: Long): List<Long> =
+        queryRows(
+            context,
+            MMS_URI,
+            MMS_DRAFT_ID_PROJECTION,
+            MMS_DRAFTS_IN_THREAD,
+            arrayOf(threadId.toString(), MMS_DRAFT_BOX.toString()),
+        ).map { row ->
+            providerLong(row[Telephony.Mms._ID], Telephony.Mms._ID, MMS_URI)
+                ?: throw IllegalStateException("Missing ${Telephony.Mms._ID} from $MMS_URI")
+        }
 
     /**
-     * [threadId]'s MMS draft rows (`msg_box = 3`) with their parts, in `_id`
-     * order. A missing or non-numeric `_id` or a part without a content type
-     * throws instead of reading as fewer rows or parts.
+     * MMS draft [draftId] as a save is verified against it: flags, subscription, `TO`
+     * recipients and parts in `_id` order, with the data of every part the provider does not
+     * keep as text; null when there is no such draft. Only this row is read, however many
+     * drafts the thread holds. A non-numeric `_id` or a part without a content type throws
+     * instead of reading as fewer rows or parts.
      */
-    private fun mmsDraftsIn(threadId: Long): List<MmsDraftRow> =
+    private fun mmsDraftRow(draftId: Long): MmsDraftRow? =
         queryRows(
             context,
             MMS_URI,
             MMS_DRAFT_PROJECTION,
-            MMS_DRAFTS_IN_THREAD,
-            arrayOf(threadId.toString(), MMS_DRAFT_BOX.toString()),
-        ).map { row ->
+            MMS_DRAFT_BY_ID_ANY_THREAD,
+            arrayOf(draftId.toString(), MMS_DRAFT_BOX.toString()),
+        ).singleOrNull()?.let { row ->
             val id = providerLong(row[Telephony.Mms._ID], Telephony.Mms._ID, MMS_URI)
                 ?: throw IllegalStateException("Missing ${Telephony.Mms._ID} from $MMS_URI")
-            MmsDraftRow(id, providerLong(row[Telephony.Mms.DATE], Telephony.Mms.DATE, MMS_URI), mmsPartsOf(id))
+            MmsDraftRow(
+                id = id,
+                date = providerLong(row[Telephony.Mms.DATE], Telephony.Mms.DATE, MMS_URI),
+                read = providerLong(row[Telephony.Mms.READ], Telephony.Mms.READ, MMS_URI),
+                seen = providerLong(row[Telephony.Mms.SEEN], Telephony.Mms.SEEN, MMS_URI),
+                subscriptionId = providerLong(
+                    row[Telephony.Mms.SUBSCRIPTION_ID],
+                    Telephony.Mms.SUBSCRIPTION_ID,
+                    MMS_URI,
+                ),
+                recipients = mmsRecipientsOf(id),
+                parts = mmsPartsOf(id),
+            )
+        }
+
+    /** The addresses of MMS [mmsId]'s `TO` recipients. A row without an address throws. */
+    private fun mmsRecipientsOf(mmsId: Long): List<String> =
+        queryRows(
+            context,
+            Uri.withAppendedPath(Uri.withAppendedPath(MMS_URI, mmsId.toString()), "addr"),
+            ADDRESS_PROJECTION,
+            TO_ADDRESSES,
+            arrayOf(PduHeaders.TO.toString()),
+        ).map { row ->
+            row[Telephony.Mms.Addr.ADDRESS] as? String
+                ?: throw IllegalStateException("Missing ${Telephony.Mms.Addr.ADDRESS} of a recipient of MMS $mmsId")
         }
 
     private fun mmsPartsOf(mmsId: Long): List<MmsDraftPart> =
@@ -648,19 +762,35 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             arrayOf(mmsId.toString()),
             sortOrder = "${Telephony.Mms.Part._ID} ASC",
         ).map { row ->
-            MmsDraftPart(
-                contentType = row[Telephony.Mms.Part.CONTENT_TYPE] as? String
-                    ?: throw IllegalStateException("Missing ${Telephony.Mms.Part.CONTENT_TYPE} of a part of MMS $mmsId"),
-                text = row[Telephony.Mms.Part.TEXT] as? String,
-            )
+            val contentType = row[Telephony.Mms.Part.CONTENT_TYPE] as? String
+                ?: throw IllegalStateException("Missing ${Telephony.Mms.Part.CONTENT_TYPE} of a part of MMS $mmsId")
+            if (contentType in TEXT_STORED_CONTENT_TYPES) {
+                MmsDraftPart(contentType, row[Telephony.Mms.Part.TEXT] as? String)
+            } else {
+                val partId = providerLong(row[Telephony.Mms.Part._ID], Telephony.Mms.Part._ID, MMS_PART_URI)
+                    ?: throw IllegalStateException("Missing ${Telephony.Mms.Part._ID} of a part of MMS $mmsId")
+                MmsDraftPart(contentType, null, readPartData(partId))
+            }
         }
+
+    /** The data of MMS part [partId], read through its content URI (a binary stream, as the plugin's rules allow). */
+    private fun readPartData(partId: Long): ByteArray =
+        context.contentResolver.openInputStream(ContentUris.withAppendedId(MMS_PART_URI, partId))
+            ?.use { it.readBytes() }
+            ?: throw IllegalStateException("The provider opened no data for part $partId")
 
     /** The thread MMS row [mmsId] belongs to; a missing row or thread throws. */
     private fun mmsThreadOf(mmsId: Long): Long =
+        mmsThreadOfOrNull(mmsId) ?: throw IllegalStateException("MMS $mmsId has no thread in $MMS_URI")
+
+    /** The thread MMS row [mmsId] belongs to, or null when there is no such row. */
+    private fun mmsThreadOfOrNull(mmsId: Long): Long? =
         queryRows(context, MMS_URI, MMS_THREAD_PROJECTION, MMS_BY_ID, arrayOf(mmsId.toString()))
             .singleOrNull()
-            ?.let { providerLong(it[Telephony.Mms.THREAD_ID], Telephony.Mms.THREAD_ID, MMS_URI) }
-            ?: throw IllegalStateException("MMS $mmsId has no thread in $MMS_URI")
+            ?.let {
+                providerLong(it[Telephony.Mms.THREAD_ID], Telephony.Mms.THREAD_ID, MMS_URI)
+                    ?: throw IllegalStateException("MMS $mmsId has no thread in $MMS_URI")
+            }
 
     /** Delete SMS draft [draftId] of [threadId]; the number of rows deleted. */
     private fun deleteSmsDraft(draftId: Long, threadId: Long): Int =
@@ -678,12 +808,57 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
             arrayOf(draftId.toString(), threadId.toString(), MMS_DRAFT_BOX.toString()),
         )
 
-    /** The file at [path] with its raw bytes and MIME type, as a send reads it; a read failure throws. */
-    private fun readAttachment(path: String) = MmsDraftAttachment(
-        path = path,
-        mimeType = getMimeType(path) ?: "application/octet-stream",
-        bytes = File(path).readBytes(),
-    )
+    /**
+     * Fails with [AttachmentTooLargeException] when a file of [paths] exceeds
+     * [MAX_ATTACHMENT_BYTES] or all of them together exceed [MAX_DRAFT_BYTES],
+     * before any is read. A missing file has no size here: reading it fails.
+     */
+    private fun requireWithinSizeBounds(paths: List<String>) {
+        val sizes = paths.map { File(it).length() }
+        if (sizes.any { it > MAX_ATTACHMENT_BYTES } || sizes.sum() > MAX_DRAFT_BYTES) {
+            throw AttachmentTooLargeException("$BOUNDS_MESSAGE; got sizes $sizes")
+        }
+    }
+
+    /**
+     * The files at [paths] with their raw bytes and MIME types, as a send reads
+     * them; a read failure throws. The bounds are enforced against the bytes
+     * read, not only the sizes the file system reports: a file can grow
+     * meanwhile, and a special file reports none.
+     */
+    private fun readAttachments(paths: List<String>): List<MmsDraftAttachment> {
+        var total = 0L
+        return paths.map { path ->
+            val bytes = readBounded(File(path), minOf(MAX_ATTACHMENT_BYTES, MAX_DRAFT_BYTES - total))
+            total += bytes.size
+            MmsDraftAttachment(path, getMimeType(path) ?: "application/octet-stream", bytes)
+        }
+    }
+
+    /**
+     * All of [file]'s bytes, failing with [AttachmentTooLargeException] once they exceed [limit].
+     * The buffer starts at the size the file system reports (within [limit]) so a file of that
+     * size is read without copies; a file that is longer, or reports none, grows it.
+     */
+    private fun readBounded(file: File, limit: Long): ByteArray {
+        var buffer = ByteArray(file.length().coerceIn(READ_CHUNK_BYTES.toLong(), limit.coerceAtLeast(1)).toInt())
+        var total = 0
+        file.inputStream().use { input ->
+            while (true) {
+                if (total == buffer.size) {
+                    if (total.toLong() >= limit) {
+                        if (input.read() < 0) break
+                        throw AttachmentTooLargeException("$BOUNDS_MESSAGE; a file exceeded its share")
+                    }
+                    buffer = buffer.copyOf(minOf(buffer.size.toLong() * 2, limit).toInt())
+                }
+                val read = input.read(buffer, total, buffer.size - total)
+                if (read < 0) break
+                total += read
+            }
+        }
+        return if (total == buffer.size) buffer else buffer.copyOf(total)
+    }
 
     /** [raw] as a non-empty list of non-blank strings, or null when it is anything else. */
     private fun nonBlankStrings(raw: Any?): List<String>? =
@@ -698,5 +873,8 @@ class DraftActions(val context: Context) : MethodChannel.MethodCallHandler {
         ContentUris.withAppendedId(Telephony.Sms.Conversations.CONTENT_URI, threadId)
 }
 
-/** A thread's native drafts in both tables. */
-private data class ThreadDrafts(val sms: List<SmsDraftRow>, val mms: List<MmsDraftRow>)
+/** A thread's native drafts in both tables: the SMS rows, and the `_id`s of the MMS ones. */
+private data class ThreadDrafts(val sms: List<SmsDraftRow>, val mmsIds: List<Long>)
+
+/** An attachment bigger than a draft may hold; the message names the bounds and the sizes, never a path. */
+private class AttachmentTooLargeException(message: String) : Exception(message)

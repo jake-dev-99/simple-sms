@@ -83,9 +83,21 @@ return typed results.
   finds exactly the saved draft. `discardSmsDraft` is renamed `discardDraft`
   (the name never shipped in a release) and also removes MMS drafts; discarding
   the draft of a draft-only thread deletes the conversation, MMS drafts
-  included. Recipients that resolve to another thread remove the new row from
-  it and fail with `draftWriteIncomplete`; an unreadable attachment fails with
-  `draftWriteFailed` before anything is written.
+  included. The save is verified against what the provider kept: each
+  attachment's bytes, the read and seen flags, the named SIM and the recipient
+  addresses. A save that fails after its draft was inserted (recipients that
+  resolve to another thread, an unverified read-back, earlier drafts that
+  cannot be removed) removes that new row wherever it landed, and reports
+  `draftWriteFailed` when it cannot. An unreadable attachment fails with
+  `draftWriteFailed` before anything is written; a file over 16 MiB, or
+  attachments over 32 MiB together, fail with `invalidArgument` (the bounds are
+  enforced on the bytes read). The new draft is verified before the thread's
+  earlier drafts are removed, so a draft the provider mangled costs them
+  nothing. A `text/plain` or `text/html` attachment is kept as text, so one that
+  is not valid UTF-8 or is over 300 KiB fails with `draftWriteIncomplete`. The
+  PDU persister's temporary part IDs are now unique per persist, so a draft
+  save and a send in the same millisecond can no longer claim each other's
+  parts, and the parts of a persist that failed are deleted.
 
 - **`MmsFilter.messageBoxes` and `excludeMessageBoxes` (UNFY-281).**
   `messageBoxes` adds `msg_box IN (...)`; `excludeMessageBoxes` adds one

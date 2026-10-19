@@ -317,6 +317,24 @@ class DraftActionsTest {
     }
 
     /**
+     * Purpose: removing a thread's MMS drafts never reads their parts, so a
+     * draft whose parts can't be read (no content type, an unavailable parts
+     * table) can still be replaced or discarded.
+     */
+    @Test
+    fun saveAndDiscard_removeMmsDraftsWithoutReadingTheirParts() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.parts += MmsPartRow(id = 1, mid = 60, contentType = "")
+
+        save("5", "text now")
+        mms.rows += MmsRow(id = 61, threadId = 5, box = 3)
+        discard("5")
+
+        assertEquals(emptyList<Long>(), mms.rows.map { it.id })
+        assertEquals("no part was listed", 0, mms.partQueries)
+    }
+
+    /**
      * Purpose: a text save removes the thread's MMS drafts, one by one and only
      * its own, before the SMS write's conversation-URI delete recomputes the thread.
      */

@@ -10,6 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 import org.junit.Assert.assertEquals
 import org.robolectric.Shadows.shadowOf
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 
 /** Purpose: one `content://sms` row, holding only the columns draft writes touch. */
 internal data class SmsRow(
@@ -197,6 +198,9 @@ internal class FakeThreadsProvider : ContentProvider() {
         throw UnsupportedOperationException("Draft writes must not inspect MIME types")
 }
 
+/** The part types the provider keeps as text; any other part's data is read from its URI. */
+private val TEXT_KEPT_PARTS = setOf("text/plain", "text/html", "application/smil")
+
 /** Where `PduPersister.release` deletes its temporary DRM objects. */
 private val PERSISTER_TEMPORARY_URI = "content://mms/${Long.MAX_VALUE}/part"
 
@@ -208,7 +212,11 @@ internal data class MmsRow(
     val date: Long = 1L,
     val read: Int = 0,
     val seen: Int = 0,
+    val subId: Long? = null,
 )
+
+/** Purpose: one `content://mms/<id>/addr` row. */
+internal data class MmsAddrRow(val mid: Long, val address: String, val type: Int)
 
 /** Purpose: one `content://mms/part` row; a non-text part's bytes are read with [FakeMmsProvider.bytesOf]. */
 internal data class MmsPartRow(
@@ -229,8 +237,10 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
     val rows = mutableListOf<MmsRow>()
     val parts = mutableListOf<MmsPartRow>()
 
+    val addressRows = mutableListOf<MmsAddrRow>()
+
     /** `(mms id, address)` of every `addr` row inserted. */
-    val addresses = mutableListOf<Pair<Long, String>>()
+    val addresses: List<Pair<Long, String>> get() = addressRows.map { it.mid to it.address }
     val insertedDrafts = mutableListOf<ContentValues>()
     val updates = mutableListOf<ProviderWrite>()
 
@@ -250,7 +260,31 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
     private val partBytes = mutableMapOf<Long, ByteArrayOutputStream>()
     private var wrote = false
 
-    fun writeCount() = insertedDrafts.size + parts.size + addresses.size + updates.size + deletes.size
+    /** Data the provider answers for a part instead of what was written to it (a corrupted store). */
+    val storedDataOverride = mutableMapOf<Long, ByteArray>()
+
+    /** The `addr` inserts that fail, by address (a provider that returns no row for one recipient). */
+    val failingAddresses = mutableSetOf<String>()
+
+    /** A provider that answers the read + seen update with a row count but keeps the flags as they were. */
+    var ignoreReadSeenUpdate = false
+
+    /** Thrown by the update that marks a new draft read + seen. */
+    var failDraftRowUpdate: RuntimeException? = null
+
+    /** A provider whose part data cannot be opened. */
+    var failPartReads = false
+
+    /** How many times a message's parts were listed. */
+    var partQueries = 0
+
+    /** A provider without a subscription column, as some API-22 devices are. */
+    var noSubIdColumn = false
+
+    /** The subscription the provider stores whatever the insert named. */
+    var forcedSubId: Long? = null
+
+    fun writeCount() = insertedDrafts.size + parts.size + addressRows.size + updates.size + deletes.size
 
     /** The bytes written to non-text part [partId]. */
     fun bytesOf(partId: Long): ByteArray = partBytes.getValue(partId).toByteArray()
@@ -269,29 +303,66 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
         if (wrote) queryFailureAfterWrite?.let { throw it }
         queries++
         if (nullCursor) return null
-        val args = selectionArgs!!
+        val args = selectionArgs ?: emptyArray()
         val columns = projection!!
         return MatrixCursor(columns).apply {
             val answer: List<Array<Any?>> = when {
                 uri.pathSegments.isEmpty() && selection == "thread_id = ? AND msg_box = ?" -> {
-                    assertEquals(listOf("_id", "date"), columns.toList())
-                    rows.filter { it.threadId == args[0].toLong() && it.box == args[1].toInt() }
-                        .map { arrayOf(it.id, it.date) }
+                    val inBox = rows.filter { it.threadId == args[0].toLong() && it.box == args[1].toInt() }
+                    assertEquals(listOf("_id"), columns.toList())
+                    inBox.map { arrayOf(it.id) }
+                }
+                uri.pathSegments.isEmpty() && selection == "_id = ? AND msg_box = ?" -> {
+                    assertEquals(listOf("_id", "date", "read", "seen", "sub_id"), columns.toList())
+                    rows.filter { it.id == args[0].toLong() && it.box == args[1].toInt() }
+                        .map { arrayOf(it.id, it.date, it.read, it.seen, it.subId) }
+                }
+                // The persister probes whether the provider has a sub_id column.
+                uri.pathSegments.isEmpty() && selection == null && columns.toList() == listOf("sub_id") -> {
+                    if (noSubIdColumn) throw android.database.sqlite.SQLiteException("no such column: sub_id")
+                    emptyList()
                 }
                 uri.pathSegments.isEmpty() && selection == "_id = ?" -> {
                     assertEquals(listOf("thread_id"), columns.toList())
                     rows.filter { it.id == args.single().toLong() }.map { arrayOf(it.threadId) }
                 }
                 uri.pathSegments == listOf("part") && selection == "mid = ?" -> {
-                    assertEquals(listOf("ct", "text"), columns.toList())
+                    assertEquals(listOf("_id", "ct", "text"), columns.toList())
                     assertEquals("_id ASC", sortOrder)
+                    partQueries++
                     parts.filter { it.mid == args.single().toLong() }.sortedBy { it.id }
-                        .map { arrayOf(it.contentType, it.text) }
+                        .onEach { if (it.text == null && it.contentType !in TEXT_KEPT_PARTS) serveData(it) }
+                        .map { arrayOf(it.id, it.contentType, it.text) }
+                }
+                uri.pathSegments.size == 2 && uri.pathSegments[1] == "addr" && selection == "type = ?" -> {
+                    assertEquals(listOf("address"), columns.toList())
+                    addressRows.filter { it.mid == uri.pathSegments[0].toLong() && it.type == args.single().toInt() }
+                        .map { arrayOf(it.address) }
                 }
                 else -> throw AssertionError("Unexpected MMS query: $uri where $selection")
             }
             answer.forEach { addRow(it) }
         }
+    }
+
+    /**
+     * Purpose: make a part's data readable at its content URI, as written to it
+     * unless [storedDataOverride] corrupts it. The stream is registered with the
+     * resolver (a test provider has no authority to open files through) and
+     * rewinds when closed, so each read starts at the beginning.
+     */
+    private fun serveData(part: MmsPartRow) {
+        val uri = Uri.parse("content://mms/part/${part.id}")
+        val stream: InputStream = if (failPartReads) {
+            object : InputStream() {
+                override fun read(): Int = throw java.io.IOException("part data unavailable")
+            }
+        } else {
+            object : java.io.ByteArrayInputStream(storedDataOverride[part.id] ?: bytesOf(part.id)) {
+                override fun close() = reset()
+            }
+        }
+        shadowOf(context.contentResolver).registerInputStream(uri, stream)
     }
 
     /** Purpose: file a draft row, a part under its dummy id, or an address. */
@@ -301,7 +372,13 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
         when {
             segments == listOf("drafts") -> {
                 insertedDrafts += ContentValues(values)
-                rows += MmsRow(id, threadId = values!!.getAsLong("thread_id"), box = 3, date = values.getAsLong("date"))
+                rows += MmsRow(
+                    id,
+                    threadId = values!!.getAsLong("thread_id"),
+                    box = 3,
+                    date = values.getAsLong("date"),
+                    subId = forcedSubId ?: values.getAsLong("sub_id"),
+                )
                 Uri.parse("content://mms/$id")
             }
             segments.size == 2 && segments[1] == "part" -> {
@@ -320,7 +397,9 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
                 partUri
             }
             segments.size == 2 && segments[1] == "addr" -> {
-                addresses += segments[0].toLong() to values!!.getAsString("address")
+                val address = values!!.getAsString("address")
+                if (address in failingAddresses) return@write null
+                addressRows += MmsAddrRow(segments[0].toLong(), address, values.getAsInteger("type"))
                 Uri.parse("content://mms/${segments[0]}/addr/$id")
             }
             else -> throw AssertionError("Unexpected MMS insert: $uri")
@@ -346,7 +425,9 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
                     moved
                 }
                 segments.size == 2 && segments[0] == "drafts" -> {
+                    failDraftRowUpdate?.let { throw it }
                     rowUpdates += ContentValues(values)
+                    if (ignoreReadSeenUpdate) return@write 1
                     val index = rows.indexOfFirst { it.id == segments[1].toLong() }
                     if (index < 0) return@write 0
                     rows[index] = rows[index].copy(
@@ -359,22 +440,33 @@ internal class FakeMmsProvider(private val context: Context) : ContentProvider()
             }
         }
 
-    /** Purpose: remove the matching draft rows with their parts. */
+    /** Purpose: remove the matching draft rows with their parts, or the parts saved under a dummy id. */
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
         // The persister clears its temporary DRM objects when a new context takes it over.
         if (uri.toString() == PERSISTER_TEMPORARY_URI) return 0
-        return deleteDraft(uri, selection, selectionArgs)
+        return deleteRows(uri, selection, selectionArgs)
     }
 
-    private fun deleteDraft(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = write {
+    private fun deleteRows(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = write {
         deletes += ProviderWrite(uri.toString(), selection, selectionArgs?.toList())
         if (ignoreDeletes) return@write 0
+        val segments = uri.pathSegments
+        if (segments.size == 2 && segments[1] == "part" && selection == null) {
+            // The persister discarding the parts it saved under its dummy id.
+            val dummy = segments[0].toLong()
+            return@write parts.count { it.mid == dummy }.also { parts.removeAll { part -> part.mid == dummy } }
+        }
         assertEquals("content://mms", uri.toString())
-        assertEquals("_id = ? AND thread_id = ? AND msg_box = ?", selection)
         val args = selectionArgs!!.map { it.toLong() }
-        val targets = rows.filter { it.id == args[0] && it.threadId == args[1] && it.box.toLong() == args[2] }
+        val targets = when (selection) {
+            "_id = ? AND thread_id = ? AND msg_box = ?" ->
+                rows.filter { it.id == args[0] && it.threadId == args[1] && it.box.toLong() == args[2] }
+            "_id = ? AND msg_box = ?" -> rows.filter { it.id == args[0] && it.box.toLong() == args[1] }
+            else -> throw AssertionError("Unexpected MMS delete: $selection")
+        }
         rows.removeAll(targets)
         parts.removeAll { part -> targets.any { it.id == part.mid } }
+        addressRows.removeAll { addr -> targets.any { it.id == addr.mid } }
         targets.size
     }
 

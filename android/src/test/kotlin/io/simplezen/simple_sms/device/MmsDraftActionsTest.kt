@@ -47,10 +47,16 @@ class MmsDraftActionsTest {
         ShadowContentResolver.registerProviderInternal("mms", mms)
         ShadowContentResolver.registerProviderInternal("mms-sms", threads)
         threads.listed += 5L
+        // The persister probes the provider once per process; probe this one.
+        io.simplezen.simple_sms.mms.support.SubscriptionIdChecker::class.java.getDeclaredField("sInstance").apply {
+            isAccessible = true
+            set(null, null)
+        }
         // The attachments are typed by file extension, as a send reads them.
         shadowOf(MimeTypeMap.getSingleton()).apply {
             addExtensionMimeTypeMapping("jpg", "image/jpeg")
             addExtensionMimeTypeMapping("pdf", "application/pdf")
+            addExtensionMimeTypeMapping("txt", "text/plain")
         }
         roleManager().apply {
             addAvailableRole(RoleManager.ROLE_SMS)
@@ -167,7 +173,7 @@ class MmsDraftActionsTest {
         assertEquals(listOf(60L, 70L, 71L), mms.rows.map { it.id })
         val strayId = mms.deletes.single().arguments!![0]
         assertEquals(
-            listOf(ProviderWrite("content://mms", "_id = ? AND thread_id = ? AND msg_box = ?", listOf(strayId, "9", "3"))),
+            listOf(ProviderWrite("content://mms", "_id = ? AND msg_box = ?", listOf(strayId, "3"))),
             mms.deletes,
         )
         assertEquals(
@@ -276,7 +282,7 @@ class MmsDraftActionsTest {
         val photo = file("photo.jpg", "secret-bytes".toByteArray())
         val calls = mutableListOf<DraftCallResult>()
 
-        // Unverified: the earlier MMS draft survives.
+        // Unverified, and the new draft cannot be removed: the earlier MMS draft survives.
         mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
         mms.ignoreDeletes = true
         calls += save("5", "my secret", listOf(photo))
@@ -295,7 +301,7 @@ class MmsDraftActionsTest {
         calls += invoke(MethodCall("saveMmsDraft", mapOf("threadId" to "x", "body" to "my secret")))
 
         assertEquals(
-            listOf("DRAFT_WRITE_INCOMPLETE", "DRAFT_WRITE_FAILED", "DRAFT_WRITE_FAILED", "INVALID_ARGUMENT", "INVALID_ARGUMENT"),
+            listOf("DRAFT_WRITE_FAILED", "DRAFT_WRITE_FAILED", "DRAFT_WRITE_FAILED", "INVALID_ARGUMENT", "INVALID_ARGUMENT"),
             calls.flatMap { it.errors },
         )
         calls.flatMap { it.messages }.forEach { assertFalse(it, it.contains("secret")) }
@@ -323,6 +329,8 @@ class MmsDraftActionsTest {
         val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
 
         assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue("the unverified draft is removed", mms.rows.isEmpty())
+        assertTrue(result.messages.single(), result.messages.single().contains("the new draft was removed"))
     }
 
     /** Purpose: an SMS draft another app added meanwhile leaves the save unverified. */
@@ -335,28 +343,18 @@ class MmsDraftActionsTest {
         val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
 
         assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
-    }
-
-    /** Purpose: a draft whose earlier drafts can't be removed is a failed write. */
-    @Test
-    fun save_earlierDraftsCannotBeRemoved_isDraftWriteFailed() {
-        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
-        mms.afterWrite = { if (mms.rowUpdates.isNotEmpty()) mms.writeFailure = IllegalStateException("disk full") }
-
-        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
-
-        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue("the unverified draft is removed", mms.rows.isEmpty())
     }
 
     /**
-     * Purpose: a save that fails after the row was inserted leaves no unfinished
-     * (unread) draft beside the earlier one, which stays.
+     * Purpose: a save whose earlier drafts can't be removed removes its own new
+     * draft too, then fails; the earlier draft stays.
      */
     @Test
-    fun save_persistFailsAfterTheRowIsInserted_removesTheUnfinishedDraft() {
+    fun save_earlierDraftsCannotBeRemoved_removesTheNewDraftAndFails() {
         mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
         mms.afterWrite = {
-            if (mms.insertedDrafts.isNotEmpty() && mms.failNextWrite == null && mms.rowUpdates.isEmpty()) {
+            if (mms.rowUpdates.isNotEmpty() && mms.deletes.isEmpty() && mms.failNextWrite == null) {
                 mms.failNextWrite = IllegalStateException("disk full")
             }
         }
@@ -365,23 +363,86 @@ class MmsDraftActionsTest {
 
         assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
         assertEquals(listOf(60L), mms.rows.map { it.id })
-        assertFalse(result.messages.single(), result.messages.single().contains("could not be removed"))
+        assertTrue(result.messages.single(), result.messages.single().contains("the new draft was removed"))
     }
 
-    /** Purpose: an unfinished draft that can't be removed is reported with the failure. */
+    /** Purpose: when the new draft can't be removed either, the error says so. */
     @Test
-    fun save_unfinishedDraftCannotBeRemoved_isSaidInTheError() {
+    fun save_neitherTheEarlierDraftsNorTheNewOneCanBeRemoved_isSaidInTheError() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.afterWrite = { if (mms.rowUpdates.isNotEmpty()) mms.writeFailure = IllegalStateException("disk full") }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue(result.messages.single(), result.messages.single().contains("could not be removed"))
+        assertEquals(2, mms.rows.size)
+    }
+
+    /**
+     * Purpose: a save that fails after the row was inserted leaves no unfinished
+     * (unread) draft beside the earlier one, which stays, and no parts under the
+     * persister's temporary id.
+     */
+    @Test
+    fun save_persistFailsAfterTheRowIsInserted_removesTheUnfinishedDraft() {
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        var armed = true
         mms.afterWrite = {
-            if (mms.insertedDrafts.isNotEmpty() && mms.rowUpdates.isEmpty()) {
-                mms.writeFailure = IllegalStateException("disk full")
+            if (armed && mms.insertedDrafts.isNotEmpty()) {
+                armed = false
+                mms.failNextWrite = IllegalStateException("disk full")
             }
         }
 
         val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
 
         assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
-        assertTrue(result.messages.single(), result.messages.single().contains("an unfinished draft could not be removed"))
-        assertEquals(1, mms.rows.size)
+        assertEquals(listOf(60L), mms.rows.map { it.id })
+        assertTrue("no part is left under the temporary id", mms.parts.isEmpty())
+        assertFalse(result.messages.single(), result.messages.single().contains("could not be removed"))
+    }
+
+    /**
+     * Purpose: a failure after parts were saved but before any row was inserted
+     * leaves none of them behind.
+     */
+    @Test
+    fun save_persistFailsBeforeTheRowIsInserted_leavesNoTemporaryParts() {
+        var armed = true
+        mms.afterWrite = {
+            if (armed && mms.parts.isNotEmpty()) {
+                armed = false
+                mms.failNextWrite = IllegalStateException("disk full")
+            }
+        }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1)), file("note.pdf", byteArrayOf(2))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+        assertTrue("no part is left under the temporary id", mms.parts.isEmpty())
+    }
+
+    /**
+     * Purpose: a row inserted into the recipients' thread whose read + seen
+     * update then fails is removed from that thread, which the provider then
+     * recomputes.
+     */
+    @Test
+    fun save_updateFailsForARowInAnotherThread_removesThatRow() {
+        threads.threadForRecipients = 9L
+        mms.rows += MmsRow(id = 70, threadId = 9, box = 1)
+        mms.failDraftRowUpdate = IllegalStateException("disk full")
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertEquals(listOf(70L), mms.rows.map { it.id })
+        assertEquals(
+            listOf(ProviderWrite("content://sms/conversations/9", "_id = ?", listOf("-1"))),
+            sms.deletes,
+        )
     }
 
     /** Purpose: a provider exception while persisting surfaces as a failed write. */
@@ -392,24 +453,210 @@ class MmsDraftActionsTest {
         assertEquals(listOf("DRAFT_WRITE_FAILED"), save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1)))).errors)
     }
 
-    /** Purpose: a draft row that can't be read back is unverified. */
+    /** Purpose: when nothing can be read, not even the new draft's thread, the draft is left and the failure says so. */
     @Test
-    fun save_unreadableReadBack_isVerifyFailed() {
+    fun save_providerStopsAnsweringQueries_isDraftWriteFailedAndSaysTheDraftRemains() {
         mms.queryFailureAfterWrite = IllegalStateException("provider died")
 
-        assertEquals(listOf("VERIFY_FAILED"), save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1)))).errors)
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue(result.messages.single(), result.messages.single().contains("could not be removed"))
+    }
+
+    /** Purpose: a part whose data can't be read back is unverified, and the new draft is removed. */
+    @Test
+    fun save_partDataUnreadable_isVerifyFailedAndRemovesTheDraft() {
+        mms.afterWrite = { if (mms.rowUpdates.isNotEmpty()) mms.failPartReads = true }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("VERIFY_FAILED"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a persister whose write left the unfinished draft in place and cannot remove it says so. */
+    @Test
+    fun save_unfinishedDraftCannotBeRemoved_isSaidInTheError() {
+        mms.afterWrite = { if (mms.insertedDrafts.isNotEmpty() && mms.rowUpdates.isEmpty()) mms.writeFailure = IllegalStateException("disk full") }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_FAILED"), result.errors)
+        assertTrue(result.messages.single(), result.messages.single().contains("could not be removed"))
+        assertEquals(1, mms.rows.size)
+    }
+
+    // ── verification ──────────────────────────────────────────────────
+
+    /** Purpose: a store that keeps other bytes than were written (corrupted or substituted) is unverified. */
+    @Test
+    fun save_corruptedAttachmentData_isIncompleteAndRemovesTheDraft() {
+        mms.afterWrite = {
+            mms.parts.firstOrNull { it.contentType == "image/jpeg" }?.let {
+                if (mms.rowUpdates.isNotEmpty()) mms.storedDataOverride[it.id] = byteArrayOf(9, 9, 9)
+            }
+        }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1, 2, 3))))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a store that truncates an attachment (a stream that failed on close) is unverified. */
+    @Test
+    fun save_truncatedAttachmentData_isIncompleteAndRemovesTheDraft() {
+        mms.afterWrite = {
+            mms.parts.firstOrNull { it.contentType == "image/jpeg" }?.let {
+                if (mms.rowUpdates.isNotEmpty()) mms.storedDataOverride[it.id] = byteArrayOf(1)
+            }
+        }
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1, 2, 3))))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a provider that counts the read + seen update but keeps the flags would count the draft as unread. */
+    @Test
+    fun save_readAndSeenFlagsIgnored_isIncompleteAndRemovesTheDraft() {
+        mms.ignoreReadSeenUpdate = true
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a named subscription is stored, and verified. */
+    @Test
+    fun save_namedSubscription_isStoredAndVerified() {
+        val result = invoke(saveCall(body = "caption", paths = listOf(file("photo.jpg", byteArrayOf(1))), subscriptionId = 4))
+
+        assertEquals(1, result.successes.size)
+        assertEquals(4L, mms.rows.single().subId)
+    }
+
+    /** Purpose: a provider that stores another SIM than the one named leaves the save unverified. */
+    @Test
+    fun save_providerStoresAnotherSubscription_isIncompleteAndRemovesTheDraft() {
+        mms.forcedSubId = 7L
+
+        val result = invoke(saveCall(body = "caption", paths = listOf(file("photo.jpg", byteArrayOf(1))), subscriptionId = 4))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a recipient row the provider did not keep leaves the draft unaddressed, so the save is unverified. */
+    @Test
+    fun save_recipientRowMissing_isIncompleteAndRemovesTheDraft() {
+        mms.failingAddresses += ADDRESS
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a draft the provider mangled costs the thread's earlier drafts nothing: they go only once the new one is verified. */
+    @Test
+    fun save_contentUnverified_keepsTheEarlierDrafts() {
+        sms.rows += SmsRow(id = 2, threadId = 5, type = 3, body = "old text", date = 10)
+        mms.rows += MmsRow(id = 60, threadId = 5, box = 3)
+        mms.ignoreReadSeenUpdate = true
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1))))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertEquals(listOf(60L), mms.rows.map { it.id })
+        assertEquals(listOf(2L), sms.rows.map { it.id })
+    }
+
+    /** Purpose: a provider with no subscription column never stores the SIM, so the save is not verified against it. */
+    @Test
+    fun save_providerWithoutASubscriptionColumn_isNotVerifiedAgainstTheSim() {
+        mms.noSubIdColumn = true
+
+        val result = invoke(saveCall(body = "caption", paths = listOf(file("photo.jpg", byteArrayOf(1))), subscriptionId = 4))
+
+        assertEquals(1, result.successes.size)
+    }
+
+    /** Purpose: a text attachment is kept by the provider as text; one it cannot keep faithfully fails verification. */
+    @Test
+    fun save_textAttachmentThatIsNotUtf8_isIncompleteAndRemovesTheDraft() {
+        val latin1 = file("note.txt", byteArrayOf(0x63, 0xE9.toByte()))
+
+        val result = save("5", null, listOf(latin1))
+
+        assertEquals(listOf("DRAFT_WRITE_INCOMPLETE"), result.errors)
+        assertTrue(mms.rows.isEmpty())
+    }
+
+    /** Purpose: a UTF-8 text attachment is saved and verified as text. */
+    @Test
+    fun save_utf8TextAttachment_isSaved() {
+        val note = file("note.txt", "café".toByteArray())
+
+        val result = save("5", null, listOf(note))
+
+        assertEquals(1, result.successes.size)
+        assertEquals("café", mms.parts.single { it.contentType == "text/plain" }.text)
+    }
+
+    // ── size bounds ───────────────────────────────────────────────────
+
+    /** Purpose: a file over the per-attachment bound is refused before anything is read or written. */
+    @Test
+    fun save_attachmentTooLarge_isInvalidArgumentBeforeAnyRead() {
+        val huge = sparseFile("huge.jpg", 16L * 1024 * 1024 + 1)
+
+        val result = save("5", "caption", listOf(file("photo.jpg", byteArrayOf(1)), huge))
+
+        assertEquals(listOf("INVALID_ARGUMENT"), result.errors)
+        assertEquals(0, sms.writeCount() + mms.writeCount())
+        assertFalse(result.messages.single(), result.messages.single().contains(huge))
+    }
+
+    /** Purpose: attachments that are each within the bound but too large together are refused the same way. */
+    @Test
+    fun save_attachmentsTooLargeTogether_isInvalidArgumentBeforeAnyRead() {
+        val parts = List(3) { sparseFile("part$it.jpg", 12L * 1024 * 1024) }
+
+        val result = save("5", "caption", parts)
+
+        assertEquals(listOf("INVALID_ARGUMENT"), result.errors)
+        assertEquals(0, sms.writeCount() + mms.writeCount())
     }
 
     // ── helpers ───────────────────────────────────────────────────────
 
     private fun file(name: String, bytes: ByteArray): String = files.newFile(name).apply { writeBytes(bytes) }.path
 
+    /** A file of [size] bytes that takes no disk and is never read in full. */
+    private fun sparseFile(name: String, size: Long): String =
+        files.newFile(name).apply { java.io.RandomAccessFile(this, "rw").use { it.setLength(size) } }.path
+
     private fun save(threadId: String, body: String?, paths: List<String>) =
         invoke(saveCall(threadId, body, paths))
 
-    private fun saveCall(threadId: String = "5", body: String?, paths: List<String>) = MethodCall(
+    private fun saveCall(
+        threadId: String = "5",
+        body: String?,
+        paths: List<String>,
+        subscriptionId: Int? = null,
+    ) = MethodCall(
         "saveMmsDraft",
-        mapOf("threadId" to threadId, "addresses" to listOf(ADDRESS), "body" to body, "attachmentPaths" to paths),
+        mapOf(
+            "threadId" to threadId,
+            "addresses" to listOf(ADDRESS),
+            "body" to body,
+            "attachmentPaths" to paths,
+            "subscriptionId" to subscriptionId,
+        ),
     )
 
     private fun roleManager(): ShadowRoleManager =

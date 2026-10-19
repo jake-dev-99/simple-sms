@@ -224,10 +224,15 @@ A save leaves the thread exactly one draft: it deletes the thread's drafts of
 the other kind and any extra rows another app left. An SMS save updates the
 thread's draft in place, so its `_id` stays the same across saves. An MMS
 draft keeps each file's raw bytes, typed by its extension, and is marked read
-and seen. An SMS body must not be blank; discard to clear a draft. Discarding
-the draft of a thread that holds no other message also removes the thread, as
-Android does for any delete. A write that can't be verified throws
-`DraftWriteFailedException` with a `DraftWriteFailureReason`.
+and seen; the save is verified against the bytes, flags, SIM and recipients the
+provider kept. A file over 16 MiB, or attachments over 32 MiB together, are
+refused with `invalidArgument`. The provider keeps a `text/plain` or
+`text/html` attachment as text, so one that is not valid UTF-8 or is over
+300 KiB fails the verification with `draftWriteIncomplete`. An SMS body must
+not be blank; discard to clear a draft. Discarding the draft of a thread that
+holds no other message also removes the thread, as Android does for any
+delete. A write that can't be verified throws `DraftWriteFailedException` with
+a `DraftWriteFailureReason`.
 
 To read drafts back, list the drafts box with
 `MmsFilter(messageBoxes: [MessageBox.draft])`, or leave them out with
