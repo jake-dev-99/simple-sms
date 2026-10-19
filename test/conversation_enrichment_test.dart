@@ -454,7 +454,7 @@ void main() {
         threads: [_thread(7)],
         mms: [
           _mms(10, threadId: 7, seconds: 1),
-          {..._mms(11, threadId: 7, seconds: 2), 'msg_box': 3},
+          {..._mms(11, threadId: 7, seconds: 2), 'm_type': 0x80, 'msg_box': 3},
         ],
       );
       _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);

@@ -36,7 +36,8 @@
   (`type` = 3) or MMS in the drafts box (`msg_box` = 3), on a first page or a
   cursor page, and the enriched `latestMms` is now the thread's newest MMS
   outside the drafts box. Read a thread's SMS draft from
-  `AndroidSimpleConversation.draft`.
+  `AndroidSimpleConversation.draft`, and list MMS drafts with
+  `MmsFilter(messageBoxes: [MessageBox.draft])`.
 
 Release as a minor bump: `Sms.status` changes type, and destructive deletes
 return typed results.

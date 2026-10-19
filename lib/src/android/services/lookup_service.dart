@@ -193,8 +193,9 @@ class LookupService {
   /// MMS rows outside the page.
   ///
   /// Drafts are never returned: neither SMS drafts (`type` = 3) nor MMS in the
-  /// drafts box (`msg_box` = 3). Read a thread's draft from
-  /// [AndroidSimpleConversation.draft].
+  /// drafts box (`msg_box` = 3). Read a thread's SMS draft from
+  /// [AndroidSimpleConversation.draft], and list MMS drafts with
+  /// `MmsFilter(messageBoxes: [MessageBox.draft])`.
   ///
   /// [before] is exclusive on [NormalizedMessage.sentAt]. The provider cut is
   /// one microsecond earlier so MMS's second-granularity date filter excludes
