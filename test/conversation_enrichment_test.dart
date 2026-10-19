@@ -464,6 +464,22 @@ void main() {
       expect(conversation.latestMms?.id, 10);
     });
 
+    test('latestMms skips a newer transport-only PDU', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          _mms(10, threadId: 7, seconds: 1),
+          {..._mms(11, threadId: 7, seconds: 2), 'm_type': 0x86}, // delivery-ind
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms?.id, 10);
+    });
+
     test("draft is the thread's newest SMS draft by date then id", () async {
       _seedTables(
         provider,
@@ -735,7 +751,11 @@ void _seedTables(
   provider
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
-    ..seed(ProviderUris.mms, mms, columns: [...messageColumns, 'msg_box'])
+    ..seed(
+      ProviderUris.mms,
+      mms,
+      columns: [...messageColumns, 'm_type', 'msg_box'],
+    )
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 
