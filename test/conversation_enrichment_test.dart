@@ -464,40 +464,6 @@ void main() {
       expect(conversation.latestMms?.id, 10);
     });
 
-    test('latestMms skips newer transport-only PDUs', () async {
-      _seedTables(
-        provider,
-        threads: [_thread(7)],
-        mms: [
-          _mms(10, threadId: 7, seconds: 1),
-          {..._mms(11, threadId: 7, seconds: 2), 'm_type': 0x86}, // delivery-ind
-          // An inbound MMS that has not downloaded yet.
-          {..._mms(12, threadId: 7, seconds: 3), 'm_type': 0x82},
-        ],
-      );
-      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
-
-      final [conversation] = await LookupService().listConversations();
-
-      expect(conversation.latestMms?.id, 10);
-    });
-
-    test('latestMms is a sent MMS when it is the newest', () async {
-      _seedTables(
-        provider,
-        threads: [_thread(7)],
-        mms: [
-          _mms(10, threadId: 7, seconds: 1),
-          {..._mms(11, threadId: 7, seconds: 2), 'm_type': 0x80, 'msg_box': 2},
-        ],
-      );
-      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
-
-      final [conversation] = await LookupService().listConversations();
-
-      expect(conversation.latestMms?.id, 11);
-    });
-
     test("draft is the thread's newest SMS draft by date then id", () async {
       _seedTables(
         provider,
@@ -769,11 +735,7 @@ void _seedTables(
   provider
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
-    ..seed(
-      ProviderUris.mms,
-      mms,
-      columns: [...messageColumns, 'm_type', 'msg_box'],
-    )
+    ..seed(ProviderUris.mms, mms, columns: [...messageColumns, 'msg_box'])
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 

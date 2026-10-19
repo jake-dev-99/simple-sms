@@ -443,11 +443,8 @@ class ConversationLookup {
       limit: 1,
     );
     final latestMmsFuture = MessageLookup.instance.listMms(
-      // User-visible types only, as thread pages read: a delivery or read
-      // report is not the thread's latest message.
       filter: MmsFilter(
         threadId: base.threadId,
-        types: MmsMessageType.userVisibleValues,
         excludeMessageBoxes: const [MessageBox.draft],
       ),
       sort: MmsSort.newestFirst,
