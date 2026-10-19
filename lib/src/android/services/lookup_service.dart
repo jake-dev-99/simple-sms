@@ -192,6 +192,10 @@ class LookupService {
   /// Returns a bounded newest-first normalized thread page without hydrating
   /// MMS rows outside the page.
   ///
+  /// Drafts are never returned: neither SMS drafts (`type` = 3) nor MMS in the
+  /// drafts box (`msg_box` = 3). Read a thread's draft from
+  /// [AndroidSimpleConversation.draft].
+  ///
   /// [before] is exclusive on [NormalizedMessage.sentAt]. The provider cut is
   /// one microsecond earlier so MMS's second-granularity date filter excludes
   /// the cursor's boundary second. Rows with a null native date cannot be
@@ -220,7 +224,11 @@ class LookupService {
     // ordering pass so a long thread never hydrates historical MMS rows.
     final results = await Future.wait<Object>([
       listSms(
-        filter: SmsFilter(threadId: threadId, dateTo: exclusiveDateTo),
+        filter: SmsFilter(
+          threadId: threadId,
+          dateTo: exclusiveDateTo,
+          excludeTypes: const [SmsMessageType.draft],
+        ),
         sort: SmsSort.newestFirst,
         limit: limit,
       ),
@@ -229,6 +237,7 @@ class LookupService {
           threadId: threadId,
           dateTo: exclusiveDateTo,
           types: MmsMessageType.userVisibleValues,
+          excludeMessageBoxes: const [MessageBox.draft],
         ),
         sort: MmsSort.newestFirst,
         limit: limit,
@@ -250,6 +259,7 @@ class LookupService {
             dateFrom: at,
             dateTo: at,
             idBefore: idBefore(SmsMmsType.sms),
+            excludeTypes: const [SmsMessageType.draft],
           ),
           sort: const SmsSort(), // native id descending
           limit: limit,
@@ -264,6 +274,7 @@ class LookupService {
               dateTo: at,
               idBefore: idBefore(SmsMmsType.mms),
               types: MmsMessageType.userVisibleValues,
+              excludeMessageBoxes: const [MessageBox.draft],
             ),
             sort: const MmsSort(),
             limit: limit,

@@ -448,6 +448,22 @@ void main() {
       expect(conversation.draft?.id, 3);
     });
 
+    test('latestMms skips an MMS in the drafts box', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          _mms(10, threadId: 7, seconds: 1),
+          {..._mms(11, threadId: 7, seconds: 2), 'msg_box': 3},
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms?.id, 10);
+    });
+
     test("draft is the thread's newest SMS draft by date then id", () async {
       _seedTables(
         provider,
@@ -656,6 +672,7 @@ Map<String, Object?> _mms(
   'thread_id': threadId,
   'date': seconds,
   'm_type': 0x84,
+  'msg_box': 1,
   'read': 1,
 };
 
@@ -718,7 +735,7 @@ void _seedTables(
   provider
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
-    ..seed(ProviderUris.mms, mms, columns: messageColumns)
+    ..seed(ProviderUris.mms, mms, columns: [...messageColumns, 'msg_box'])
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 
