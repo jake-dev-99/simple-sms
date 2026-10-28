@@ -17,10 +17,31 @@ def version(value):
     return tuple(map(int, match.groups()))
 
 
+
+def pub_version_key(value):
+    """Order a complete hosted version as Pub does, including build suffixes.
+
+    Args: value is a package version string.
+    Returns: a comparable tuple with numeric identifiers before textual ones.
+    Raises: ValueError for an invalid version, never assuming it is older.
+    See https://pub.dev/packages/pub_semver#semantics.
+    """
+    identifier = r'[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*'
+    match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-(' + identifier + r'))?(?:\+(' + identifier + r'))?', str(value))
+    if not match:
+        raise ValueError(f'Invalid semver: {value}')
+
+    def identifiers(text):
+        return tuple((0, int(part)) if part.isdigit() else (1, part)
+                     for part in text.split('.')) if text else ()
+
+    return (tuple(map(int, match.group(1, 2, 3))), match[4] is None,
+            identifiers(match[4]), identifiers(match[5]))
+
 def bump_version(current, bump):
     major, minor, patch = version(current)
     if bump == 'current':
-        if not re.fullmatch(r'\d+\.\d+\.\d+', str(current)):
+        if not re.fullmatch(r'\d+\.\d+\.\d+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', str(current)):
             raise ValueError('Current release requires a final semver version')
         return str(current)
     if bump == 'major':
@@ -227,8 +248,8 @@ def build_plan(root, packages, target, bump, published, source_sha):
             hosted = (published.get(name) or {}).get('versions', [])
             if not hosted:
                 raise ValueError(f'{name} needs its first manual publication before a current-version cut')
-            latest = max(version(item['version']) for item in hosted)
-            if version(next_version) <= latest:
+            latest = max(pub_version_key(item['version']) for item in hosted)
+            if pub_version_key(next_version) <= latest:
                 raise ValueError(f'{name} current version {next_version} must be newer than every published version')
         path = packages[name]
         prefix = '' if path == '.' else path + '/'

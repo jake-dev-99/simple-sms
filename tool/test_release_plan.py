@@ -87,6 +87,43 @@ class PlannerTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'newer than.*published'):
                     self.plan(package='demo_android', bump='current')
 
+    def test_current_final_release_succeeds_its_published_prerelease(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: 1.1.0'))
+        self.commit('Prepare final version')
+        self.published['demo_android']['versions'].append({'version': '1.1.0-rc.1'})
+        result = self.plan(package='demo_android', bump='current')
+        self.assertEqual(result['packages'][0]['version'], '1.1.0')
+        self.published['demo_android']['versions'].append({'version': '1.2.0-rc.1'})
+        with self.assertRaisesRegex(ValueError, 'newer than.*published'):
+            self.plan(package='demo_android', bump='current')
+
+    def test_current_version_uses_pub_build_suffix_ordering(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        for authored, hosted, allowed in [
+            ('1.1.0+1', '1.1.0', True),
+            ('1.1.0+10', '1.1.0+2', True),
+            ('1.1.0+2', '1.1.0+10', False),
+            ('1.1.0+2', '1.1.0+2', False),
+            ('1.1.0+1.a', '1.1.0+1.9', True),
+            ('1.1.0', '1.1.0+1', False),
+        ]:
+            with self.subTest(authored=authored, hosted=hosted):
+                import re
+                before = spec.read_text()
+                after = re.sub(r'^version:.*$', 'version: '+authored, before, flags=re.MULTILINE)
+                if before != after:
+                    spec.write_text(after)
+                    self.commit('Prepare '+authored)
+                self.published['demo_android']['versions'] = [{'version': hosted}]
+                if allowed:
+                    result = self.plan(package='demo_android', bump='current')
+                    self.assertEqual(result['packages'][0]['version'], authored)
+                    self.assertEqual(result['packages'][0]['tag'], 'demo_android-v'+authored)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'newer than.*published'):
+                        self.plan(package='demo_android', bump='current')
+
     def test_current_version_requires_an_existing_hosted_package(self):
         self.published['demo_android'] = None
         with self.assertRaisesRegex(ValueError, 'first.*manual'):
