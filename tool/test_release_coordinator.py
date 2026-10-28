@@ -173,6 +173,24 @@ if sys.argv[1:] not in [['pub','get','--no-example'], ['analyze','--no-fatal-war
         self.assertEqual(self.runner('12346').run('resume'), 'noop')
         self.assertEqual(len([v for v in self.pub.metadata['demo_android']['versions'] if v['version'] == '1.1.0']), 1)
 
+    def test_current_batch_stops_if_a_newer_version_arrives_during_deferral(self):
+        spec=self.root/'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0','version: 1.1.0'))
+        self.fixture.commit('Authored final version')
+        self.fixture.git('push','origin','main')
+        self.journal.outcomes['demo_android']='running'
+        self.assertEqual(self.runner().run('cut',package='demo_android',bump='current'),'deferred')
+        original=self.journal.load()
+        calls=list(self.journal.run_calls)
+        self.pub.metadata['demo_android']['versions'].append({'version':'1.2.0'})
+        self.clock.value += 31
+        self.assertEqual(self.runner('12346').run('resume'),'blocked')
+        stopped=self.journal.load()
+        self.assertEqual(stopped['prepared_sha'],original['prepared_sha'])
+        self.assertEqual(stopped['packages'][0]['version'],'1.1.0')
+        self.assertEqual(self.journal.run_calls,calls)
+        self.assertIsNone(self.pub.receipt('demo_android','1.1.0'))
+
     # Purpose: Keep example-generated files outside the frozen package archive.
     # /**
     #  * @param self The coordinator fixture with real git and a controlled SDK.
