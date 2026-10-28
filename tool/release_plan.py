@@ -94,7 +94,7 @@ def changed_manifest(text, next_version, floors):
 
 
 def released_changelog(history, next_version, notes):
-    pending = re.search(r'^## (?:\[?Unreleased\]?|' + re.escape(next_version) + r' \(unreleased\))[ \t]*$', history, re.MULTILINE)
+    pending = re.search(r'^## (?:\[?Unreleased\]?|' + re.escape(next_version) + r'(?: \(unreleased\))?)[ \t]*$', history, re.MULTILINE)
     authored = ''
     if pending:
         following = re.search(r'^## ', history[pending.end():], re.MULTILINE)

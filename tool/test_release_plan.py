@@ -151,6 +151,17 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(later['packages'][0]['version'],'1.1.1')
         self.assertIn('demo_android: ^1.1.1',later['files']['packages/demo/pubspec.yaml'])
 
+    def test_current_release_keeps_one_already_finalized_changelog_heading(self):
+        spec=self.root/'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0','version: 1.1.0'))
+        history=self.root/'packages/android/CHANGELOG.md'
+        history.write_text('## 1.1.0\n\n- Authored final notes.\n\n## 1.0.0\n\n- Initial.\n')
+        self.commit('Authored release heading')
+        result=self.plan(package='demo_android',bump='current')
+        frozen=result['files']['packages/android/CHANGELOG.md']
+        self.assertEqual(frozen.count('## 1.1.0'),1)
+        self.assertIn('Authored final notes.',frozen)
+
     def test_current_version_requires_an_existing_hosted_package(self):
         self.published['demo_android'] = None
         with self.assertRaisesRegex(ValueError, 'first.*manual'):
