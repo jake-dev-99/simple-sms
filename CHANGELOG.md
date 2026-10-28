@@ -1,4 +1,4 @@
-## 0.7.0 (unreleased)
+## 0.7.0
 
 - `OutboundMessagingHandler` now sends `RESPOND_VIA_MESSAGE` quick replies natively, storing the row first, and reports one that did not send through `AndroidMessaging.initialize(respondViaMessageFailedCallback:)` or `Android.initialize(respondViaMessageFailedCallback:)` (UNFY-319). Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.
 
@@ -228,6 +228,57 @@ return typed results.
 - **An MMS draft normalizes as `draft` (UNFY-351).** An MMS in the drafts box
   (msg_box 3) now gives `MessageDeliveryState.draft` instead of `sending`,
   whatever its m_type or `st`, as an SMS draft already does.
+
+- feat(UNFY-349): leave drafts out of thread pages and the enriched latestMms
+- test(UNFY-281): pin readBounded on a file that reports no size
+- fix(UNFY-281): size the attachment read buffer within the room left
+- fix(UNFY-281): verify and clean up MMS draft saves from the pull request reviews
+- fix(UNFY-281): remove an unfinished MMS draft when a save fails
+- feat(UNFY-281): save MMS drafts with attachments to the native drafts box
+- fix(UNFY-319): send a quick reply to each recipient as its own SMS
+- fix(UNFY-319): send quick replies natively, report failures to Dart
+- fix(UNFY-319): hand quick replies to Dart like inbound messages
+- Merge branch 'main' into bug/unfy-319-respond-via-message
+- Merge pull request #260 from jake-dev-99/bug/unfy-351-normalize-mms-drafts-as-draft
+- Merge pull request #263 from jake-dev-99/bug/unfy-321-thread-row-exists
+- docs(UNFY-349): correct ConversationFilter thread id docs to match the _id filter
+- fix(UNFY-319): bound how long a quick reply can hold the service
+- fix(UNFY-319): keep the quick-reply service alive for every pending reply
+- fix(UNFY-319): send respond-via-message quick replies
+- refactor(UNFY-349): await the enrichment and draft reads as typed futures
+- fix(UNFY-321): document threadRowExists limits and pin its request shape
+- fix(UNFY-349): leave SMS drafts out of the enriched latestSms
+- feat(UNFY-321): add LookupService.threadRowExists
+- feat(UNFY-349): add SmsFilter.excludeTypes and a per-thread native draft
+- fix(UNFY-351): normalize MMS drafts as draft, not sending
+- fix(UNFY-346): reject stale MMS proof before deletion fallback
+- fix(UNFY-346): reconcile deletion APIs and verify MMS occurrences
+- fix(UNFY-346): retain acknowledged native deletion identities
+- fix(UNFY-346): avoid replaying completed missing sends
+- fix(UNFY-346): resume missing targets only for fenced sends
+- fix(UNFY-346): preserve native deletion identity and rollback fences
+- fix(UNFY-346): confirm absence after a captured row moves threads
+- fix(UNFY-346): retain receipts when normalizing development v2 stores
+- fix(UNFY-346): preserve stable MMS identity through date rewrites
+- fix(UNFY-346): preserve v1 registry rollback compatibility
+- fix(UNFY-346): specify repeatable deletion receipt recovery
+- fix(UNFY-346): fence retries and retain native deletion receipts
+- fix(UNFY-346): delete logical sends with durable native receipts
+- fix(UNFY-174): align built-in Kotlin compiler and example host
+- ci(UNFY-154): assert resolve-before-build order; note pre-UNFY-154 tags
+- ci(UNFY-154): resolve Deploy native build from published siblings
+- Merge pull request #252 from jake-dev-99/improvement/unfy-213-native-sms-draft-writes
+- feat(UNFY-213): store a draft on the conversation's SIM; serialize thread writes
+- fix(UNFY-213): don't report a save into a thread deleted mid-save
+- fix(UNFY-213): keep provider exception text out of draft write errors
+- feat(UNFY-213): native SMS draft save/discard on a drafts channel
+- Merge pull request #250 from jake-dev-99/feature/unfy-110-unfy-72c-delivery-reports-did-it-send
+- fix(UNFY-110): record MMS reports off the main thread; strict number match
+- fix(UNFY-110): match MMS report recipients in their SIM's home country
+- feat(UNFY-110): record MMS delivery reports on the sent row
+- Merge branch 'main' into claude/elegant-rubin-r065yr
+- build(UNFY-174): migrate the Android build to built-in Kotlin
+- Merge pull request #246 from jake-dev-99/bug/unfy-345-permissions-dependency-floor
 
 ## 0.5.1
 
