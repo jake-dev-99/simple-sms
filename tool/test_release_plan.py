@@ -124,6 +124,33 @@ class PlannerTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'newer than.*published'):
                         self.plan(package='demo_android', bump='current')
 
+    def test_latest_build_suffix_is_the_successful_release_baseline(self):
+        self.change('demo_android')
+        self.git('tag', 'demo_android-v1.0.0+2')
+        (self.root/self.packages['demo_android']/'lib/plugin.dart').write_text('// second behavior\n')
+        self.commit('Second Android behavior')
+        self.git('tag', 'demo_android-v1.0.0+10')
+        self.published['demo_android']['versions'] += [{'version':'1.0.0+2'}, {'version':'1.0.0+10'}]
+        self.assertEqual(self.plan()['packages'], [])
+
+    def test_current_build_suffix_floor_remains_valid_for_a_later_cut(self):
+        for name, authored in [('demo_android','1.1.0+1'), ('demo','1.1.0')]:
+            spec=self.root/self.packages[name]/'pubspec.yaml'
+            spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: '+authored))
+        self.commit('Prepare authored versions')
+        result=self.plan(bump='current')
+        self.assertIn('demo_android: ^1.1.0+1', result['files']['packages/demo/pubspec.yaml'])
+        for name,text in result['files'].items():
+            (self.root/name).write_text(text)
+        self.commit('Release authored versions')
+        for name, published in [('demo_android','1.1.0+1'), ('demo','1.1.0')]:
+            self.git('tag',name+'-v'+published)
+            self.published[name]['versions'].append({'version':published})
+        self.change('demo_android')
+        later=self.plan()
+        self.assertEqual(later['packages'][0]['version'],'1.1.1')
+        self.assertIn('demo_android: ^1.1.1',later['files']['packages/demo/pubspec.yaml'])
+
     def test_current_version_requires_an_existing_hosted_package(self):
         self.published['demo_android'] = None
         with self.assertRaisesRegex(ValueError, 'first.*manual'):

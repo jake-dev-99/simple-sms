@@ -59,11 +59,12 @@ def floor(constraint):
     if not isinstance(constraint, str):
         raise ValueError(f'Internal hosted dependency constraint required: {constraint!r}')
     text = constraint.strip()
-    if re.fullmatch(r'\^?\d+\.\d+\.\d+', text):
-        return version(text.lstrip('^'))
-    match = re.fullmatch(r'>=\s*(\d+\.\d+\.\d+)\s+<\s*(\d+\.\d+\.\d+)', text)
-    if match and version(match[1]) < version(match[2]):
-        return version(match[1])
+    number = r'\d+\.\d+\.\d+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?'
+    if re.fullmatch(r'\^?' + number, text):
+        return pub_version_key(text.lstrip('^'))
+    match = re.fullmatch(r'>=\s*(' + number + r')\s+<\s*(' + number + r')', text)
+    if match and pub_version_key(match[1]) < pub_version_key(match[2]):
+        return pub_version_key(match[1])
     raise ValueError(f'Unsupported internal dependency constraint: {constraint!r}')
 
 
@@ -124,7 +125,7 @@ def selection_reasons(root, packages, target, published, source_sha, specs):
         hosted_versions = {v['version'] for v in (published.get(name) or {}).get('versions', [])}
         tags = git(root, 'tag', '--merged', source_sha, '--list', name + '-v*').splitlines()
         tags = [tag for tag in tags if tag.removeprefix(name + '-v') in hosted_versions]
-        baselines[name] = max(tags, key=lambda tag: version(tag.removeprefix(name + '-v'))) if tags else None
+        baselines[name] = max(tags, key=lambda tag: pub_version_key(tag.removeprefix(name + '-v'))) if tags else None
         verified.extend(tags)
     commits = {git(root, 'rev-parse', tag + '^{commit}') for tag in verified}
     watermark = next((sha for sha in git(root, 'rev-list', source_sha).splitlines() if sha in commits), None)
@@ -209,7 +210,7 @@ def update_floors(packages, specs, graph, order, reasons, target, bump):
                     continue
                 for section, constraint in sections.items():
                     required = floor(constraint)
-                    candidate = version(candidates[dep])
+                    candidate = pub_version_key(candidates[dep])
                     if candidate < required:
                         raise ValueError(f'{dep} candidate {candidates[dep]} is below {name} floor {constraint}; refusing downgrade')
                     if candidate > required and (target == 'all' or name in reasons):
