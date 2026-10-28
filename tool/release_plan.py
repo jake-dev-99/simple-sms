@@ -19,6 +19,10 @@ def version(value):
 
 def bump_version(current, bump):
     major, minor, patch = version(current)
+    if bump == 'current':
+        if not re.fullmatch(r'\d+\.\d+\.\d+', str(current)):
+            raise ValueError('Current release requires a final semver version')
+        return str(current)
     if bump == 'major':
         return f'{major + 1}.0.0'
     if bump == 'minor':
@@ -68,7 +72,7 @@ def changed_manifest(text, next_version, floors):
 
 
 def released_changelog(history, next_version, notes):
-    pending = re.search(r'^## \[?Unreleased\]?[ \t]*$', history, re.MULTILINE)
+    pending = re.search(r'^## (?:\[?Unreleased\]?|' + re.escape(next_version) + r' \(unreleased\))[ \t]*$', history, re.MULTILINE)
     authored = ''
     if pending:
         following = re.search(r'^## ', history[pending.end():], re.MULTILINE)
@@ -219,6 +223,13 @@ def build_plan(root, packages, target, bump, published, source_sha):
         if name not in reasons:
             continue
         next_version = bump_version(specs[name]['version'], bump)
+        if bump == 'current':
+            hosted = (published.get(name) or {}).get('versions', [])
+            if not hosted:
+                raise ValueError(f'{name} needs its first manual publication before a current-version cut')
+            latest = max(version(item['version']) for item in hosted)
+            if version(next_version) <= latest:
+                raise ValueError(f'{name} current version {next_version} must be newer than every published version')
         path = packages[name]
         prefix = '' if path == '.' else path + '/'
         notes = git(root, 'log', '--pretty=format:- %s',

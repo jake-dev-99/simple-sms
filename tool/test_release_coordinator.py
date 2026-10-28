@@ -156,6 +156,23 @@ if sys.argv[1:] not in [['pub','get','--no-example'], ['analyze','--no-fatal-war
     def cut(self, **kwargs):
         return self.runner().run('cut', package='all', bump='patch', **kwargs)
 
+    def test_current_version_freezes_and_publishes_the_authored_version(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: 1.1.0'))
+        self.fixture.commit('Prepare authored version')
+        self.fixture.git('push', 'origin', 'main')
+        result = self.runner().run('cut', package='demo_android', bump='current')
+        self.assertEqual(result, 'complete')
+        plan = self.journal.load()
+        self.assertEqual(plan['bump'], 'current')
+        self.assertEqual(plan['packages'][0]['version'], '1.1.0')
+        self.assertEqual(plan['packages'][0]['state'], 'published')
+        self.assertEqual(self.fixture.git('rev-parse', 'demo_android-v1.1.0^{commit}'), plan['prepared_sha'])
+        self.assertIsNotNone(self.pub.receipt('demo_android', '1.1.0'))
+        self.assertIsNone(self.pub.receipt('demo_android', '1.1.1'))
+        self.assertEqual(self.runner('12346').run('resume'), 'noop')
+        self.assertEqual(len([v for v in self.pub.metadata['demo_android']['versions'] if v['version'] == '1.1.0']), 1)
+
     # Purpose: Keep example-generated files outside the frozen package archive.
     # /**
     #  * @param self The coordinator fixture with real git and a controlled SDK.

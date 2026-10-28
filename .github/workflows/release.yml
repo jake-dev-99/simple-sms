@@ -22,11 +22,11 @@ on:
           - all
           - simple_sms_native
       bump:
-        description: 'Apply this increment to each selected package'
+        description: 'Increment each selected package, or current to release its committed unpublished version'
         required: true
         default: patch
         type: choice
-        options: [patch, minor, major]
+        options: [patch, minor, major, current]
       dry_run:
         description: 'Preview and validate without writing release state or pushing'
         default: false

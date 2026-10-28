@@ -357,7 +357,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--operation', choices=('cut', 'resume', 'cancel'), default='cut')
     parser.add_argument('--package', default='all')
-    parser.add_argument('--bump', choices=('patch', 'minor', 'major'), default='patch')
+    parser.add_argument('--bump', choices=('patch', 'minor', 'major', 'current'), default='patch')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--scheduled', action='store_true')
     args = parser.parse_args()
