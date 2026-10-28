@@ -17,8 +17,33 @@ def version(value):
     return tuple(map(int, match.groups()))
 
 
+
+def pub_version_key(value):
+    """Order a complete hosted version as Pub does, including build suffixes.
+
+    Args: value is a package version string.
+    Returns: a comparable tuple with numeric identifiers before textual ones.
+    Raises: ValueError for an invalid version, never assuming it is older.
+    See https://pub.dev/packages/pub_semver#semantics.
+    """
+    identifier = r'[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*'
+    match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-(' + identifier + r'))?(?:\+(' + identifier + r'))?', str(value))
+    if not match:
+        raise ValueError(f'Invalid semver: {value}')
+
+    def identifiers(text):
+        return tuple((0, int(part)) if part.isdigit() else (1, part)
+                     for part in text.split('.')) if text else ()
+
+    return (tuple(map(int, match.group(1, 2, 3))), match[4] is None,
+            identifiers(match[4]), identifiers(match[5]))
+
 def bump_version(current, bump):
     major, minor, patch = version(current)
+    if bump == 'current':
+        if not re.fullmatch(r'\d+\.\d+\.\d+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', str(current)):
+            raise ValueError('Current release requires a final semver version')
+        return str(current)
     if bump == 'major':
         return f'{major + 1}.0.0'
     if bump == 'minor':
@@ -34,11 +59,12 @@ def floor(constraint):
     if not isinstance(constraint, str):
         raise ValueError(f'Internal hosted dependency constraint required: {constraint!r}')
     text = constraint.strip()
-    if re.fullmatch(r'\^?\d+\.\d+\.\d+', text):
-        return version(text.lstrip('^'))
-    match = re.fullmatch(r'>=\s*(\d+\.\d+\.\d+)\s+<\s*(\d+\.\d+\.\d+)', text)
-    if match and version(match[1]) < version(match[2]):
-        return version(match[1])
+    number = r'\d+\.\d+\.\d+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?'
+    if re.fullmatch(r'\^?' + number, text):
+        return pub_version_key(text.lstrip('^'))
+    match = re.fullmatch(r'>=\s*(' + number + r')\s+<\s*(' + number + r')', text)
+    if match and pub_version_key(match[1]) < pub_version_key(match[2]):
+        return pub_version_key(match[1])
     raise ValueError(f'Unsupported internal dependency constraint: {constraint!r}')
 
 
@@ -68,7 +94,7 @@ def changed_manifest(text, next_version, floors):
 
 
 def released_changelog(history, next_version, notes):
-    pending = re.search(r'^## \[?Unreleased\]?[ \t]*$', history, re.MULTILINE)
+    pending = re.search(r'^## (?:\[?Unreleased\]?|' + re.escape(next_version) + r'(?: \(unreleased\))?)[ \t]*$', history, re.MULTILINE)
     authored = ''
     if pending:
         following = re.search(r'^## ', history[pending.end():], re.MULTILINE)
@@ -99,7 +125,7 @@ def selection_reasons(root, packages, target, published, source_sha, specs):
         hosted_versions = {v['version'] for v in (published.get(name) or {}).get('versions', [])}
         tags = git(root, 'tag', '--merged', source_sha, '--list', name + '-v*').splitlines()
         tags = [tag for tag in tags if tag.removeprefix(name + '-v') in hosted_versions]
-        baselines[name] = max(tags, key=lambda tag: version(tag.removeprefix(name + '-v'))) if tags else None
+        baselines[name] = max(tags, key=lambda tag: pub_version_key(tag.removeprefix(name + '-v'))) if tags else None
         verified.extend(tags)
     commits = {git(root, 'rev-parse', tag + '^{commit}') for tag in verified}
     watermark = next((sha for sha in git(root, 'rev-list', source_sha).splitlines() if sha in commits), None)
@@ -184,7 +210,7 @@ def update_floors(packages, specs, graph, order, reasons, target, bump):
                     continue
                 for section, constraint in sections.items():
                     required = floor(constraint)
-                    candidate = version(candidates[dep])
+                    candidate = pub_version_key(candidates[dep])
                     if candidate < required:
                         raise ValueError(f'{dep} candidate {candidates[dep]} is below {name} floor {constraint}; refusing downgrade')
                     if candidate > required and (target == 'all' or name in reasons):
@@ -219,6 +245,13 @@ def build_plan(root, packages, target, bump, published, source_sha):
         if name not in reasons:
             continue
         next_version = bump_version(specs[name]['version'], bump)
+        if bump == 'current':
+            hosted = (published.get(name) or {}).get('versions', [])
+            if not hosted:
+                raise ValueError(f'{name} needs its first manual publication before a current-version cut')
+            latest = max(pub_version_key(item['version']) for item in hosted)
+            if pub_version_key(next_version) <= latest:
+                raise ValueError(f'{name} current version {next_version} must be newer than every published version')
         path = packages[name]
         prefix = '' if path == '.' else path + '/'
         notes = git(root, 'log', '--pretty=format:- %s',

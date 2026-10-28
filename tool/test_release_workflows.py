@@ -74,6 +74,12 @@ class WorkflowTest(unittest.TestCase):
         self.env.update(PACKAGE='$(exit 91)')
         self.assertIn('$(exit 91)', self.route())
 
+    def test_current_version_selection_reaches_the_coordinator(self):
+        self.env.update(PACKAGE='simple_sms_native', BUMP='current', DRY_RUN='true')
+        self.assertIn('current', workflow('release.yml')['on']['workflow_dispatch']['inputs']['bump']['options'])
+        self.assertEqual(self.route(), ['tool/release_coordinator.py', '--operation', 'cut',
+                         '--package', 'simple_sms_native', '--bump', 'current', '--dry-run'])
+
     def test_hourly_schedule_only_resumes_authorized_work(self):
         self.env.update(EVENT_NAME='schedule', OPERATION='cut', DRY_RUN='true')
         self.assertEqual(self.route(), ['tool/release_coordinator.py', '--operation', 'resume', '--scheduled'])

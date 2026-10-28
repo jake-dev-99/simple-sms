@@ -63,6 +63,117 @@ class PlannerTest(unittest.TestCase):
         return planner(self).build_plan(self.root, self.packages, package, bump,
                                        self.published, self.git('rev-parse', 'HEAD'))
 
+    def test_committed_unpublished_version_is_released_without_an_extra_bump(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: 1.1.0'))
+        history = self.root / 'packages/android/CHANGELOG.md'
+        history.write_text('## 1.1.0 (unreleased)\n\n- Preserve these authored notes.\n\n## 1.0.0\n\n- Initial.\n')
+        self.commit('Prepare the minor API version')
+        result = self.plan(package='demo_android', bump='current')
+        self.assertEqual([p['version'] for p in result['packages']], ['1.1.0'])
+        self.assertEqual(result['packages'][0]['tag'], 'demo_android-v1.1.0')
+        self.assertIn('version: 1.1.0', result['files']['packages/android/pubspec.yaml'])
+        notes = result['files']['packages/android/CHANGELOG.md']
+        self.assertTrue(notes.startswith('## 1.1.0\n'))
+        self.assertEqual(notes.count('## 1.1.0'), 1)
+        self.assertIn('Preserve these authored notes.', notes)
+        self.assertNotIn('(unreleased)', notes)
+        self.assertIn('## 1.0.0', notes)
+
+    def test_current_version_cannot_republish_or_release_below_a_hosted_version(self):
+        for published in ['1.0.0', '1.1.0']:
+            with self.subTest(published=published):
+                self.published['demo_android']['versions'] = [{'version': published}]
+                with self.assertRaisesRegex(ValueError, 'newer than.*published'):
+                    self.plan(package='demo_android', bump='current')
+
+    def test_current_final_release_succeeds_its_published_prerelease(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: 1.1.0'))
+        self.commit('Prepare final version')
+        self.published['demo_android']['versions'].append({'version': '1.1.0-rc.1'})
+        result = self.plan(package='demo_android', bump='current')
+        self.assertEqual(result['packages'][0]['version'], '1.1.0')
+        self.published['demo_android']['versions'].append({'version': '1.2.0-rc.1'})
+        with self.assertRaisesRegex(ValueError, 'newer than.*published'):
+            self.plan(package='demo_android', bump='current')
+
+    def test_current_version_uses_pub_build_suffix_ordering(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        for authored, hosted, allowed in [
+            ('1.1.0+1', '1.1.0', True),
+            ('1.1.0+10', '1.1.0+2', True),
+            ('1.1.0+2', '1.1.0+10', False),
+            ('1.1.0+2', '1.1.0+2', False),
+            ('1.1.0+1.a', '1.1.0+1.9', True),
+            ('1.1.0', '1.1.0+1', False),
+        ]:
+            with self.subTest(authored=authored, hosted=hosted):
+                import re
+                before = spec.read_text()
+                after = re.sub(r'^version:.*$', 'version: '+authored, before, flags=re.MULTILINE)
+                if before != after:
+                    spec.write_text(after)
+                    self.commit('Prepare '+authored)
+                self.published['demo_android']['versions'] = [{'version': hosted}]
+                if allowed:
+                    result = self.plan(package='demo_android', bump='current')
+                    self.assertEqual(result['packages'][0]['version'], authored)
+                    self.assertEqual(result['packages'][0]['tag'], 'demo_android-v'+authored)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'newer than.*published'):
+                        self.plan(package='demo_android', bump='current')
+
+    def test_latest_build_suffix_is_the_successful_release_baseline(self):
+        self.change('demo_android')
+        self.git('tag', 'demo_android-v1.0.0+2')
+        (self.root/self.packages['demo_android']/'lib/plugin.dart').write_text('// second behavior\n')
+        self.commit('Second Android behavior')
+        self.git('tag', 'demo_android-v1.0.0+10')
+        self.published['demo_android']['versions'] += [{'version':'1.0.0+2'}, {'version':'1.0.0+10'}]
+        self.assertEqual(self.plan()['packages'], [])
+
+    def test_current_build_suffix_floor_remains_valid_for_a_later_cut(self):
+        for name, authored in [('demo_android','1.1.0+1'), ('demo','1.1.0')]:
+            spec=self.root/self.packages[name]/'pubspec.yaml'
+            spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: '+authored))
+        self.commit('Prepare authored versions')
+        result=self.plan(bump='current')
+        self.assertIn('demo_android: ^1.1.0+1', result['files']['packages/demo/pubspec.yaml'])
+        for name,text in result['files'].items():
+            (self.root/name).write_text(text)
+        self.commit('Release authored versions')
+        for name, published in [('demo_android','1.1.0+1'), ('demo','1.1.0')]:
+            self.git('tag',name+'-v'+published)
+            self.published[name]['versions'].append({'version':published})
+        self.change('demo_android')
+        later=self.plan()
+        self.assertEqual(later['packages'][0]['version'],'1.1.1')
+        self.assertIn('demo_android: ^1.1.1',later['files']['packages/demo/pubspec.yaml'])
+
+    def test_current_release_keeps_one_already_finalized_changelog_heading(self):
+        spec=self.root/'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0','version: 1.1.0'))
+        history=self.root/'packages/android/CHANGELOG.md'
+        history.write_text('## 1.1.0\n\n- Authored final notes.\n\n## 1.0.0\n\n- Initial.\n')
+        self.commit('Authored release heading')
+        result=self.plan(package='demo_android',bump='current')
+        frozen=result['files']['packages/android/CHANGELOG.md']
+        self.assertEqual(frozen.count('## 1.1.0'),1)
+        self.assertIn('Authored final notes.',frozen)
+
+    def test_current_version_requires_an_existing_hosted_package(self):
+        self.published['demo_android'] = None
+        with self.assertRaisesRegex(ValueError, 'first.*manual'):
+            self.plan(package='demo_android', bump='current')
+
+    def test_current_version_requires_a_final_release_number(self):
+        spec = self.root / 'packages/android/pubspec.yaml'
+        spec.write_text(spec.read_text().replace('version: 1.0.0', 'version: 1.1.0-rc.1'))
+        self.commit('Prerelease source')
+        with self.assertRaisesRegex(ValueError, 'final.*version'):
+            self.plan(package='demo_android', bump='current')
+
     def test_android_change_selects_android_then_facade_skips_ios_and_interface(self):
         self.change('demo_android')
         result = self.plan()

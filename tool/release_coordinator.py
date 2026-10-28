@@ -9,7 +9,7 @@ import time
 
 import yaml
 
-from release_plan import build_plan, bump_version
+from release_plan import build_plan, bump_version, pub_version_key
 from release_services import Blocked, Deferred, publication_times, quota_deadline, upload_deadline
 
 
@@ -279,6 +279,11 @@ class Coordinator:
                     self.save(plan)
                     break
                 metadata = self.pub.package(current['name'])
+                if plan['bump'] == 'current' and any(
+                        pub_version_key(item['version']) >= pub_version_key(current['version'])
+                        for item in (metadata or {}).get('versions', [])):
+                    raise Blocked(f'{current["name"]} frozen current version {current["version"]} '
+                                  'is no longer newer than hosted versions; inspect before publishing')
                 known = getattr(self.journal, 'known_publications', []) + publication_times(
                     {'versions': [{'published': p['published_at']} for p in plan['packages'] if p.get('published_at')]})
                 deadline = quota_deadline(publication_times(metadata), self.now(),
@@ -357,7 +362,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--operation', choices=('cut', 'resume', 'cancel'), default='cut')
     parser.add_argument('--package', default='all')
-    parser.add_argument('--bump', choices=('patch', 'minor', 'major'), default='patch')
+    parser.add_argument('--bump', choices=('patch', 'minor', 'major', 'current'), default='patch')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--scheduled', action='store_true')
     args = parser.parse_args()
