@@ -55,6 +55,10 @@ Future<AndroidContactName?> _lookup(int nameRawContactId) =>
       nameRawContactId: nameRawContactId,
     );
 
+/// Purpose: register the `getStructuredName` tests on a fresh fake provider.
+///
+/// @returns nothing.
+/// @throws nothing.
 void main() {
   setUp(() => _provider = FakeContentProviderPlatform.install());
 

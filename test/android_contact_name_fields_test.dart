@@ -10,6 +10,10 @@ import 'package:simple_sms_native/src/android/models/enums/contact_enums.dart';
 import 'package:simple_sms_native/src/android/models/people/contact.dart';
 import 'package:simple_sms_native/src/android/models/people/contactables.dart';
 
+/// Purpose: register the contact name-source column parsing tests.
+///
+/// @returns nothing.
+/// @throws nothing.
 void main() {
   group('AndroidContact name_raw_contact_id', () {
     test('reads the raw contact that supplies the display name', () {
