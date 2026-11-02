@@ -1,3 +1,14 @@
+## Unreleased
+
+### Breaking
+
+- `LookupService.getStructuredName` and `ContactLookup.getStructuredName` drop `accountType` and require `nameRawContactId` (UNFY-394). They read the name row of the raw contact Android documents as contributing the display name (`Contacts.NAME_RAW_CONTACT_ID`), so a merged contact no longer returns another account's name row. Several rows on that raw contact resolve to the single `is_primary` row, or to `null` (logged) when none or several are marked. If the pair matches no row because Android re-merged the contact after the caller read it, the lookup re-reads the contact's current `name_raw_contact_id` once and retries. The removed filter read `account_type` from a value that is not an Android contacts column and could match no row.
+
+### Fixed
+
+- `AndroidContact.nameRawContactId` and `Contactable.nameRawContactId` are `null` when the provider omits `name_raw_contact_id`, not `0`. `Contactable.nameRawContactId` is now `int?` (breaking), and `Contactable.displayNameSource` no longer defaults to `undefined` when not given (UNFY-394).
+- `DisplayNameSource` adds `structuredPhonetic` (37), Android's documented `DisplayNameSources.STRUCTURED_PHONETIC_NAME`; it previously parsed as `null` (UNFY-394).
+
 ## 0.7.0
 
 - `OutboundMessagingHandler` now sends `RESPOND_VIA_MESSAGE` quick replies natively, storing the row first, and reports one that did not send through `AndroidMessaging.initialize(respondViaMessageFailedCallback:)` or `Android.initialize(respondViaMessageFailedCallback:)` (UNFY-319). Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.
