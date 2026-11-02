@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'dart:developer' as developer;
+
 import 'package:simple_query/simple_query.dart';
 
 import '../models/filters/contact_filter.dart';
@@ -25,6 +26,9 @@ import '../models/people/contactables.dart';
 // AOSP provider URI changes are one edit.
 const String _contactsUri = 'content://com.android.contacts/contacts';
 const String _contactsDataUri = 'content://com.android.contacts/data';
+
+/// The `dart:developer` log level for a warning (`package:logging`'s WARNING).
+const int _warningLevel = 900;
 const String _contactsPhoneFilterUri =
     'content://com.android.contacts/data/phones/filter';
 const String _contactsEmailFilterUri =
@@ -123,24 +127,25 @@ class ContactLookup {
         .toList(growable: false);
   }
 
-  /// Resolves the structured name (given / family / prefix / suffix /
+  /// Purpose: resolve the structured name (given / family / prefix / suffix /
   /// phonetic variants) that Android uses for a contact's display name.
   ///
   /// A merged contact has one raw contact per account, and their name rows
   /// can differ. Android documents `Contacts.NAME_RAW_CONTACT_ID` as the raw
   /// contact that contributes the display name, so this reads only that raw
-  /// contact's row: `content://com.android.contacts/data` filtered by
-  /// `contact_id` = [contactId], `raw_contact_id` = [nameRawContactId] and
-  /// `mimetype = vnd.android.cursor.item/name` (UNFY-394).
+  /// contact's row (UNFY-394). Android can re-merge contacts after the caller
+  /// read [nameRawContactId]; when that pair matches no row, this re-reads the
+  /// contact's current `name_raw_contact_id` once and, if it changed, retries.
   ///
-  /// Android can re-merge contacts after the caller read [nameRawContactId].
-  /// When that pair matches no row, this re-reads the contact's current
-  /// `name_raw_contact_id` once and, if it changed, retries with it.
+  /// When the raw contact has several name rows, the single row marked
+  /// `is_primary` (documented: "if set, non-0 means true") wins; with none or
+  /// several marked it logs a warning and returns null rather than guess.
   ///
-  /// Returns null when the raw contact has no name row. When it has several,
-  /// returns the single row marked `is_primary` (documented: "if set, non-0
-  /// means true"); with none or several marked it logs the case and returns
-  /// null rather than guess.
+  /// @param contactId the aggregate contact's `_id`.
+  /// @param nameRawContactId the contact's `name_raw_contact_id`.
+  /// @returns the display-name raw contact's structured name, or null when
+  ///   it has no name row or its rows are ambiguous.
+  /// @throws whatever [SimpleQuery.query] throws on a provider failure.
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
     required int nameRawContactId,
@@ -165,15 +170,22 @@ class ContactLookup {
         Map<String, dynamic>.from(primary.single),
       );
     }
-    debugPrint(
-      '[simple-sms] getStructuredName: raw contact $rawContactId of '
-      'contact $contactId has ${rows.length} name rows, ${primary.length} '
-      'marked is_primary; returning no name rather than guess (UNFY-394)',
+    developer.log(
+      'ambiguous structured name; returning none '
+      'contact_id=$contactId raw_contact_id=$rawContactId '
+      'name_rows=${rows.length} primary_rows=${primary.length} issue=UNFY-394',
+      name: 'simple_sms.contact_lookup',
+      level: _warningLevel,
     );
     return null;
   }
 
-  /// The StructuredName rows of raw contact [rawContactId] in [contactId].
+  /// Purpose: read the StructuredName rows of one raw contact.
+  ///
+  /// @param contactId the aggregate contact's `_id`.
+  /// @param rawContactId the raw contact whose name rows to read.
+  /// @returns the matching `vnd.android.cursor.item/name` data rows.
+  /// @throws whatever [SimpleQuery.query] throws on a provider failure.
   Future<List<QueryRecord>> _nameRows(int contactId, int rawContactId) async {
     final response = await SimpleQuery.instance.query(
       QueryRequest(
