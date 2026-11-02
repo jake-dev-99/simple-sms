@@ -465,10 +465,8 @@ class LookupService {
   /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
-    String? accountType,
   }) =>
-      ContactLookup.instance
-          .getStructuredName(contactId: contactId, accountType: accountType);
+      ContactLookup.instance.getStructuredName(contactId: contactId);
 
   /// Lists contacts matching the given [filter], ordered by [sort], paged by
   /// [limit] / [offset].

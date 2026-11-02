@@ -16,6 +16,7 @@ enum DisplayNameSource {
   phone(20),
   organization(30),
   nickname(35),
+  structuredPhonetic(37),
   structured(40);
 
   final int value;

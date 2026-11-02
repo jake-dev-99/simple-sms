@@ -1,3 +1,14 @@
+## Unreleased
+
+### Breaking
+
+- `LookupService.getStructuredName` and `ContactLookup.getStructuredName` no longer take `accountType` (UNFY-394). The filter read `account_type` from a value that is not an Android contacts column and could match no row.
+
+### Fixed
+
+- `AndroidContact.nameRawContactId` is `null` when the provider omits `name_raw_contact_id`, not `0` (UNFY-394).
+- `DisplayNameSource` adds `structuredPhonetic` (37), Android's documented `DisplayNameSources.STRUCTURED_PHONETIC_NAME`; it previously parsed as `null` (UNFY-394).
+
 ## 0.7.0
 
 - `OutboundMessagingHandler` now sends `RESPOND_VIA_MESSAGE` quick replies natively, storing the row first, and reports one that did not send through `AndroidMessaging.initialize(respondViaMessageFailedCallback:)` or `Android.initialize(respondViaMessageFailedCallback:)` (UNFY-319). Its filter takes `sms`, `smsto`, `mms` and `mmsto`; apps must not redeclare the service.

@@ -125,12 +125,10 @@ class ContactLookup {
   /// suffix / phonetic variants) from the contacts data provider.
   ///
   /// Queries `content://com.android.contacts/data` filtered by
-  /// `contact_id`, `mimetype = vnd.android.cursor.item/name`, and
-  /// optionally `account_type`. Returns null when the contact has no
-  /// structured-name row.
+  /// `contact_id` and `mimetype = vnd.android.cursor.item/name`. Returns
+  /// null when the contact has no structured-name row.
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
-    String? accountType,
   }) async {
     final filters = <QueryFilterCondition>[
       QueryFilterCondition(
@@ -143,12 +141,6 @@ class ContactLookup {
         operator: QueryFilterOperator.equals,
         value: 'vnd.android.cursor.item/name',
       ),
-      if (accountType != null)
-        QueryFilterCondition(
-          field: 'account_type',
-          operator: QueryFilterOperator.equals,
-          value: accountType,
-        ),
     ];
     final response = await SimpleQuery.instance.query(
       QueryRequest(
