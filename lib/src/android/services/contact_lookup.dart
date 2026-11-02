@@ -133,7 +133,11 @@ class ContactLookup {
   /// `contact_id` = [contactId], `raw_contact_id` = [nameRawContactId] and
   /// `mimetype = vnd.android.cursor.item/name` (UNFY-394).
   ///
-  /// Returns null when that raw contact has no name row. When it has several,
+  /// Android can re-merge contacts after the caller read [nameRawContactId].
+  /// When that pair matches no row, this re-reads the contact's current
+  /// `name_raw_contact_id` once and, if it changed, retries with it.
+  ///
+  /// Returns null when the raw contact has no name row. When it has several,
   /// returns the single row marked `is_primary` (documented: "if set, non-0
   /// means true"); with none or several marked it logs the case and returns
   /// null rather than guess.
@@ -141,34 +145,15 @@ class ContactLookup {
     required int contactId,
     required int nameRawContactId,
   }) async {
-    final filters = <QueryFilterCondition>[
-      QueryFilterCondition(
-        field: 'contact_id',
-        operator: QueryFilterOperator.equals,
-        value: contactId.toString(),
-      ),
-      QueryFilterCondition(
-        field: 'raw_contact_id',
-        operator: QueryFilterOperator.equals,
-        value: nameRawContactId.toString(),
-      ),
-      QueryFilterCondition(
-        field: 'mimetype',
-        operator: QueryFilterOperator.equals,
-        value: 'vnd.android.cursor.item/name',
-      ),
-    ];
-    final response = await SimpleQuery.instance.query(
-      QueryRequest(
-        domain: QueryDomain.platformSpecific,
-        filters: filters,
-        platformData: const {
-          'contentUri': _contactsDataUri,
-        },
-      ),
-    );
-    final rows = response.records;
-    if (rows.isEmpty) return null;
+    var rawContactId = nameRawContactId;
+    var rows = await _nameRows(contactId, rawContactId);
+    if (rows.isEmpty) {
+      final current = (await lookupContactById(contactId))?.nameRawContactId;
+      if (current == null || current == nameRawContactId) return null;
+      rawContactId = current;
+      rows = await _nameRows(contactId, rawContactId);
+      if (rows.isEmpty) return null;
+    }
     if (rows.length == 1) {
       return AndroidContactName.fromRaw(Map<String, dynamic>.from(rows.single));
     }
@@ -181,11 +166,39 @@ class ContactLookup {
       );
     }
     debugPrint(
-      '[simple-sms] getStructuredName: raw contact $nameRawContactId of '
+      '[simple-sms] getStructuredName: raw contact $rawContactId of '
       'contact $contactId has ${rows.length} name rows, ${primary.length} '
       'marked is_primary; returning no name rather than guess (UNFY-394)',
     );
     return null;
+  }
+
+  /// The StructuredName rows of raw contact [rawContactId] in [contactId].
+  Future<List<QueryRecord>> _nameRows(int contactId, int rawContactId) async {
+    final response = await SimpleQuery.instance.query(
+      QueryRequest(
+        domain: QueryDomain.platformSpecific,
+        filters: [
+          QueryFilterCondition(
+            field: 'contact_id',
+            operator: QueryFilterOperator.equals,
+            value: contactId.toString(),
+          ),
+          QueryFilterCondition(
+            field: 'raw_contact_id',
+            operator: QueryFilterOperator.equals,
+            value: rawContactId.toString(),
+          ),
+          QueryFilterCondition(
+            field: 'mimetype',
+            operator: QueryFilterOperator.equals,
+            value: 'vnd.android.cursor.item/name',
+          ),
+        ],
+        platformData: const {'contentUri': _contactsDataUri},
+      ),
+    );
+    return response.records;
   }
 
   /// Lists contacts matching the given [filter], ordered by [sort],

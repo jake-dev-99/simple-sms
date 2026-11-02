@@ -13,6 +13,7 @@ import 'package:simple_sms_native/android.dart';
 import 'support/fake_content_provider_platform.dart';
 
 const _dataUri = 'content://com.android.contacts/data';
+const _contactsUri = 'content://com.android.contacts/contacts';
 const _name = 'vnd.android.cursor.item/name';
 
 Map<String, Object?> _nameRow({
@@ -70,9 +71,13 @@ void main() {
   });
 
   test('is null when that raw contact has no name row', () async {
-    provider.seed(_dataUri, [
-      _nameRow(id: 4410, rawContactId: 424, given: 'Janie'),
-    ]);
+    provider
+      ..seed(_dataUri, [
+        _nameRow(id: 4410, rawContactId: 424, given: 'Janie'),
+      ])
+      ..seed(_contactsUri, [
+        {'_id': 113, 'name_raw_contact_id': 609},
+      ]);
 
     final name = await LookupService().getStructuredName(
       contactId: 113,
@@ -80,6 +85,61 @@ void main() {
     );
 
     expect(name, isNull);
+  });
+
+  group('when Android re-merged the contact after the caller read its ids', () {
+    test('retries once with the current name_raw_contact_id', () async {
+      provider
+        ..seed(_dataUri, [
+          _nameRow(id: 4410, rawContactId: 424, given: 'Janie'),
+        ])
+        ..seed(_contactsUri, [
+          {'_id': 113, 'name_raw_contact_id': 424},
+        ]);
+
+      final name = await LookupService().getStructuredName(
+        contactId: 113,
+        nameRawContactId: 113,
+      );
+
+      expect(name?.givenName, 'Janie');
+      expect(provider.requestsTo(_dataUri), hasLength(2));
+      expect(provider.requestsTo(_contactsUri), hasLength(1));
+    });
+
+    test('does not retry when the pointer is unchanged', () async {
+      provider
+        ..seed(_dataUri, [
+          _nameRow(id: 4410, rawContactId: 424, given: 'Janie'),
+        ])
+        ..seed(_contactsUri, [
+          {'_id': 113, 'name_raw_contact_id': 113},
+        ]);
+
+      final name = await LookupService().getStructuredName(
+        contactId: 113,
+        nameRawContactId: 113,
+      );
+
+      expect(name, isNull);
+      expect(provider.requestsTo(_dataUri), hasLength(1));
+    });
+
+    test('returns no name when the contact no longer exists', () async {
+      provider
+        ..seed(_dataUri, [
+          _nameRow(id: 4410, rawContactId: 424, given: 'Janie'),
+        ])
+        ..seed(_contactsUri, const [], columns: const ['_id']);
+
+      final name = await LookupService().getStructuredName(
+        contactId: 113,
+        nameRawContactId: 113,
+      );
+
+      expect(name, isNull);
+      expect(provider.requestsTo(_dataUri), hasLength(1));
+    });
   });
 
   test('picks the single is_primary row when there are several', () async {
