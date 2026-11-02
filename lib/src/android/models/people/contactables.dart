@@ -105,7 +105,7 @@ class Contactable {
   final String lookup;
   final String mimetype;
   final String mode;
-  final int nameRawContactId;
+  final int? nameRawContactId;
   final int phonebookBucket;
   final int phonebookBucketAlt;
   final String phonebookLabel;
@@ -189,7 +189,7 @@ class Contactable {
     this.displayName = '',
     this.displayNameAlt = '',
     this.displayNameReverse = '',
-    this.displayNameSource = DisplayNameSource.undefined,
+    this.displayNameSource,
     this.groupSourceid = '',
     this.hasPhoneNumber = false,
     this.hashId = '',
@@ -202,7 +202,7 @@ class Contactable {
     this.lookup = '',
     this.mimetype = '',
     this.mode = '',
-    this.nameRawContactId = 0,
+    this.nameRawContactId,
     this.phonebookBucket = 0,
     this.phonebookBucketAlt = 0,
     this.phonebookLabel = '',
@@ -311,7 +311,7 @@ class Contactable {
     lookup: json['lookup'] ?? '',
     mimetype: json['mimetype'] ?? '',
     mode: json['mode'] ?? '',
-    nameRawContactId: FieldHelper.asInt(json['nameRawContactId']) ?? 0,
+    nameRawContactId: FieldHelper.asInt(json['nameRawContactId']),
     phonebookBucket: FieldHelper.asInt(json['phonebookBucket']) ?? 0,
     phonebookBucketAlt: FieldHelper.asInt(json['phonebookBucketAlt']) ?? 0,
     phonebookLabel: json['phonebookLabel'] ?? '',
@@ -517,7 +517,7 @@ class Contactable {
     lookup: raw['lookup'] ?? '',
     mimetype: raw['mimetype'] ?? '',
     mode: raw['mode'] ?? '',
-    nameRawContactId: FieldHelper.asInt(raw['name_raw_contact_id']) ?? 0,
+    nameRawContactId: FieldHelper.asInt(raw['name_raw_contact_id']),
     phonebookBucket: FieldHelper.asInt(raw['phonebook_bucket']) ?? 0,
     phonebookBucketAlt: FieldHelper.asInt(raw['phonebook_bucket_alt']) ?? 0,
     phonebookLabel: raw['phonebook_label'] ?? '',

@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- `AndroidContact.nameRawContactId` is `null` when the provider omits `name_raw_contact_id`, not `0` (UNFY-394).
+- `AndroidContact.nameRawContactId` and `Contactable.nameRawContactId` are `null` when the provider omits `name_raw_contact_id`, not `0`. `Contactable.nameRawContactId` is now `int?` (breaking), and `Contactable.displayNameSource` no longer defaults to `undefined` when not given (UNFY-394).
 - `DisplayNameSource` adds `structuredPhonetic` (37), Android's documented `DisplayNameSources.STRUCTURED_PHONETIC_NAME`; it previously parsed as `null` (UNFY-394).
 
 ## 0.7.0

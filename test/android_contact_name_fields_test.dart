@@ -8,6 +8,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_sms_native/src/android/models/enums/contact_enums.dart';
 import 'package:simple_sms_native/src/android/models/people/contact.dart';
+import 'package:simple_sms_native/src/android/models/people/contactables.dart';
 
 void main() {
   group('AndroidContact name_raw_contact_id', () {
@@ -28,6 +29,38 @@ void main() {
       });
 
       expect(contact.nameRawContactId, isNull);
+    });
+  });
+
+  group('Contactable name-source columns', () {
+    test('are null, not 0 or undefined, when the columns are absent', () {
+      final contactable = Contactable.fromRaw({
+        '_id': 71,
+        'contact_id': 7,
+        'data1': '+15550007',
+      });
+
+      expect(contactable.nameRawContactId, isNull);
+      expect(contactable.displayNameSource, isNull);
+    });
+
+    test('are null on a synthetic unknown-sender row', () {
+      final contactable = Contactable(id: -1, value: '+15550008');
+
+      expect(contactable.nameRawContactId, isNull);
+      expect(contactable.displayNameSource, isNull);
+    });
+
+    test('read the documented values when present', () {
+      final contactable = Contactable.fromRaw({
+        '_id': 71,
+        'contact_id': 7,
+        'name_raw_contact_id': 42,
+        'display_name_source': 40,
+      });
+
+      expect(contactable.nameRawContactId, 42);
+      expect(contactable.displayNameSource, DisplayNameSource.structured);
     });
   });
 
