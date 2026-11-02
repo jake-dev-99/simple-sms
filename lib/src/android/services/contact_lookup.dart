@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/filters/contact_filter.dart';
 import '../models/filters/sort_direction.dart';
+import '../models/model_helpers.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
 import '../models/people/contactables.dart';
@@ -121,20 +123,34 @@ class ContactLookup {
         .toList(growable: false);
   }
 
-  /// Resolves a contact's structured name (given / family / prefix /
-  /// suffix / phonetic variants) from the contacts data provider.
+  /// Resolves the structured name (given / family / prefix / suffix /
+  /// phonetic variants) that Android uses for a contact's display name.
   ///
-  /// Queries `content://com.android.contacts/data` filtered by
-  /// `contact_id` and `mimetype = vnd.android.cursor.item/name`. Returns
-  /// null when the contact has no structured-name row.
+  /// A merged contact has one raw contact per account, and their name rows
+  /// can differ. Android documents `Contacts.NAME_RAW_CONTACT_ID` as the raw
+  /// contact that contributes the display name, so this reads only that raw
+  /// contact's row: `content://com.android.contacts/data` filtered by
+  /// `contact_id` = [contactId], `raw_contact_id` = [nameRawContactId] and
+  /// `mimetype = vnd.android.cursor.item/name` (UNFY-394).
+  ///
+  /// Returns null when that raw contact has no name row. When it has several,
+  /// returns the single row marked `is_primary` (documented: "if set, non-0
+  /// means true"); with none or several marked it logs the case and returns
+  /// null rather than guess.
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
+    required int nameRawContactId,
   }) async {
     final filters = <QueryFilterCondition>[
       QueryFilterCondition(
         field: 'contact_id',
         operator: QueryFilterOperator.equals,
         value: contactId.toString(),
+      ),
+      QueryFilterCondition(
+        field: 'raw_contact_id',
+        operator: QueryFilterOperator.equals,
+        value: nameRawContactId.toString(),
       ),
       QueryFilterCondition(
         field: 'mimetype',
@@ -151,10 +167,25 @@ class ContactLookup {
         },
       ),
     );
-    if (response.records.isEmpty) return null;
-    return AndroidContactName.fromRaw(
-      Map<String, dynamic>.from(response.records.first),
+    final rows = response.records;
+    if (rows.isEmpty) return null;
+    if (rows.length == 1) {
+      return AndroidContactName.fromRaw(Map<String, dynamic>.from(rows.single));
+    }
+    final primary = rows
+        .where((row) => (FieldHelper.asInt(row['is_primary']) ?? 0) != 0)
+        .toList(growable: false);
+    if (primary.length == 1) {
+      return AndroidContactName.fromRaw(
+        Map<String, dynamic>.from(primary.single),
+      );
+    }
+    debugPrint(
+      '[simple-sms] getStructuredName: raw contact $nameRawContactId of '
+      'contact $contactId has ${rows.length} name rows, ${primary.length} '
+      'marked is_primary; returning no name rather than guess (UNFY-394)',
     );
+    return null;
   }
 
   /// Lists contacts matching the given [filter], ordered by [sort],

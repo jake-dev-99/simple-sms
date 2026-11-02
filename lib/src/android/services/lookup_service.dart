@@ -460,13 +460,17 @@ class LookupService {
   Future<List<Contactable>> listContactablesForContact(int contactId) =>
       ContactLookup.instance.listContactablesForContact(contactId);
 
-  /// Resolves a contact's structured name (given / family / prefix / suffix /
-  /// phonetic variants) from the contacts data provider.
-  /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
+  /// Resolves the structured name Android uses for a contact's display name:
+  /// the name row of [nameRawContactId] (`Contacts.NAME_RAW_CONTACT_ID`).
+  /// Façade — delegates to [ContactLookup.getStructuredName] (UNFY-394).
   Future<AndroidContactName?> getStructuredName({
     required int contactId,
+    required int nameRawContactId,
   }) =>
-      ContactLookup.instance.getStructuredName(contactId: contactId);
+      ContactLookup.instance.getStructuredName(
+        contactId: contactId,
+        nameRawContactId: nameRawContactId,
+      );
 
   /// Lists contacts matching the given [filter], ordered by [sort], paged by
   /// [limit] / [offset].

@@ -2,7 +2,7 @@
 
 ### Breaking
 
-- `LookupService.getStructuredName` and `ContactLookup.getStructuredName` no longer take `accountType` (UNFY-394). The filter read `account_type` from a value that is not an Android contacts column and could match no row.
+- `LookupService.getStructuredName` and `ContactLookup.getStructuredName` drop `accountType` and require `nameRawContactId` (UNFY-394). They read the name row of the raw contact Android documents as contributing the display name (`Contacts.NAME_RAW_CONTACT_ID`), so a merged contact no longer returns another account's name row. Several rows on that raw contact resolve to the single `is_primary` row, or to `null` (logged) when none or several are marked. The removed filter read `account_type` from a value that is not an Android contacts column and could match no row.
 
 ### Fixed
 
