@@ -72,6 +72,15 @@ class AndroidContact {
   final int? phonebookBucketAlt;
   final int? timesContacted;
 
+  /// Purpose: say whether the contact has a photo (UNFY-401).
+  ///
+  /// The provider names a thumbnail (`photo_thumb_uri`) for a contact with a
+  /// photo, and [LookupService.readContactPhoto] reads that thumbnail.
+  ///
+  /// @returns true when the provider names a thumbnail for the contact.
+  /// @throws nothing.
+  bool get hasPhoto => photoThumbUri?.isNotEmpty ?? false;
+
   AndroidContact({
     required this.id,
     this.sourceMap,

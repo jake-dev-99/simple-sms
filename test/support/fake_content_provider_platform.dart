@@ -96,18 +96,29 @@ abstract final class ProviderUris {
 /// code path reads must be declared; seed `const []` for an empty table.
 /// Requests are recorded by [FakeSimpleQueryPlatform.queryRequests].
 final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
+  /// Purpose: builds an empty fake provider.
+  ///
+  /// @param binaryContentHandle the handle every binary open returns, so a
+  /// test can point it at a file it wrote.
+  /// @throws nothing.
+  FakeContentProviderPlatform({super.binaryContentHandle});
+
   final Map<String, _ProviderTable> _tables = <String, _ProviderTable>{};
   final Map<String, Object> _failures = <String, Object>{};
 
   /// Purpose: installs a fresh fake as [SimpleQueryPlatform.instance] for the
   /// current test and restores the previous instance when the test ends.
   ///
+  /// @param binaryContentHandle the handle every binary open returns.
   /// @returns the installed fake, ready to seed.
   /// @throws whatever `addTearDown` throws when called outside a test body or
   /// `setUp` callback.
-  static FakeContentProviderPlatform install() {
+  static FakeContentProviderPlatform install({
+    BinaryContentHandle? binaryContentHandle,
+  }) {
     final original = SimpleQueryPlatform.instance;
-    final fake = FakeContentProviderPlatform();
+    final fake =
+        FakeContentProviderPlatform(binaryContentHandle: binaryContentHandle);
     SimpleQueryPlatform.instance = fake;
     addTearDown(() => SimpleQueryPlatform.instance = original);
     return fake;

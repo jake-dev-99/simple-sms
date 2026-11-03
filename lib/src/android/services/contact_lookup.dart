@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
 
 import '../models/filters/contact_filter.dart';
@@ -7,6 +10,7 @@ import '../models/filters/sort_direction.dart';
 import '../models/model_helpers.dart';
 import '../models/people/contact.dart';
 import '../models/people/contact_name.dart';
+import '../models/people/contact_photo_read_exception.dart';
 import '../models/people/contactables.dart';
 
 /// Contacts-side queries against the Android contacts provider.
@@ -33,6 +37,24 @@ const String _contactsPhoneFilterUri =
     'content://com.android.contacts/data/phones/filter';
 const String _contactsEmailFilterUri =
     'content://com.android.contacts/data/emails/filter';
+
+/// How long [ContactLookup.readContactPhoto] waits for thumbnail bytes. A
+/// thumbnail is a few kilobytes, so a read this slow means the provider has
+/// stalled.
+const Duration defaultContactPhotoReadTimeout = Duration(seconds: 5);
+
+/// Purpose: build the binary request that streams a contact's thumbnail
+/// (UNFY-401). Kept apart so the request shape is testable without a device.
+///
+/// @param thumbnailUri the contact's `photo_thumb_uri`, as the provider
+///   reported it.
+/// @returns the request for [SimpleQuery.withBinaryContent].
+/// @throws nothing.
+@visibleForTesting
+BinaryRequest contactPhotoBinaryRequest(String thumbnailUri) => BinaryRequest(
+      domain: QueryDomain.contacts,
+      platformData: {'contentUri': thumbnailUri},
+    );
 
 class ContactLookup {
   ContactLookup._();
@@ -64,6 +86,39 @@ class ContactLookup {
     return AndroidContact.fromRaw(
       Map<String, dynamic>.from(response.records.first),
     );
+  }
+
+  /// Purpose: read a contact's photo thumbnail (UNFY-401).
+  ///
+  /// Reads the contact first, so a contact that is gone or has no photo
+  /// answers null rather than failing. The thumbnail streams through
+  /// simple_query and is read here, so the caller never sees a URI or a
+  /// file path. The timeout covers the byte read, inside the stream's scope,
+  /// so a stalled provider still has its stream closed.
+  ///
+  /// @param contactId the contact's `_id`.
+  /// @param timeout how long to wait for the thumbnail bytes.
+  /// @returns the image bytes as the provider stored them (JPEG or PNG), or
+  ///   null when the contact is gone or has no photo.
+  /// @throws ContactPhotoReadException when the contact has a photo but no
+  ///   bytes could be read.
+  /// @throws TimeoutException when the bytes take longer than [timeout].
+  /// @throws whatever the provider query or the stream throws.
+  Future<Uint8List?> readContactPhoto(
+    int contactId, {
+    Duration timeout = defaultContactPhotoReadTimeout,
+  }) async {
+    final contact = await lookupContactById(contactId);
+    if (contact == null || !contact.hasPhoto) return null;
+    final bytes = await SimpleQuery.instance.withBinaryContent(
+      // hasPhoto proved the thumbnail URI is present.
+      contactPhotoBinaryRequest(contact.photoThumbUri!),
+      (content) => File(content.localPath).readAsBytes().timeout(timeout),
+    );
+    // A failed native copy closes the stream early instead of throwing, so
+    // no bytes from a contact with a photo is a failed read.
+    if (bytes.isEmpty) throw ContactPhotoReadException(contactId);
+    return bytes;
   }
 
   /// Looks up a contactable (lightweight contact info) by phone number
