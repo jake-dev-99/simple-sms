@@ -98,7 +98,7 @@ class ContactLookup {
   /// Reads the contact first, so a contact that is gone or has no photo
   /// answers null rather than failing. The thumbnail streams through
   /// simple_query and is read here, so the caller never sees a URI or a
-  /// file path. The byte read times out inside the stream's scope, so a
+  /// file path. A stalled read is cancelled inside the stream's scope, so a
   /// stalled provider still has its stream closed. A copy that fails partway
   /// reads as a shorter stream until simple_query reports it on close
   /// (UNFY-365).
@@ -129,11 +129,13 @@ class ContactLookup {
         content.localPath,
         contactId: contactId,
         maxBytes: maxBytes,
-      ).timeout(timeout),
+        timeout: timeout,
+      ),
     );
   }
 
-  /// Purpose: read a thumbnail stream, stopping once it passes [maxBytes].
+  /// Purpose: read a thumbnail stream, stopping once it passes [maxBytes] or
+  /// [timeout].
   ///
   /// A failed native copy closes the stream early instead of throwing, so no
   /// bytes from a contact with a photo is a failed read.
@@ -141,19 +143,39 @@ class ContactLookup {
   /// @param path the stream's local path.
   /// @param contactId the contact, to name in a failure.
   /// @param maxBytes the most bytes to hold.
+  /// @param timeout how long to wait for the whole stream.
   /// @returns the stream's bytes.
   /// @throws ContactPhotoReadException when the stream is empty or holds more
   ///   than [maxBytes].
+  /// @throws TimeoutException when the stream takes longer than [timeout].
   /// @throws whatever reading the stream throws.
   Future<Uint8List> _readThumbnail(
     String path, {
     required int contactId,
     required int maxBytes,
+    required Duration timeout,
   }) async {
     final bytes = BytesBuilder(copy: false);
-    await for (final chunk in File(path).openRead()) {
-      bytes.add(chunk);
-      if (bytes.length > maxBytes) throw ContactPhotoReadException(contactId);
+    final finished = Completer<void>();
+    late final StreamSubscription<List<int>> read;
+    read = File(path).openRead().listen(
+      (chunk) {
+        bytes.add(chunk);
+        if (bytes.length > maxBytes) {
+          unawaited(read.cancel());
+          finished.completeError(ContactPhotoReadException(contactId));
+        }
+      },
+      onDone: finished.complete,
+      onError: finished.completeError,
+      cancelOnError: true,
+    );
+    try {
+      await finished.future.timeout(timeout);
+    } finally {
+      // Not awaited: a cancel waits for the read in progress, and closing the
+      // stream, which runs after this returns, is what ends that read.
+      unawaited(read.cancel());
     }
     if (bytes.isEmpty) throw ContactPhotoReadException(contactId);
     return bytes.takeBytes();

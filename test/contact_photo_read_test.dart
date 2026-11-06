@@ -47,6 +47,33 @@ FakeContentProviderPlatform _install({
       binaryContentHandle: BinaryContentHandle(handleId: 'h', localPath: path),
     )..seed(_contactsUri, rows);
 
+/// Purpose: stand in for cancelling a read in progress, which finishes only
+/// once closing the stream ends that read.
+///
+/// @returns a future that never completes.
+/// @throws nothing.
+Future<void> _endsAfterStreamCloses() => Completer<void>().future;
+
+/// Purpose: a file that reads as [_stream], to control when its bytes arrive.
+final class _StreamFile extends Fake implements File {
+  /// Purpose: wrap the stream the read receives.
+  ///
+  /// @param _stream the file's contents.
+  /// @throws nothing.
+  _StreamFile(this._stream);
+
+  final Stream<List<int>> _stream;
+
+  /// Purpose: read the file.
+  ///
+  /// @param start ignored.
+  /// @param end ignored.
+  /// @returns the file's contents.
+  /// @throws nothing.
+  @override
+  Stream<List<int>> openRead([int? start, int? end]) => _stream;
+}
+
 void main() {
   late Directory dir;
 
@@ -114,28 +141,53 @@ void main() {
     expect(provider.closeBinaryCalls, 1);
   });
 
-  test('times out a stalled stream and still closes it', () async {
-    // A FIFO with no writer never yields bytes, like a stalled provider copy.
-    final fifo = '${dir.path}/stalled';
-    final made = await Process.run('mkfifo', [fifo]);
-    expect(made.exitCode, 0, reason: '${made.stderr}');
+  test('cancels a stalled read when it times out, then closes the stream',
+      () async {
     final provider = _install(
-      path: fifo,
+      path: 'stalled',
       rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
     );
-
-    await expectLater(
-      LookupService().readContactPhoto(
-        76,
-        timeout: const Duration(milliseconds: 50),
-      ),
-      throwsA(isA<TimeoutException>()),
+    int? closesAtCancel;
+    final stalled = StreamController<List<int>>(
+      onCancel: () {
+        closesAtCancel = provider.closeBinaryCalls;
+        return _endsAfterStreamCloses();
+      },
     );
-    expect(provider.closeBinaryCalls, 1);
 
-    // Open and close a writer so the abandoned reader sees end of file and
-    // releases its I/O thread before the directory is deleted.
-    await File(fifo).writeAsBytes(const []);
+    await IOOverrides.runZoned(
+      () => expectLater(
+        LookupService().readContactPhoto(
+          76,
+          timeout: const Duration(milliseconds: 50),
+        ),
+        throwsA(isA<TimeoutException>()),
+      ),
+      createFile: (_) => _StreamFile(stalled.stream),
+    );
+
+    expect(closesAtCancel, 0);
+    expect(provider.closeBinaryCalls, 1);
+  });
+
+  test('stops at maxBytes without waiting for the stream to end', () async {
+    final provider = _install(
+      path: 'stalled',
+      rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
+    );
+    final stalled = StreamController<List<int>>(
+      onCancel: _endsAfterStreamCloses,
+    )..add(_jpegBytes);
+
+    await IOOverrides.runZoned(
+      () => expectLater(
+        LookupService().readContactPhoto(76, maxBytes: 1),
+        throwsA(isA<ContactPhotoReadException>()),
+      ),
+      createFile: (_) => _StreamFile(stalled.stream),
+    );
+
+    expect(provider.closeBinaryCalls, 1);
   });
 
   test('times out a stalled contact lookup before opening a stream', () async {
