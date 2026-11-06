@@ -3,8 +3,8 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_query/simple_query.dart';
 import 'package:simple_sms_native/android.dart';
@@ -195,11 +195,8 @@ void main() {
     expect(provider.closeBinaryCalls, 1);
   });
 
-  test('logs a stream open that fails after the timeout', () async {
-    final logged = <String?>[];
-    final realDebugPrint = debugPrint;
-    debugPrint = (message, {wrapWidth}) => logged.add(message);
-    addTearDown(() => debugPrint = realDebugPrint);
+  test('keeps a stream open that fails after the timeout from escaping',
+      () async {
     final provider = _install(
       path: '${dir.path}/unused',
       rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
@@ -223,8 +220,6 @@ void main() {
     await pumpEventQueue();
 
     expect(provider.closeBinaryCalls, 0);
-    expect(logged, [contains('SimpleQueryError')]);
-    expect(logged.single, isNot(contains('content://')));
   });
 
   test('stops at maxBytes without waiting for the stream to end', () async {

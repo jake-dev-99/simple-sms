@@ -174,8 +174,11 @@ class ContactLookup {
     try {
       await (await opening).close();
     } on Exception catch (error) {
-      debugPrint(
-        'simple_sms: a late contact photo stream failed: ${error.runtimeType}',
+      developer.log(
+        'contact photo stream failed after its read timed out '
+        'error=${error.runtimeType} issue=UNFY-401',
+        name: 'simple_sms.contact_lookup',
+        level: _warningLevel,
       );
     }
   }
