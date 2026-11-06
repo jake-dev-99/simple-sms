@@ -98,21 +98,22 @@ class ContactLookup {
   /// Reads the contact first, so a contact that is gone or has no photo
   /// answers null rather than failing. The thumbnail streams through
   /// simple_query and is read here, so the caller never sees a URI or a
-  /// file path. A stalled read is cancelled inside the stream's scope, so a
-  /// stalled provider still has its stream closed. A copy that fails partway
-  /// reads as a shorter stream until simple_query reports it on close
-  /// (UNFY-365).
+  /// file path. A stalled read is cancelled before its stream closes, and a
+  /// stream that opens after the timeout closes as soon as it opens, so a
+  /// stalled provider never strands a stream. A copy that fails partway reads
+  /// as a shorter stream until simple_query reports it on close (UNFY-365).
   ///
   /// @param contactId the contact's `_id`.
-  /// @param timeout how long to wait for the contact, then for its bytes.
+  /// @param timeout how long to wait for each of the contact, the stream to
+  ///   open, and its bytes.
   /// @param maxBytes the most bytes to hold for the thumbnail.
   /// @returns the image bytes as the provider stored them (JPEG or PNG), or
   ///   null when the contact is gone or has no photo.
   /// @throws ContactPhotoReadException when the contact has a photo but no
   ///   bytes could be read, as when it loses the photo during the read, or
   ///   the thumbnail holds more than [maxBytes].
-  /// @throws TimeoutException when the contact or the bytes take longer than
-  ///   [timeout].
+  /// @throws TimeoutException when the contact, the stream or the bytes take
+  ///   longer than [timeout].
   /// @throws whatever the provider query or the stream throws.
   Future<Uint8List?> readContactPhoto(
     int contactId, {
@@ -123,15 +124,60 @@ class ContactLookup {
     final thumbnailUri =
         contact != null && contact.hasPhoto ? contact.photoThumbUri : null;
     if (thumbnailUri == null) return null;
-    return SimpleQuery.instance.withBinaryContent(
-      contactPhotoBinaryRequest(thumbnailUri),
-      (content) => _readThumbnail(
+    final content = await _openThumbnail(thumbnailUri, timeout: timeout);
+    try {
+      return await _readThumbnail(
         content.localPath,
         contactId: contactId,
         maxBytes: maxBytes,
         timeout: timeout,
-      ),
+      );
+    } finally {
+      await content.close();
+    }
+  }
+
+  /// Purpose: open a thumbnail stream, waiting at most [timeout].
+  ///
+  /// Nobody waits for a stream that opens after the timeout, so it is closed
+  /// here as soon as it opens.
+  ///
+  /// @param thumbnailUri the thumbnail's content URI.
+  /// @param timeout how long to wait for the stream to open.
+  /// @returns the open stream, which the caller closes.
+  /// @throws TimeoutException when the stream takes longer than [timeout].
+  /// @throws whatever opening the stream throws.
+  Future<BinaryContent> _openThumbnail(
+    String thumbnailUri, {
+    required Duration timeout,
+  }) async {
+    final opening = SimpleQuery.instance.openBinaryContent(
+      contactPhotoBinaryRequest(thumbnailUri),
     );
+    try {
+      return await opening.timeout(timeout);
+    } on TimeoutException {
+      unawaited(_closeLateThumbnail(opening));
+      rethrow;
+    }
+  }
+
+  /// Purpose: close a thumbnail stream that opens after its read timed out.
+  ///
+  /// The caller already has the timeout, so a failure here has nowhere to go
+  /// but the log.
+  ///
+  /// @param opening the stream still opening.
+  /// @returns completion once the stream closed, or failed to.
+  /// @throws nothing for a failure the platform reports.
+  Future<void> _closeLateThumbnail(Future<BinaryContent> opening) async {
+    try {
+      await (await opening).close();
+    } on Exception catch (error) {
+      debugPrint(
+        'simple_sms: a late contact photo stream failed: ${error.runtimeType}',
+      );
+    }
   }
 
   /// Purpose: read a thumbnail stream, stopping once it passes [maxBytes] or

@@ -106,6 +106,7 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   final Map<String, _ProviderTable> _tables = <String, _ProviderTable>{};
   final Map<String, Object> _failures = <String, Object>{};
   final Map<String, Future<void>> _holds = <String, Future<void>>{};
+  Future<void>? _binaryOpenHold;
 
   /// Purpose: installs a fresh fake as [SimpleQueryPlatform.instance] for the
   /// current test and restores the previous instance when the test ends.
@@ -165,6 +166,28 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   /// @throws nothing.
   void holdQueriesTo(String contentUri, Future<void> until) {
     _holds[contentUri] = until;
+  }
+
+  /// Purpose: makes every later binary open wait for [until], to exercise a
+  /// caller's handling of a provider that stalls while opening a stream.
+  ///
+  /// @param until the future each open waits for; its error fails the open.
+  /// @returns nothing.
+  /// @throws nothing.
+  void holdBinaryOpensTo(Future<void> until) {
+    _binaryOpenHold = until;
+  }
+
+  /// Purpose: records the open, then answers once any held open is released.
+  ///
+  /// @param request the open to record.
+  /// @returns the fake's binary handle.
+  /// @throws whatever the hold set by [holdBinaryOpensTo] fails with.
+  @override
+  Future<BinaryContentHandle> openBinary(BinaryRequest request) async {
+    final handle = await super.openBinary(request);
+    await _binaryOpenHold;
+    return handle;
   }
 
   /// Purpose: lists the recorded requests sent to one URI, in call order.
