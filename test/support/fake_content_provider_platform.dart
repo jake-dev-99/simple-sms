@@ -105,6 +105,7 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
 
   final Map<String, _ProviderTable> _tables = <String, _ProviderTable>{};
   final Map<String, Object> _failures = <String, Object>{};
+  final Map<String, Future<void>> _holds = <String, Future<void>>{};
 
   /// Purpose: installs a fresh fake as [SimpleQueryPlatform.instance] for the
   /// current test and restores the previous instance when the test ends.
@@ -155,6 +156,17 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
     _failures[contentUri] = error;
   }
 
+  /// Purpose: makes every later query to [contentUri] wait for [until], to
+  /// exercise a caller's handling of a stalled provider.
+  ///
+  /// @param contentUri the exact URI whose reads should stall.
+  /// @param until the future each matching query waits for.
+  /// @returns nothing.
+  /// @throws nothing.
+  void holdQueriesTo(String contentUri, Future<void> until) {
+    _holds[contentUri] = until;
+  }
+
   /// Purpose: lists the recorded requests sent to one URI, in call order.
   ///
   /// @param contentUri the exact URI to match.
@@ -178,6 +190,7 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   Future<QueryResult> query(QueryRequest request) async {
     await super.query(request);
     final contentUri = _contentUriOf(request);
+    await _holds[contentUri];
     final failure = _failures[contentUri];
     if (failure != null) throw failure;
     final table = _tables[contentUri];

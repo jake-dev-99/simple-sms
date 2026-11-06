@@ -138,6 +138,52 @@ void main() {
     await File(fifo).writeAsBytes(const []);
   });
 
+  test('times out a stalled contact lookup before opening a stream', () async {
+    final provider = _install(path: '${dir.path}/unused', rows: const []);
+    provider.holdQueriesTo(_contactsUri, Completer<void>().future);
+
+    await expectLater(
+      LookupService().readContactPhoto(
+        76,
+        timeout: const Duration(milliseconds: 50),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(provider.openBinaryCalls, 0);
+  });
+
+  test('reads a stream of exactly maxBytes', () async {
+    final file = File('${dir.path}/photo')..writeAsBytesSync(_jpegBytes);
+    _install(
+      path: file.path,
+      rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
+    );
+
+    final bytes = await LookupService().readContactPhoto(
+      76,
+      maxBytes: _jpegBytes.length,
+    );
+
+    expect(bytes, _jpegBytes);
+  });
+
+  test('refuses a stream over maxBytes and still closes it', () async {
+    final file = File('${dir.path}/photo')..writeAsBytesSync(_jpegBytes);
+    final provider = _install(
+      path: file.path,
+      rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
+    );
+
+    await expectLater(
+      LookupService().readContactPhoto(76, maxBytes: _jpegBytes.length - 1),
+      throwsA(
+        isA<ContactPhotoReadException>()
+            .having((e) => e.contactId, 'contactId', 76),
+      ),
+    );
+    expect(provider.closeBinaryCalls, 1);
+  });
+
   test('surfaces a provider failure instead of answering no photo', () async {
     final provider = _install(path: '${dir.path}/unused', rows: const []);
     provider.failQueriesTo(_contactsUri, StateError('provider down'));

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:simple_query/simple_query.dart';
@@ -42,6 +43,10 @@ const String _contactsEmailFilterUri =
 /// thumbnail is a few kilobytes, so a read this slow means the provider has
 /// stalled.
 const Duration defaultContactPhotoReadTimeout = Duration(seconds: 5);
+
+/// The most bytes [ContactLookup.readContactPhoto] holds for one thumbnail. A
+/// thumbnail is a few kilobytes, so a stream past this is not one.
+const int defaultContactPhotoMaxBytes = 1024 * 1024;
 
 /// Purpose: build the binary request that streams a contact's thumbnail
 /// (UNFY-401). Kept apart so the request shape is testable without a device.
@@ -93,32 +98,65 @@ class ContactLookup {
   /// Reads the contact first, so a contact that is gone or has no photo
   /// answers null rather than failing. The thumbnail streams through
   /// simple_query and is read here, so the caller never sees a URI or a
-  /// file path. The timeout covers the byte read, inside the stream's scope,
-  /// so a stalled provider still has its stream closed.
+  /// file path. The byte read times out inside the stream's scope, so a
+  /// stalled provider still has its stream closed. A copy that fails partway
+  /// reads as a shorter stream until simple_query reports it on close
+  /// (UNFY-365).
   ///
   /// @param contactId the contact's `_id`.
-  /// @param timeout how long to wait for the thumbnail bytes.
+  /// @param timeout how long to wait for the contact, then for its bytes.
+  /// @param maxBytes the most bytes to hold for the thumbnail.
   /// @returns the image bytes as the provider stored them (JPEG or PNG), or
   ///   null when the contact is gone or has no photo.
   /// @throws ContactPhotoReadException when the contact has a photo but no
-  ///   bytes could be read.
-  /// @throws TimeoutException when the bytes take longer than [timeout].
+  ///   bytes could be read, as when it loses the photo during the read, or
+  ///   the thumbnail holds more than [maxBytes].
+  /// @throws TimeoutException when the contact or the bytes take longer than
+  ///   [timeout].
   /// @throws whatever the provider query or the stream throws.
   Future<Uint8List?> readContactPhoto(
     int contactId, {
     Duration timeout = defaultContactPhotoReadTimeout,
+    int maxBytes = defaultContactPhotoMaxBytes,
   }) async {
-    final contact = await lookupContactById(contactId);
-    if (contact == null || !contact.hasPhoto) return null;
-    final bytes = await SimpleQuery.instance.withBinaryContent(
-      // hasPhoto proved the thumbnail URI is present.
-      contactPhotoBinaryRequest(contact.photoThumbUri!),
-      (content) => File(content.localPath).readAsBytes().timeout(timeout),
+    final contact = await lookupContactById(contactId).timeout(timeout);
+    final thumbnailUri =
+        contact != null && contact.hasPhoto ? contact.photoThumbUri : null;
+    if (thumbnailUri == null) return null;
+    return SimpleQuery.instance.withBinaryContent(
+      contactPhotoBinaryRequest(thumbnailUri),
+      (content) => _readThumbnail(
+        content.localPath,
+        contactId: contactId,
+        maxBytes: maxBytes,
+      ).timeout(timeout),
     );
-    // A failed native copy closes the stream early instead of throwing, so
-    // no bytes from a contact with a photo is a failed read.
+  }
+
+  /// Purpose: read a thumbnail stream, stopping once it passes [maxBytes].
+  ///
+  /// A failed native copy closes the stream early instead of throwing, so no
+  /// bytes from a contact with a photo is a failed read.
+  ///
+  /// @param path the stream's local path.
+  /// @param contactId the contact, to name in a failure.
+  /// @param maxBytes the most bytes to hold.
+  /// @returns the stream's bytes.
+  /// @throws ContactPhotoReadException when the stream is empty or holds more
+  ///   than [maxBytes].
+  /// @throws whatever reading the stream throws.
+  Future<Uint8List> _readThumbnail(
+    String path, {
+    required int contactId,
+    required int maxBytes,
+  }) async {
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in File(path).openRead()) {
+      bytes.add(chunk);
+      if (bytes.length > maxBytes) throw ContactPhotoReadException(contactId);
+    }
     if (bytes.isEmpty) throw ContactPhotoReadException(contactId);
-    return bytes;
+    return bytes.takeBytes();
   }
 
   /// Looks up a contactable (lightweight contact info) by phone number

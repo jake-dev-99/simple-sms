@@ -2,7 +2,7 @@
 
 ### Added
 
-- `LookupService.readContactPhoto` reads a contact's photo thumbnail as JPEG or PNG bytes (UNFY-401). It answers `null` for a contact that is gone or has no photo, throws `ContactPhotoReadException` when a contact with a photo yields no bytes, and throws `TimeoutException` when the bytes take longer than its `timeout` (default 5 seconds). `AndroidContact.hasPhoto` says whether the provider names a thumbnail for the contact.
+- `LookupService.readContactPhoto` reads a contact's photo thumbnail as JPEG or PNG bytes (UNFY-401). It answers `null` for a contact that is gone or has no photo, throws `ContactPhotoReadException` when a contact with a photo yields no bytes or more than its `maxBytes` (default 1 MiB), and throws `TimeoutException` when the contact or the bytes take longer than its `timeout` (default 5 seconds). `AndroidContact.hasPhoto` says whether the provider names a thumbnail for the contact.
 
 ### Breaking
 

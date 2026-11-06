@@ -21,5 +21,6 @@ class ContactPhotoReadException implements Exception {
   /// @throws nothing.
   @override
   String toString() =>
-      'ContactPhotoReadException: no photo bytes for contact $contactId';
+      'ContactPhotoReadException: could not read the photo of contact '
+      '$contactId';
 }
