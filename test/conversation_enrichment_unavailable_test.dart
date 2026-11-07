@@ -111,7 +111,9 @@ class _Provider extends SimpleQueryPlatform {
   /// When set, [failThread]'s latest-MMS read throws this code too.
   SimpleQueryErrorCode? mmsFailure;
 
-  /// The `person` value on each thread's latest SMS.
+  /// The `person` value on each thread's latest SMS. Set it to reproduce
+  /// the populated provider column that used to abort conversation
+  /// enrichment and stop Unify startup (UNFY-403).
   int? latestSmsPerson;
 
   /// The native SMS drafts the provider-wide draft read answers with.

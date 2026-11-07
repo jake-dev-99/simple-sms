@@ -6,6 +6,7 @@ import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 /// provider, and an inbound row with it set once stopped every Unify launch
 /// (UNFY-403).
 ///
+/// @param None; the test runner calls this entrypoint without arguments.
 /// @returns No value; registers the `Sms.person` tests.
 /// @throws Test failures when `person` is read or written as anything but an
 ///   integer or null.
@@ -40,10 +41,13 @@ void main() {
   });
 }
 
-/// Purpose: builds an inbound `content://sms` row in thread 3.
+/// Purpose: reproduce the inbound `content://sms` row that stopped Unify
+/// startup, so the tests exercise the provider's integer contact reference
+/// rather than only a hand-built `Sms` object (UNFY-403).
 ///
 /// @param person the `person` column, or null for a row with no contact.
 /// @returns the raw row.
+/// @throws Nothing; only constructs an in-memory map.
 Map<String, dynamic> rawRow({Object? person}) => <String, dynamic>{
   '_id': 1772,
   'thread_id': 3,
