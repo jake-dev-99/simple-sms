@@ -299,6 +299,28 @@ void main() {
     expect(provider.openBinaryCalls, 0);
   });
 
+  test('fails rather than return the bytes of a copy that failed partway',
+      () async {
+    // simple_query reports a native copy that fails after sending bytes when
+    // the stream closes (UNFY-365), so those bytes must never be returned.
+    const copyFailure = SimpleQueryError(
+      code: SimpleQueryErrorCode.transientFailure,
+      message: 'disk read failed',
+    );
+    final file = File('${dir.path}/partial')
+      ..writeAsBytesSync(_jpegBytes.sublist(0, 3));
+    final provider = _install(
+      path: file.path,
+      rows: [_contactRow(id: 76, thumbUri: _thumbUri)],
+    )..failBinaryClosesWith(copyFailure);
+
+    await expectLater(
+      LookupService().readContactPhoto(76),
+      throwsA(same(copyFailure)),
+    );
+    expect(provider.closeBinaryCalls, 1);
+  });
+
   group('hasPhoto', () {
     test('is true when the provider names a thumbnail', () {
       final contact =

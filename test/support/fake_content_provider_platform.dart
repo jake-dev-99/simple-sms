@@ -107,6 +107,7 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   final Map<String, Object> _failures = <String, Object>{};
   final Map<String, Future<void>> _holds = <String, Future<void>>{};
   Future<void>? _binaryOpenHold;
+  Object? _binaryCloseFailure;
 
   /// Purpose: installs a fresh fake as [SimpleQueryPlatform.instance] for the
   /// current test and restores the previous instance when the test ends.
@@ -188,6 +189,29 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
     final handle = await super.openBinary(request);
     await _binaryOpenHold;
     return handle;
+  }
+
+  /// Purpose: makes every later binary close throw [error], as simple_query
+  /// reports a native copy that failed partway (UNFY-365).
+  ///
+  /// @param error the object each close throws once it is recorded.
+  /// @returns nothing.
+  /// @throws nothing.
+  void failBinaryClosesWith(Object error) {
+    _binaryCloseFailure = error;
+  }
+
+  /// Purpose: records the close, then throws any failure set by
+  /// [failBinaryClosesWith].
+  ///
+  /// @param handleId the stream to close.
+  /// @returns completion once the close is recorded.
+  /// @throws the error set by [failBinaryClosesWith].
+  @override
+  Future<void> closeBinary(String handleId) async {
+    await super.closeBinary(handleId);
+    final failure = _binaryCloseFailure;
+    if (failure != null) throw failure;
   }
 
   /// Purpose: lists the recorded requests sent to one URI, in call order.
