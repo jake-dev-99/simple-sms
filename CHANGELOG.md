@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- `Sms.person` is now `int?` (breaking). It is an integer contact reference in the Android SMS provider, so an inbound row with it set threw a `TypeError` from `Sms.fromRaw` and failed the whole conversation list (UNFY-403).
 - `AndroidContact.nameRawContactId` and `Contactable.nameRawContactId` are `null` when the provider omits `name_raw_contact_id`, not `0`. `Contactable.nameRawContactId` is now `int?` (breaking), and `Contactable.displayNameSource` no longer defaults to `undefined` when not given (UNFY-394).
 - `DisplayNameSource` adds `structuredPhonetic` (37), Android's documented `DisplayNameSources.STRUCTURED_PHONETIC_NAME`; it previously parsed as `null` (UNFY-394).
 

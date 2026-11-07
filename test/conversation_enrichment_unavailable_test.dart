@@ -76,6 +76,15 @@ void main() {
     );
   });
 
+  test('a newest SMS with a contact reference still lists (UNFY-403)',
+      () async {
+    provider.latestSmsPerson = 116;
+
+    final conversations = await LookupService().listConversations();
+
+    expect(conversations.map((c) => c.latestSms?.person), [116, 116]);
+  });
+
   test('an unavailable conversations provider still fails the list', () async {
     provider.conversationsUnavailable = true;
 
@@ -102,6 +111,9 @@ class _Provider extends SimpleQueryPlatform {
   /// When set, [failThread]'s latest-MMS read throws this code too.
   SimpleQueryErrorCode? mmsFailure;
 
+  /// The `person` value on each thread's latest SMS.
+  int? latestSmsPerson;
+
   /// The native SMS drafts the provider-wide draft read answers with.
   List<Map<String, Object?>> drafts = const [];
 
@@ -123,7 +135,13 @@ class _Provider extends SimpleQueryPlatform {
       if (threadId == failThread) throw _error(uri!, code: failCode);
       return QueryResult(
         records: [
-          {'_id': threadId * 10, 'thread_id': threadId, 'date': 0, 'type': 2},
+          {
+            '_id': threadId * 10,
+            'thread_id': threadId,
+            'date': 0,
+            'type': 2,
+            'person': latestSmsPerson,
+          },
         ],
       );
     }
