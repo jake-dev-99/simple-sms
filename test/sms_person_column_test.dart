@@ -1,17 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simple_sms_native/src/android/models/messages/sms.dart';
 
-/// `person` is an integer contact reference in the Android SMS provider. An
-/// inbound row with it set once stopped every Unify launch (UNFY-403).
+/// Purpose: check that `Sms` reads and writes the provider's `person` column
+/// as an integer. It is an integer contact reference in the Android SMS
+/// provider, and an inbound row with it set once stopped every Unify launch
+/// (UNFY-403).
+///
+/// @returns No value; registers the `Sms.person` tests.
+/// @throws Test failures when `person` is read or written as anything but an
+///   integer or null.
 void main() {
-  Map<String, dynamic> rawRow({Object? person}) => <String, dynamic>{
-    '_id': 1772,
-    'thread_id': 3,
-    'date': 1793637861146,
-    'type': 1,
-    'person': person,
-  };
-
   group('Sms.person', () {
     test('fromRaw reads the integer the provider returns', () {
       expect(Sms.fromRaw(rawRow(person: 116)).person, 116);
@@ -41,3 +39,15 @@ void main() {
     });
   });
 }
+
+/// Purpose: builds an inbound `content://sms` row in thread 3.
+///
+/// @param person the `person` column, or null for a row with no contact.
+/// @returns the raw row.
+Map<String, dynamic> rawRow({Object? person}) => <String, dynamic>{
+  '_id': 1772,
+  'thread_id': 3,
+  'date': 1793637861146,
+  'type': 1,
+  'person': person,
+};
