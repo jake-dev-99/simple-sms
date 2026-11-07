@@ -335,6 +335,11 @@ implied by a successful build or package dry-run.
 
 ## Release requirements
 
+`Sms.person` changes from `String?` to `int?` (UNFY-403). Android's SMS provider
+uses an integer contact reference; `Sms.fromRaw` and `Sms.fromJson` now accept
+the integer, null, and cached numeric strings. This fixes the populated
+provider column failing conversation enrichment with a `TypeError`.
+
 The MMS migration preserves the public Dart API and channel contracts, so the
 next release uses a **minor** bump (`0.5.1` to `0.6.0`). The Cut Release workflow
 owns the version and tag; follow [release procedure in Linear](https://linear.app/simple-zen/issue/UNFY-345/repair-plugin-dependency-floors-and-telephony-release-example) after the device

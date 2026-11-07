@@ -82,7 +82,7 @@ class Sms {
   final bool? locked;
   final int? messageId;
   final String? objectId;
-  final String? person;
+  final int? person;
   final MessagePriority? priority;
   final int? protocol;
   final bool? read;
@@ -281,7 +281,7 @@ class Sms {
     // shape the provider produced originally.
     messageId: FieldHelper.asInt(json["messageId"]),
     objectId: json["objectId"],
-    person: json["person"],
+    person: FieldHelper.asInt(json["person"]),
     priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       json["priority"],
@@ -454,7 +454,7 @@ class Sms {
     locked: FieldHelper.asBool(raw["locked"]),
     messageId: FieldHelper.asInt(raw["msg_id"]),
     objectId: raw["object_id"],
-    person: raw["person"],
+    person: FieldHelper.asInt(raw["person"]),
     priority: FieldHelper.enumFromValueOrNull(
       MessagePriority.values,
       FieldHelper.asInt(raw["pri"]),
