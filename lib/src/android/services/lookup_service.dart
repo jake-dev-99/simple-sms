@@ -2,6 +2,7 @@
 // MIME enum (declared in `enums/sms_mms_enums.dart`) resolves
 // unambiguously inside this file.
 import 'dart:io' hide ContentType;
+import 'dart:typed_data';
 
 import 'package:simple_query/simple_query.dart';
 
@@ -459,6 +460,31 @@ class LookupService {
   /// Façade — delegates to [ContactLookup] (Tier 0f extraction).
   Future<List<Contactable>> listContactablesForContact(int contactId) =>
       ContactLookup.instance.listContactablesForContact(contactId);
+
+  /// Purpose: read a contact's photo thumbnail. Façade over
+  /// [ContactLookup.readContactPhoto] (UNFY-401).
+  ///
+  /// @param contactId the contact's `_id`.
+  /// @param timeout how long to wait for the contact, then for its bytes.
+  /// @param maxBytes the most bytes to hold for the thumbnail.
+  /// @returns the JPEG or PNG bytes, or null when the contact is gone or
+  ///   has no photo.
+  /// @throws ContactPhotoReadException when the contact has a photo but no
+  ///   bytes could be read, as when it loses the photo during the read, or
+  ///   the thumbnail holds more than [maxBytes].
+  /// @throws TimeoutException when the contact or the bytes take longer than
+  ///   [timeout].
+  /// @throws whatever the provider query or the stream throws.
+  Future<Uint8List?> readContactPhoto(
+    int contactId, {
+    Duration timeout = defaultContactPhotoReadTimeout,
+    int maxBytes = defaultContactPhotoMaxBytes,
+  }) =>
+      ContactLookup.instance.readContactPhoto(
+        contactId,
+        timeout: timeout,
+        maxBytes: maxBytes,
+      );
 
   /// Purpose: resolve the structured name Android uses for a contact's
   /// display name: the name row of [nameRawContactId]

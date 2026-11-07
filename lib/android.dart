@@ -27,6 +27,7 @@ export 'src/android/models/messages/respond_via_message_request.dart';
 export 'src/android/models/people/message_participant.dart';
 export 'src/android/models/people/contact.dart';
 export 'src/android/models/people/contact_name.dart';
+export 'src/android/models/people/contact_photo_read_exception.dart';
 export 'src/android/models/people/contactables.dart';
 export 'src/android/models/people/mms_participant.dart';
 

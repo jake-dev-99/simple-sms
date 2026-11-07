@@ -96,18 +96,32 @@ abstract final class ProviderUris {
 /// code path reads must be declared; seed `const []` for an empty table.
 /// Requests are recorded by [FakeSimpleQueryPlatform.queryRequests].
 final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
+  /// Purpose: builds an empty fake provider.
+  ///
+  /// @param binaryContentHandle the handle every binary open returns, so a
+  /// test can point it at a file it wrote.
+  /// @throws nothing.
+  FakeContentProviderPlatform({super.binaryContentHandle});
+
   final Map<String, _ProviderTable> _tables = <String, _ProviderTable>{};
   final Map<String, Object> _failures = <String, Object>{};
+  final Map<String, Future<void>> _holds = <String, Future<void>>{};
+  Future<void>? _binaryOpenHold;
+  Object? _binaryCloseFailure;
 
   /// Purpose: installs a fresh fake as [SimpleQueryPlatform.instance] for the
   /// current test and restores the previous instance when the test ends.
   ///
+  /// @param binaryContentHandle the handle every binary open returns.
   /// @returns the installed fake, ready to seed.
   /// @throws whatever `addTearDown` throws when called outside a test body or
   /// `setUp` callback.
-  static FakeContentProviderPlatform install() {
+  static FakeContentProviderPlatform install({
+    BinaryContentHandle? binaryContentHandle,
+  }) {
     final original = SimpleQueryPlatform.instance;
-    final fake = FakeContentProviderPlatform();
+    final fake =
+        FakeContentProviderPlatform(binaryContentHandle: binaryContentHandle);
     SimpleQueryPlatform.instance = fake;
     addTearDown(() => SimpleQueryPlatform.instance = original);
     return fake;
@@ -144,6 +158,62 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
     _failures[contentUri] = error;
   }
 
+  /// Purpose: makes every later query to [contentUri] wait for [until], to
+  /// exercise a caller's handling of a stalled provider.
+  ///
+  /// @param contentUri the exact URI whose reads should stall.
+  /// @param until the future each matching query waits for.
+  /// @returns nothing.
+  /// @throws nothing.
+  void holdQueriesTo(String contentUri, Future<void> until) {
+    _holds[contentUri] = until;
+  }
+
+  /// Purpose: makes every later binary open wait for [until], to exercise a
+  /// caller's handling of a provider that stalls while opening a stream.
+  ///
+  /// @param until the future each open waits for; its error fails the open.
+  /// @returns nothing.
+  /// @throws nothing.
+  void holdBinaryOpensTo(Future<void> until) {
+    _binaryOpenHold = until;
+  }
+
+  /// Purpose: records the open, then answers once any held open is released.
+  ///
+  /// @param request the open to record.
+  /// @returns the fake's binary handle.
+  /// @throws whatever the hold set by [holdBinaryOpensTo] fails with.
+  @override
+  Future<BinaryContentHandle> openBinary(BinaryRequest request) async {
+    final handle = await super.openBinary(request);
+    await _binaryOpenHold;
+    return handle;
+  }
+
+  /// Purpose: makes every later binary close throw [error], as simple_query
+  /// reports a native copy that failed partway (UNFY-365).
+  ///
+  /// @param error the object each close throws once it is recorded.
+  /// @returns nothing.
+  /// @throws nothing.
+  void failBinaryClosesWith(Object error) {
+    _binaryCloseFailure = error;
+  }
+
+  /// Purpose: records the close, then throws any failure set by
+  /// [failBinaryClosesWith].
+  ///
+  /// @param handleId the stream to close.
+  /// @returns completion once the close is recorded.
+  /// @throws the error set by [failBinaryClosesWith].
+  @override
+  Future<void> closeBinary(String handleId) async {
+    await super.closeBinary(handleId);
+    final failure = _binaryCloseFailure;
+    if (failure != null) throw failure;
+  }
+
   /// Purpose: lists the recorded requests sent to one URI, in call order.
   ///
   /// @param contentUri the exact URI to match.
@@ -167,6 +237,7 @@ final class FakeContentProviderPlatform extends FakeSimpleQueryPlatform {
   Future<QueryResult> query(QueryRequest request) async {
     await super.query(request);
     final contentUri = _contentUriOf(request);
+    await _holds[contentUri];
     final failure = _failures[contentUri];
     if (failure != null) throw failure;
     final table = _tables[contentUri];
