@@ -51,7 +51,7 @@ come from Android's platform MMS stack, not bundled carrier XML.
 Single-package plugin (not federated — the four sister repos above are
 each their own published package; "federation" here describes the
 inter-package layering contract, not Flutter's federated-plugin
-mechanism). Dart `^3.12.0`, Flutter `>=3.44.0`.
+mechanism). Dart `^3.13.0`, Flutter `>=3.47.7`.
 
 ## Build · test · verify
 
@@ -64,6 +64,13 @@ flutter test
 ./scripts/verify_mms_migration.sh
 flutter pub publish --dry-run     # keep it publishable
 ```
+
+Every package and the example commits its `pubspec.lock` (CQS-DEP-02),
+resolved through the tracked `pubspec_overrides.yaml` links and the
+sibling checkouts, as CI resolves it. When `flutter pub get`
+or `flutter pub upgrade` changes a lockfile, including after a release
+changes the linked package versions, commit it. pub leaves `pubspec.lock`
+out of published packages.
 
 **When you touch `android/` (Kotlin), also run the native gate.** `flutter
 test` is Dart-only — it never compiles or tests the Kotlin in `android/`, so

@@ -9,8 +9,8 @@ void main() {
           'thread_id': 1,
           'date': 1700000000000,
           'type': type,
-          if (address != null) 'address': address,
-          if (fromAddress != null) 'from_address': fromAddress,
+          'address': ?address,
+          'from_address': ?fromAddress,
         });
 
     test('inbound: address is the sender, recipient is the local (null)', () {

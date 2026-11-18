@@ -4,7 +4,7 @@
 /// which is useful for building a messaging UI similar to native SMS apps.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:simple_sms_native/simple_sms_native.dart';
 
 /// Example: Send a message to an existing conversation thread

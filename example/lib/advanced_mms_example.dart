@@ -7,7 +7,7 @@
 /// - Working with MMS metadata
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:simple_sms_native/simple_sms_native.dart';
 
 /// Process an incoming MMS message and extract all information
