@@ -17,6 +17,7 @@ migrate_working_dir/
 !.github/ISSUE_TEMPLATE/
 *.bin
 *.lock
+!pubspec.lock
 *.zip
 
 # IntelliJ related
@@ -41,7 +42,6 @@ migrate_working_dir/
 .pub/
 **/build/
 **/bin/
-pubspec.lock
 
 # Symbolication related
 app.*.symbols
