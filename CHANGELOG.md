@@ -1,15 +1,12 @@
 ## Unreleased
 
-### Changed
-
-- Updates the minimum supported SDK version to Flutter 3.47.7/Dart 3.13 (UNFY-411).
-
 ### Added
 
 - `LookupService.readContactPhoto` reads a contact's photo thumbnail as JPEG or PNG bytes (UNFY-401). It answers `null` for a contact that is gone or has no photo, throws `ContactPhotoReadException` when a contact with a photo yields no bytes or more than its `maxBytes` (default 1 MiB), and throws `TimeoutException` when the contact, the stream or the bytes take longer than its `timeout` (default 5 seconds). `AndroidContact.hasPhoto` says whether the provider names a thumbnail for the contact.
 
 ### Breaking
 
+- Requires Flutter 3.47.7 / Dart 3.13. Release as a breaking version (the next 0.x minor) (UNFY-411).
 - `LookupService.getStructuredName` and `ContactLookup.getStructuredName` drop `accountType` and require `nameRawContactId` (UNFY-394). They read the name row of the raw contact Android documents as contributing the display name (`Contacts.NAME_RAW_CONTACT_ID`), so a merged contact no longer returns another account's name row. Several rows on that raw contact resolve to the single `is_primary` row, or to `null` (logged) when none or several are marked. If the pair matches no row because Android re-merged the contact after the caller read it, the lookup re-reads the contact's current `name_raw_contact_id` once and retries. The removed filter read `account_type` from a value that is not an Android contacts column and could match no row.
 
 ### Fixed
