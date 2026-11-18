@@ -15,7 +15,8 @@ environment:
   # Built-in Kotlin (UNFY-174): the Android build no longer applies the
   # Kotlin Gradle Plugin. Flutter 3.44 (Dart 3.12) is the first release
   # whose Gradle plugin applies KGP for hosts without built-in Kotlin;
-  # older Flutter would not compile this plugin's Kotlin.
+  # older Flutter would not compile this plugin's Kotlin. The floor is now
+  # Dart 3.13 / Flutter 3.47.7, the Unify app's floor (UNFY-411).
   sdk: ^3.13.0
   flutter: '>=3.47.7'
 
@@ -46,7 +47,8 @@ dev_dependencies:
   # 0.2.2: first release exporting `testing.dart` (FakeSimpleQueryPlatform),
   # which test/support/fake_content_provider_platform.dart subclasses. Pinned
   # exactly like every dev dependency; it lives in simple-query, so this
-  # repo's release tooling does not manage it as an internal package.
+  # repo's release tooling does not manage it as an internal package. Raise
+  # it whenever simple_query's own floor on the interface moves past it.
   simple_query_platform_interface: 0.2.2
   flutter_test:
     sdk: flutter
