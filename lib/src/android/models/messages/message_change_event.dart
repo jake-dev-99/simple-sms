@@ -94,7 +94,7 @@ class MessageChangeEvent {
   }) {
     final ids = <int>[
       for (final s in event.ids)
-        if (int.tryParse(s) case final n?) n,
+        ?int.tryParse(s),
     ];
     final selfChange = (event.metadata?['selfChange'] as bool?) ?? false;
     return MessageChangeEvent(

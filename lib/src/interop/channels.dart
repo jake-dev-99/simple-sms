@@ -143,8 +143,8 @@ class DestructiveActionsInterop {
     String? after,
     int limit,
   ) => methodChannel.invokeMethod<Object?>('pendingSendDeletions', {
-    if (threadId != null) 'threadId': threadId,
-    if (after != null) 'afterClientCorrelationId': after,
+    'threadId': ?threadId,
+    'afterClientCorrelationId': ?after,
     'limit': limit,
   });
 

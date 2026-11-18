@@ -762,7 +762,7 @@ void _seedRecipient(
     ..seed(ProviderUris.canonicalAddress(recipientId), [
       {'_id': int.parse(recipientId), 'address': address},
     ])
-    ..seed(lookupUri, [if (contact != null) contact], columns: const ['_id']);
+    ..seed(lookupUri, [?contact], columns: const ['_id']);
 }
 
 /// Purpose: lists enriched conversations keyed by thread id.
