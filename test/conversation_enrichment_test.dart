@@ -94,6 +94,30 @@ void main() {
       expect(byThread[8]?.latestMms?.id, 12);
     });
 
+    test('latestMms skips the rows the thread view hides, even when their '
+        'date sorts first (UNFY-421)', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          _mms(10, threadId: 7, seconds: 1),
+          // An old build's sent MMS: no m_type, and a millisecond date that
+          // outranks every real row under `date DESC`.
+          {..._mms(11, threadId: 7, seconds: 1760996407594), 'm_type': null},
+          // A download notification: transport-only.
+          {
+            ..._mms(12, threadId: 7, seconds: 3),
+            'm_type': MmsMessageType.notificationInd.value,
+          },
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms?.id, 10);
+    });
+
     test('leaves latestMms null and skips the parts query for an SMS-only '
         'inbox', () async {
       _seedTables(
@@ -735,7 +759,11 @@ void _seedTables(
   provider
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
-    ..seed(ProviderUris.mms, mms, columns: [...messageColumns, 'msg_box'])
+    ..seed(
+      ProviderUris.mms,
+      mms,
+      columns: [...messageColumns, 'msg_box', 'm_type'],
+    )
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 

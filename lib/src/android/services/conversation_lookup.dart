@@ -442,9 +442,13 @@ class ConversationLookup {
       sort: SmsSort.newestFirst,
       limit: 1,
     );
+    // The same MMS types the thread view shows, so the preview never comes
+    // from a row the thread hides. Rows an old build sent with no m_type and
+    // a millisecond date otherwise sort first (UNFY-421).
     final latestMmsFuture = MessageLookup.instance.listMms(
       filter: MmsFilter(
         threadId: base.threadId,
+        types: MmsMessageType.userVisibleValues,
         excludeMessageBoxes: const [MessageBox.draft],
       ),
       sort: MmsSort.newestFirst,
