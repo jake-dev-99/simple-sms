@@ -109,6 +109,60 @@ void main() {
       expect(conversation.latestMms, isNull);
       expect(provider.requestsTo(ProviderUris.mmsParts), isEmpty);
     });
+
+    test('latestMms skips an untyped row whose millisecond date outsorts '
+        'every real message (UNFY-439)', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          _mms(10, threadId: 7, seconds: 1763775756),
+          {
+            ..._mms(11, threadId: 7, seconds: 0),
+            'date': 1760996407594,
+            'm_type': null,
+          },
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms?.id, 10);
+    });
+
+    test('latestMms skips a newer transport-only row (UNFY-439)', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          _mms(10, threadId: 7, seconds: 1),
+          {..._mms(11, threadId: 7, seconds: 2), 'm_type': 0x82},
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms?.id, 10);
+    });
+
+    test('latestMms is null when a thread holds only untyped rows '
+        '(UNFY-439)', () async {
+      _seedTables(
+        provider,
+        threads: [_thread(7)],
+        mms: [
+          {..._mms(11, threadId: 7, seconds: 2), 'm_type': null},
+        ],
+      );
+      _seedRecipient(provider, '11', _ada.data1, contact: _ada.row);
+
+      final [conversation] = await LookupService().listConversations();
+
+      expect(conversation.latestMms, isNull);
+      expect(provider.requestsTo(ProviderUris.mmsParts), isEmpty);
+    });
   });
 
   group('batched latest-MMS parts hydration (UNFY-250)', () {
@@ -735,7 +789,11 @@ void _seedTables(
   provider
     ..seed(ProviderUris.conversations, threads)
     ..seed(ProviderUris.sms, sms, columns: [...messageColumns, 'type'])
-    ..seed(ProviderUris.mms, mms, columns: [...messageColumns, 'msg_box'])
+    ..seed(
+      ProviderUris.mms,
+      mms,
+      columns: [...messageColumns, 'm_type', 'msg_box'],
+    )
     ..seed(ProviderUris.mmsParts, parts, columns: const ['_id', 'mid']);
 }
 
