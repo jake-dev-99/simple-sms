@@ -442,9 +442,13 @@ class ConversationLookup {
       sort: SmsSort.newestFirst,
       limit: 1,
     );
+    // Only user-visible PDU types, as thread pages read them: a transport-only
+    // or untyped row is not a message, and an untyped row dated in
+    // milliseconds outsorts every real (seconds) date (UNFY-439).
     final latestMmsFuture = MessageLookup.instance.listMms(
       filter: MmsFilter(
         threadId: base.threadId,
+        types: MmsMessageType.userVisibleValues,
         excludeMessageBoxes: const [MessageBox.draft],
       ),
       sort: MmsSort.newestFirst,
