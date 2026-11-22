@@ -11,7 +11,6 @@
 
 ### Fixed
 
-- The enriched `latestMms` is now the thread's newest user-visible MMS (`m_type` of `MmsMessageType.userVisibleValues`), as thread pages read them (UNFY-439). A transport-only row, or a row with no `m_type`, no longer counts; an untyped row dated in milliseconds outsorted every real message and gave the conversation a stale latest MMS.
 - `AndroidContact.nameRawContactId` and `Contactable.nameRawContactId` are `null` when the provider omits `name_raw_contact_id`, not `0`. `Contactable.nameRawContactId` is now `int?` (breaking), and `Contactable.displayNameSource` no longer defaults to `undefined` when not given (UNFY-394).
 - `DisplayNameSource` adds `structuredPhonetic` (37), Android's documented `DisplayNameSources.STRUCTURED_PHONETIC_NAME`; it previously parsed as `null` (UNFY-394).
 
